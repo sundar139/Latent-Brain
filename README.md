@@ -15,6 +15,7 @@ Initialized foundation:
 - Safe `.env.example` contract without committed secrets
 - Standard logging utilities
 - Deterministic seeding utilities for Python, NumPy, and optional PyTorch
+- Synthetic Poisson LDS data generation for validating data contracts
 - Typer-based CLI sanity commands
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions quality checks
 
@@ -59,6 +60,16 @@ python scripts/check_environment.py
 The default configuration lives in `configs/base.yaml`. Local machine-specific values may be supplied through environment variables or a local `.env` file, but `.env` files must never be committed.
 
 Copy `.env.example` only when local overrides are needed, then keep any real values private.
+
+## Synthetic data
+
+LatentBrain includes a synthetic Poisson LDS generator for testing the data stack before real datasets are integrated:
+
+```powershell
+python scripts/generate_synthetic_data.py --config configs/synthetic_poisson_lds.yaml
+```
+
+The generated files are local validation artifacts, not benchmark results. Real neural datasets are not integrated yet, and generated synthetic files under `data/` are ignored by Git.
 
 ## Data policy
 

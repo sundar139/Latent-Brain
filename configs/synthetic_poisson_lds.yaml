@@ -1,0 +1,27 @@
+dataset:
+  name: synthetic_poisson_lds
+  seed: 2027
+  n_trials: 64
+  n_time_bins: 80
+  n_neurons: 32
+  latent_dim: 4
+  bin_size_ms: 20
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+dynamics:
+  spectral_radius: 0.92
+  process_noise_std: 0.15
+
+observations:
+  log_rate_bias: -1.25
+  loading_scale: 0.35
+  min_rate_hz: 0.1
+  max_rate_hz: 120.0
+
+output:
+  directory: data/synthetic
+  filename: synthetic_poisson_lds.npz
+  metadata_filename: synthetic_poisson_lds_metadata.json
