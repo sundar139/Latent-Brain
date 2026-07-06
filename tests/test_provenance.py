@@ -57,6 +57,12 @@ def test_write_provenance_includes_core_metadata(tmp_path: Path) -> None:
             "alignment_event": "movement",
         },
         "splits": {"seed": 2027},
+        "trialization": {"variable_length_policy": "crop_to_min"},
+    }
+    dataset_metadata = {
+        "processed_target_source_file": "source.h5",
+        "test_source_files": ["heldout_test.nwb"],
+        "test_files_used_for_targets": False,
     }
 
     provenance = write_provenance(
@@ -65,6 +71,7 @@ def test_write_provenance_includes_core_metadata(tmp_path: Path) -> None:
         output_path=output_path,
         config=config,
         max_hash_size_bytes=16,
+        dataset_metadata=dataset_metadata,
     )
 
     assert output_path.exists()
@@ -74,6 +81,11 @@ def test_write_provenance_includes_core_metadata(tmp_path: Path) -> None:
     assert provenance["split_seed"] == 2027
     assert provenance["bin_size_ms"] == 5
     assert provenance["alignment_event"] == "movement"
+    assert provenance["heldout_mask_seed"] == 2027
+    assert provenance["train_file_used"] == "source.h5"
+    assert provenance["test_files_detected"] == ["heldout_test.nwb"]
+    assert provenance["test_files_used_for_targets"] is False
+    assert provenance["variable_length_policy"] == "crop_to_min"
     assert provenance["file_count"] == 1
     assert provenance["config"] == config
     assert "generated_at_utc" in provenance

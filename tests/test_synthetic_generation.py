@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from latentbrain.data.io import load_neural_dataset, save_neural_dataset
+from latentbrain.data.io import compute_dataset_hash, load_neural_dataset, save_neural_dataset
 from latentbrain.data.schemas import SyntheticDatasetConfig
 from latentbrain.data.synthetic import generate_poisson_lds
 from latentbrain.data.validation import validate_neural_dataset
@@ -56,3 +56,12 @@ def test_save_and_load_neural_dataset_roundtrip(tmp_path: Path) -> None:
     np.testing.assert_array_equal(dataset.spikes, loaded.spikes)
     assert loaded.metadata["dataset_hash"] == dataset.metadata["dataset_hash"]
     assert metadata_path.exists()
+
+
+def test_dataset_hash_ignores_run_specific_provenance_timestamp() -> None:
+    dataset = generate_poisson_lds(_config())
+    first_hash = compute_dataset_hash(dataset)
+
+    dataset.metadata["provenance"] = {"generated_at_utc": "later"}
+
+    assert compute_dataset_hash(dataset) == first_hash

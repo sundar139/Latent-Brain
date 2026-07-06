@@ -25,7 +25,7 @@ from latentbrain.data.validation import (
 )
 from latentbrain.paths import get_repo_root, resolve_configured_path
 
-console = Console(stderr=True)
+console = Console(stderr=True, markup=False)
 
 
 def _relative(path: Path, root: Path) -> str:
@@ -69,7 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         dataset = load_nlb_dataset(dataset_root, config)
-    except (ImportError, ValueError, FileNotFoundError) as exc:
+    except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
         console.print(str(exc))
         console.print("No fake data or processed output was created.")
         return 2
@@ -110,6 +110,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         provenance_path,
         config.as_dict(),
         max_hash_size_bytes=hash_limit_bytes,
+        dataset_metadata=dataset.metadata,
     )
     dataset.metadata["provenance"] = provenance
     save_neural_dataset(dataset, output_path, metadata_path)
@@ -117,6 +118,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = {
         "dataset": config.dataset.name,
         "variant": config.dataset.variant,
+        "train_file_used": dataset.metadata.get("processed_target_source_file"),
         "spikes_shape": list(dataset.spikes.shape),
         "bin_size_ms": dataset.bin_size_ms,
         "trial_count": dataset.spikes.shape[0],

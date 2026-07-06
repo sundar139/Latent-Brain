@@ -16,13 +16,13 @@ Initialized foundation:
 - Standard logging utilities
 - Deterministic seeding utilities for Python, NumPy, and optional PyTorch
 - Synthetic Poisson LDS data generation for validating data contracts
-- Local NLB/MC_Maze ingestion scaffold with provenance capture
+- Local MC_Maze Small ingestion that trializes continuous NLB NWB dataframes
 - Typer-based CLI sanity commands
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions quality checks
 
 Not implemented yet:
 
-- Automatic dataset download or full preprocessing pipelines
+- Automatic dataset download or final benchmark preprocessing pipelines
 - Model training or inference
 - LFADS, neural SDE, or switching dynamical system logic
 - Neural Latents Benchmark evaluation
@@ -86,14 +86,14 @@ The generated files are local validation artifacts, not benchmark results. Real 
 
 ## Real data
 
-LatentBrain includes an NLB/MC_Maze-style local ingestion scaffold:
+LatentBrain includes a local MC_Maze Small ingestion path:
 
 ```powershell
 python scripts/inspect_nlb_files.py --root data/raw/nlb/mc_maze_small
 python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
-The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. If files are missing, the script exits with guidance and creates no fake data. Real-data support is validation-only; no trained model, benchmark result, or leaderboard claim exists.
+The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. The real NWB train file loads as a continuous `NWBDataset.data` pandas dataframe; LatentBrain uses NLB trial metadata to trialize it into `spikes: [trials, time, neurons]`, concatenating `heldout_spikes` after `spikes` when available. The initial policy crops variable-length trials to the minimum trial length for a clean validation tensor. This is validation-oriented preprocessing, not final benchmark preprocessing. If files are missing, the script exits with guidance and creates no fake data. No trained model, benchmark score, EvalAI submission, or leaderboard claim exists. Future EDA should inspect alignment, behavior, trial lengths, and spike statistics.
 
 ## Data policy
 

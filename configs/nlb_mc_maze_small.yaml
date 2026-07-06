@@ -26,5 +26,20 @@ splits:
   test_fraction: 0.15
   heldout_neuron_fraction: 0.25
 
+trialization:
+  train_file_pattern: "*desc-train_behavior+ecephys.nwb"
+  test_file_pattern: "*desc-test_ecephys.nwb"
+  start_field: start_time
+  end_field: end_time
+  align_field:
+  align_range_ms:
+  margin_ms: 0
+  allow_nans: false
+  signal_types:
+    - spikes
+    - heldout_spikes
+  combine_heldout_spikes: true
+  variable_length_policy: crop_to_min
+
 provenance:
   hash_size_limit_mb: 256

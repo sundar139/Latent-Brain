@@ -4,7 +4,7 @@ LatentBrain targets MC_Maze-style Neural Latents Benchmark data as the first rea
 
 ## Current capability
 
-Real-data support is a local ingestion scaffold. It validates configuration, checks for local NLB-style files, attempts to adapt local files into the existing `NeuralDataset` schema, records provenance, and saves processed arrays only when real local data can be loaded.
+Real-data support is a local ingestion path for MC_Maze Small. It validates configuration, checks for local NLB-style files, trializes continuous `NWBDataset.data` dataframes into the existing `NeuralDataset` schema, records provenance, and saves processed arrays only when real local data can be loaded.
 
 No model has been trained. No benchmark result exists. No EvalAI or public leaderboard submission is claimed or planned here; the public NLB challenge has ended, so future evaluation should be local and reproducible.
 
@@ -12,7 +12,7 @@ No model has been trained. No benchmark result exists. No EvalAI or public leade
 
 Synthetic data validates shape contracts, split leakage checks, masks, hashing, and save/load behavior with deterministic arrays.
 
-Real-data validation applies the same core contracts to externally obtained recordings. It additionally preserves provenance, dataset variant details, file manifests, local configuration snapshots, and session identifiers when available.
+Real-data validation applies the same core contracts to externally obtained recordings. It additionally preserves provenance, dataset variant details, file manifests, local configuration snapshots, trialization settings, behavior column names, and session identifiers when available.
 
 ## Manual dataset policy
 
@@ -37,7 +37,23 @@ You may override the local root with:
 LATENTBRAIN_NLB_ROOT=
 ```
 
-Expected candidate files include `.nwb`, `.h5`, `.hdf5`, `.mat`, or `.npz`. The current loader only attempts `.nwb`, `.h5`, and `.hdf5` through `nlb_tools`; other candidate files are reported but not treated as successful loads.
+Expected candidate files include `.nwb`, `.h5`, `.hdf5`, `.mat`, or `.npz`. MC_Maze Small uses the real train NWB file matching `*desc-train_behavior+ecephys.nwb` for target extraction. Test files such as `*desc-test_ecephys.nwb` are recorded in metadata and provenance but are not used to create supervised local targets.
+
+## MC_Maze Small trialization
+
+The real MC_Maze Small NWB loaded by `nlb_tools.NWBDataset` exposes continuous pandas dataframe data, not a direct `[trials, time, neurons]` tensor. LatentBrain calls NLB trial metadata through `NWBDataset.make_trial_data`, then extracts MultiIndex `spikes` columns and concatenates `heldout_spikes` after held-in spikes when available.
+
+Trials may have different lengths. The current validation-oriented preprocessing policy is `crop_to_min`: crop every trial to the minimum positive trial length and record the original length distribution in metadata. Zero padding is intentionally not used because it can contaminate later likelihood calculations.
+
+The output contract remains:
+
+```text
+spikes: [n_trials, n_time_bins, n_neurons]
+trial_ids: [n_trials]
+time_ms: [n_time_bins]
+```
+
+Behavior signals such as `cursor_pos`, `hand_pos`, `eye_pos`, and `hand_vel` are not saved as arrays yet. Their signal groups and column names are preserved in metadata for future exploratory analysis.
 
 ## Optional dependencies
 
@@ -74,7 +90,7 @@ python scripts/inspect_nlb_files.py --root data/raw/nlb/mc_maze_small
 python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
-If local data is missing, both commands exit nonzero with guidance and create no fake outputs. If local data is present and readable, processed outputs are written under ignored `data/processed/nlb/mc_maze_small` paths.
+If local data is missing, both commands exit nonzero with guidance and create no fake outputs. If local data is present and readable, processed `.npz`, metadata JSON, and provenance JSON outputs are written under ignored `data/processed/nlb/mc_maze_small` paths.
 
 ## Storage and version control
 
@@ -82,4 +98,4 @@ Do not commit real dataset files, processed arrays, metadata generated from real
 
 ## Future local evaluation
 
-The first real-data run is validation only. Future work may add local reproducible evaluation against validated splits. Such evaluation must record the Git commit, config snapshot, dataset provenance, split seed, artifact hashes, and all relevant environment details before any result is reported.
+The first real-data run is validation only. No model score exists yet and no EvalAI submission is planned. Future EDA should inspect alignment choices, behavior extraction, trial length distribution, and spike statistics before local reproducible evaluation is added.

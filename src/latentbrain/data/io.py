@@ -22,7 +22,7 @@ def compute_array_hash(array: np.ndarray) -> str:
 
 
 def _stable_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    excluded = {"dataset_hash", "generated_at_utc"}
+    excluded = {"dataset_hash", "generated_at_utc", "provenance"}
     return {key: value for key, value in metadata.items() if key not in excluded}
 
 

@@ -12,7 +12,7 @@ Real neural data must be downloaded manually by an authorized user and stored un
 
 ## Dataset provenance
 
-Future data pipelines must record enough metadata to make analyses auditable:
+Real-data preparation must record enough metadata to make analyses auditable:
 
 - Dataset source and version
 - Dataset variant, such as MC_Maze Small
@@ -25,6 +25,9 @@ Future data pipelines must record enough metadata to make analyses auditable:
 - File manifest with sizes and SHA-256 hashes when files are small enough to hash locally
 - Config snapshot used for preparation
 - Git commit used to prepare local artifacts
+- Train NWB file used for target extraction
+- Test NWB files detected but not used as supervised targets
+- Trialization settings and variable-length policy
 
 Large files may skip hashing when a configured size limit would make hashing impractical, but the manifest must record that hashing was skipped because of file size.
 
@@ -32,4 +35,4 @@ Large files may skip hashing when a configured size limit would make hashing imp
 
 Training, validation, and test boundaries must be defined before model selection. No information from held-out evaluation data may influence preprocessing statistics, hyperparameter choices, feature selection, early stopping, or model comparison decisions.
 
-For MC_Maze/NLB-style data, trial IDs and held-in or held-out neuron masks must be validated before future modeling code consumes them. The public NLB challenge has ended, so future comparisons should be described as local reproducible evaluation rather than public leaderboard or EvalAI submissions.
+For MC_Maze/NLB-style data, trial IDs and held-in or held-out neuron masks must be validated before future modeling code consumes them. MC_Maze Small preprocessing currently trializes continuous NWB dataframes and crops variable-length trials to the minimum trial length for validation only; future EDA must review alignment, behavior signals, trial length distribution, and spike statistics before modeling. The public NLB challenge has ended, so future comparisons should be described as local reproducible evaluation rather than public leaderboard or EvalAI submissions.

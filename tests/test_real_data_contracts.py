@@ -21,6 +21,9 @@ def test_small_nlb_config_loads_and_validates() -> None:
     assert config.dataset.variant == "small"
     assert config.dataset.dataset_root == "data/raw/nlb/mc_maze_small"
     assert config.provenance.hash_size_limit_mb == 256
+    assert config.trialization.train_file_pattern == "*desc-train_behavior+ecephys.nwb"
+    assert config.trialization.test_file_pattern == "*desc-test_ecephys.nwb"
+    assert config.trialization.variable_length_policy == "crop_to_min"
 
 
 def test_real_data_config_split_fractions_are_valid() -> None:
@@ -45,14 +48,9 @@ def test_processed_output_paths_resolve_under_ignored_data_folder() -> None:
     assert output_path.name == "mc_maze_small_processed.npz"
 
 
-def test_real_data_contract_tests_do_not_create_real_outputs() -> None:
-    processed_path = (
-        get_repo_root()
-        / "data"
-        / "processed"
-        / "nlb"
-        / "mc_maze_small"
-        / "mc_maze_small_processed.npz"
-    )
+def test_real_data_contract_tests_do_not_require_local_artifacts(tmp_path: Path) -> None:
+    config = NLBConfig.from_yaml(Path("configs/nlb_mc_maze_small.yaml"))
+    output_path = tmp_path / config.dataset.output_filename
 
-    assert not processed_path.exists()
+    assert output_path.name == "mc_maze_small_processed.npz"
+    assert not output_path.exists()

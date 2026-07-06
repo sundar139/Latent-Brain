@@ -6,6 +6,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import pytest
+
 
 def _load_script(path: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(Path(path).stem, path)
@@ -46,13 +48,18 @@ def test_inspect_nlb_files_lists_candidates(tmp_path: Path, capsys: Any) -> None
     assert "total_files: 1" in captured.out
 
 
-def test_prepare_nlb_data_missing_small_data_fails_gracefully(capsys: Any) -> None:
+def test_prepare_nlb_data_missing_small_data_fails_gracefully(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: Any,
+) -> None:
     prepare_main = _main("scripts/prepare_nlb_data.py")
+    monkeypatch.setenv("LATENTBRAIN_NLB_ROOT", str(tmp_path / "missing"))
     argv: Sequence[str] = ["--config", "configs/nlb_mc_maze_small.yaml"]
     exit_code = prepare_main(argv)
     captured = capsys.readouterr()
 
     assert exit_code == 2
     assert "MC_Maze Small" in captured.err
-    assert "data/raw/nlb/mc_maze_small" in captured.err
+    assert "Configured dataset_root:" in captured.err
     assert "No fake data or processed output was created" in captured.err
