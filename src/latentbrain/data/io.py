@@ -27,7 +27,7 @@ def _stable_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 
 
 def compute_dataset_hash(dataset: NeuralDataset) -> str:
-    """Compute a stable dataset hash from spikes and important metadata."""
+    """Compute a stable dataset hash from arrays and important metadata."""
     validate_neural_dataset(dataset)
     payload = {
         "spikes_hash": compute_array_hash(dataset.spikes),
@@ -35,6 +35,9 @@ def compute_dataset_hash(dataset: NeuralDataset) -> str:
         "shape": list(dataset.spikes.shape),
         "bin_size_ms": dataset.bin_size_ms,
     }
+    if dataset.behavior is not None:
+        payload["behavior_hash"] = compute_array_hash(dataset.behavior)
+        payload["behavior_names"] = dataset.behavior_names
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -46,20 +49,25 @@ def save_neural_dataset(
 ) -> None:
     """Validate and save a neural dataset as compressed NumPy arrays."""
     validate_neural_dataset(dataset)
+    if dataset.behavior is not None:
+        dataset.metadata["dataset_hash_includes_behavior"] = True
     dataset.metadata["dataset_hash"] = compute_dataset_hash(dataset)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     metadata_json = json.dumps(dataset.metadata, sort_keys=True)
-    np.savez_compressed(
-        output_path,
-        spikes=dataset.spikes,
-        rates=np.array([], dtype=np.float64) if dataset.rates is None else dataset.rates,
-        latents=np.array([], dtype=np.float64) if dataset.latents is None else dataset.latents,
-        trial_ids=dataset.trial_ids,
-        time_ms=dataset.time_ms,
-        bin_size_ms=np.array(dataset.bin_size_ms, dtype=np.int64),
-        metadata=np.array(metadata_json),
-    )
+    arrays: dict[str, Any] = {
+        "spikes": dataset.spikes,
+        "rates": np.array([], dtype=np.float64) if dataset.rates is None else dataset.rates,
+        "latents": np.array([], dtype=np.float64) if dataset.latents is None else dataset.latents,
+        "trial_ids": dataset.trial_ids,
+        "time_ms": dataset.time_ms,
+        "bin_size_ms": np.array(dataset.bin_size_ms, dtype=np.int64),
+        "metadata": np.array(metadata_json),
+    }
+    if dataset.behavior is not None:
+        arrays["behavior"] = dataset.behavior
+        arrays["behavior_names"] = np.asarray(dataset.behavior_names, dtype=np.str_)
+    np.savez_compressed(output_path, **arrays)
     if metadata_path is not None:
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         metadata_path.write_text(metadata_json + "\n", encoding="utf-8")
@@ -71,6 +79,12 @@ def load_neural_dataset(path: Path) -> NeuralDataset:
         metadata = json.loads(str(data["metadata"].item()))
         rates = data["rates"]
         latents = data["latents"]
+        behavior = data["behavior"] if "behavior" in data.files else None
+        behavior_names = (
+            [str(value) for value in data["behavior_names"].tolist()]
+            if "behavior_names" in data.files
+            else None
+        )
         dataset = NeuralDataset(
             spikes=data["spikes"],
             rates=None if rates.size == 0 else rates,
@@ -79,6 +93,8 @@ def load_neural_dataset(path: Path) -> NeuralDataset:
             time_ms=data["time_ms"],
             bin_size_ms=int(data["bin_size_ms"].item()),
             metadata=metadata,
+            behavior=behavior,
+            behavior_names=behavior_names,
         )
     validate_neural_dataset(dataset)
     expected_hash = compute_dataset_hash(dataset)

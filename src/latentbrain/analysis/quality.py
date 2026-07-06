@@ -47,6 +47,7 @@ def compute_dataset_summary(
         "dataset_hash": dataset_hash,
         "has_rates": dataset.rates is not None,
         "has_latents": dataset.latents is not None,
+        "has_behavior": dataset.behavior is not None,
     }
     return summary
 
@@ -102,6 +103,70 @@ def compute_time_activity(dataset: NeuralDataset) -> pd.DataFrame:
             "zero_fraction": np.mean(spikes == 0, axis=(0, 2)).astype(float, copy=False),
         }
     )
+
+
+def _empty_behavior_summary() -> dict[str, Any]:
+    return {
+        "has_behavior": False,
+        "n_behavior_dims": 0,
+        "behavior_names": [],
+        "behavior_nan_count": 0,
+        "behavior_inf_count": 0,
+        "behavior_min": None,
+        "behavior_max": None,
+        "behavior_mean": None,
+        "behavior_std": None,
+        "per_dimension": [],
+    }
+
+
+def compute_behavior_activity(dataset: NeuralDataset) -> pd.DataFrame:
+    """Compute per-behavior-dimension value summaries."""
+    columns = ["behavior_name", "min", "max", "mean", "std", "nan_count", "inf_count"]
+    if dataset.behavior is None:
+        return pd.DataFrame(columns=columns)
+
+    names = dataset.behavior_names or [
+        f"behavior_{index}" for index in range(dataset.behavior.shape[2])
+    ]
+    rows = []
+    for index, name in enumerate(names):
+        values = dataset.behavior[:, :, index]
+        finite = values[np.isfinite(values)]
+        rows.append(
+            {
+                "behavior_name": name,
+                "min": None if finite.size == 0 else float(np.min(finite)),
+                "max": None if finite.size == 0 else float(np.max(finite)),
+                "mean": None if finite.size == 0 else float(np.mean(finite)),
+                "std": None if finite.size == 0 else float(np.std(finite)),
+                "nan_count": int(np.isnan(values).sum()),
+                "inf_count": int(np.isinf(values).sum()),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def compute_behavior_summary(dataset: NeuralDataset) -> dict[str, Any]:
+    """Compute scalar and per-dimension summaries for optional behavior arrays."""
+    if dataset.behavior is None:
+        return _empty_behavior_summary()
+
+    behavior = dataset.behavior
+    finite = behavior[np.isfinite(behavior)]
+    activity = compute_behavior_activity(dataset)
+    return {
+        "has_behavior": True,
+        "n_behavior_dims": int(behavior.shape[2]),
+        "behavior_names": list(dataset.behavior_names or []),
+        "behavior_nan_count": int(np.isnan(behavior).sum()),
+        "behavior_inf_count": int(np.isinf(behavior).sum()),
+        "behavior_min": None if finite.size == 0 else float(np.min(finite)),
+        "behavior_max": None if finite.size == 0 else float(np.max(finite)),
+        "behavior_mean": None if finite.size == 0 else float(np.mean(finite)),
+        "behavior_std": None if finite.size == 0 else float(np.std(finite)),
+        "per_dimension": activity.to_dict(orient="records"),
+    }
 
 
 def compute_split_activity_summary(

@@ -120,6 +120,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "variant": config.dataset.variant,
         "train_file_used": dataset.metadata.get("processed_target_source_file"),
         "spikes_shape": list(dataset.spikes.shape),
+        "behavior_shape": None if dataset.behavior is None else list(dataset.behavior.shape),
+        "behavior_names": dataset.behavior_names or [],
         "bin_size_ms": dataset.bin_size_ms,
         "trial_count": dataset.spikes.shape[0],
         "neuron_count": dataset.spikes.shape[2],

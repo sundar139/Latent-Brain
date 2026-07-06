@@ -18,6 +18,8 @@ from latentbrain.analysis.figures import (
     plot_zero_fraction_by_neuron,
 )
 from latentbrain.analysis.quality import (
+    compute_behavior_activity,
+    compute_behavior_summary,
     compute_dataset_summary,
     compute_neuron_activity,
     compute_quality_flags,
@@ -184,6 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     metadata = _read_json(metadata_path)
     provenance = _read_json(provenance_path)
     summary = compute_dataset_summary(dataset, dataset_hash=dataset_hash)
+    summary["behavior"] = compute_behavior_summary(dataset)
     summary["processed_path"] = _relative(processed_path, repo_root)
     summary["split_counts"] = {
         "train": int(len(split.train)),
@@ -201,6 +204,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     neuron_activity = compute_neuron_activity(dataset)
     trial_activity = compute_trial_activity(dataset)
     time_activity = compute_time_activity(dataset)
+    behavior_activity = compute_behavior_activity(dataset)
     split_summary = compute_split_activity_summary(
         dataset,
         split.train,
@@ -214,11 +218,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "neuron_activity": output_dir / "neuron_activity.csv",
         "trial_activity": output_dir / "trial_activity.csv",
         "time_activity": output_dir / "time_activity.csv",
+        "behavior_activity": output_dir / "behavior_activity.csv",
         "split_activity_summary": output_dir / "split_activity_summary.csv",
     }
     neuron_activity.to_csv(table_paths["neuron_activity"], index=False)
     trial_activity.to_csv(table_paths["trial_activity"], index=False)
     time_activity.to_csv(table_paths["time_activity"], index=False)
+    behavior_activity.to_csv(table_paths["behavior_activity"], index=False)
     split_summary.to_csv(table_paths["split_activity_summary"], index=False)
 
     figure_paths = {
@@ -257,6 +263,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     console.print(f"total_spikes: {summary['total_spikes']}")
     console.print(f"mean_population_rate_hz: {summary['mean_population_rate_hz']}")
     console.print(f"zero_fraction: {summary['zero_fraction']}")
+    console.print(f"has_behavior: {summary['behavior']['has_behavior']}")
+    console.print(f"behavior_dims: {summary['behavior']['n_behavior_dims']}")
     console.print(f"quality_errors: {error_count}")
     console.print(f"quality_warnings: {warning_count}")
     for flag in quality_flags:

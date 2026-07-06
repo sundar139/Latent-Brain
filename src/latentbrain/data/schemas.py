@@ -20,6 +20,8 @@ class NeuralDataset:
     time_ms: np.ndarray
     bin_size_ms: int
     metadata: dict[str, Any]
+    behavior: np.ndarray | None = None
+    behavior_names: list[str] | None = None
 
 
 @dataclass(slots=True)

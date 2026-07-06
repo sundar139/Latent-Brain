@@ -58,6 +58,21 @@ def test_save_and_load_neural_dataset_roundtrip(tmp_path: Path) -> None:
     assert metadata_path.exists()
 
 
+def test_save_and_load_neural_dataset_roundtrip_with_behavior(tmp_path: Path) -> None:
+    dataset = generate_poisson_lds(_config())
+    dataset.behavior = np.zeros(dataset.spikes.shape[:2] + (2,), dtype=np.float64)
+    dataset.behavior_names = ["hand_pos_x", "hand_pos_y"]
+    output_path = tmp_path / "synthetic_behavior.npz"
+
+    save_neural_dataset(dataset, output_path)
+    loaded = load_neural_dataset(output_path)
+
+    assert loaded.behavior is not None
+    np.testing.assert_array_equal(loaded.behavior, dataset.behavior)
+    assert loaded.behavior_names == ["hand_pos_x", "hand_pos_y"]
+    assert loaded.metadata["dataset_hash_includes_behavior"] is True
+
+
 def test_dataset_hash_ignores_run_specific_provenance_timestamp() -> None:
     dataset = generate_poisson_lds(_config())
     first_hash = compute_dataset_hash(dataset)

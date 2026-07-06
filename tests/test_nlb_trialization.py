@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from latentbrain.data.nlb import (
+    dataframe_to_behavior_tensor,
     dataframe_to_trial_tensor,
     select_test_nwb_files,
     select_train_nwb_file,
@@ -142,3 +143,59 @@ def test_test_file_is_detected_but_not_selected_for_target_extraction() -> None:
 
     assert train_file not in test_files
     assert [path.name for path in test_files] == ["sub-Jenkins_ses-small_desc-test_ecephys.nwb"]
+
+
+def test_behavior_groups_concatenate_with_stable_names_and_spike_window() -> None:
+    spikes, trial_ids, _, _ = dataframe_to_trial_tensor(
+        _trial_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=True,
+        variable_length_policy="crop_to_min",
+        bin_size_ms=5,
+    )
+
+    behavior, names, metadata = dataframe_to_behavior_tensor(
+        _trial_dataframe(),
+        behavior_signal_types=["hand_pos", "cursor_pos"],
+        trial_ids=trial_ids,
+        n_time_bins=spikes.shape[1],
+        require_behavior=True,
+        allow_behavior_nans=False,
+        behavior_variable_length_policy="crop_to_spike_window",
+    )
+
+    assert behavior is not None
+    assert behavior.shape[:2] == spikes.shape[:2]
+    assert behavior.shape == (2, 3, 2)
+    assert names == ["hand_pos_y", "cursor_pos_x"]
+    assert metadata["groups_found"] == ["hand_pos", "cursor_pos"]
+    assert metadata["cropped_to_spike_window"] is True
+
+
+def test_missing_required_behavior_raises_clear_error() -> None:
+    with pytest.raises(ValueError, match="required behavior signals"):
+        dataframe_to_behavior_tensor(
+            _trial_dataframe(),
+            behavior_signal_types=["eye_pos"],
+            trial_ids=np.array([10, 20], dtype=np.int64),
+            n_time_bins=3,
+            require_behavior=True,
+            allow_behavior_nans=False,
+            behavior_variable_length_policy="crop_to_spike_window",
+        )
+
+
+def test_missing_optional_behavior_returns_none() -> None:
+    behavior, names, metadata = dataframe_to_behavior_tensor(
+        _trial_dataframe(),
+        behavior_signal_types=["eye_pos"],
+        trial_ids=np.array([10, 20], dtype=np.int64),
+        n_time_bins=3,
+        require_behavior=False,
+        allow_behavior_nans=False,
+        behavior_variable_length_policy="crop_to_spike_window",
+    )
+
+    assert behavior is None
+    assert names is None
+    assert metadata["present"] is False

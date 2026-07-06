@@ -16,7 +16,7 @@ Initialized foundation:
 - Standard logging utilities
 - Deterministic seeding utilities for Python, NumPy, and optional PyTorch
 - Synthetic Poisson LDS data generation for validating data contracts
-- Local MC_Maze Small ingestion that trializes continuous NLB NWB dataframes
+- Local MC_Maze Small ingestion that trializes continuous NLB NWB dataframes into spike and behavior tensors when behavior is available
 - Typer-based CLI sanity commands
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions quality checks
 
@@ -93,7 +93,7 @@ python scripts/inspect_nlb_files.py --root data/raw/nlb/mc_maze_small
 python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
-The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. The real NWB train file loads as a continuous `NWBDataset.data` pandas dataframe; LatentBrain uses NLB trial metadata to trialize it into `spikes: [trials, time, neurons]`, concatenating `heldout_spikes` after `spikes` when available. The initial policy crops variable-length trials to the minimum trial length for a clean validation tensor. This is validation-oriented preprocessing, not final benchmark preprocessing. If files are missing, the script exits with guidance and creates no fake data. No trained model, benchmark score, EvalAI submission, or leaderboard claim exists. Future EDA should inspect alignment, behavior, trial lengths, and spike statistics.
+The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. The real NWB train file loads as a continuous `NWBDataset.data` pandas dataframe; LatentBrain uses NLB trial metadata to trialize it into `spikes: [trials, time, neurons]`, concatenating `heldout_spikes` after `spikes` when available. When train-file behavior columns are available, `hand_pos` and `cursor_pos` are trialized with the same trial IDs and cropped time window into `behavior: [trials, time, behavior_dims]` with named dimensions. The initial policy crops variable-length trials to the minimum trial length for a clean validation tensor. This is validation-oriented preprocessing, not final benchmark preprocessing. If files are missing, the script exits with guidance and creates no fake data. No trained model, benchmark score, EvalAI submission, or leaderboard claim exists. Behavior is stored for validation and future decoding work; velocity decoding is not implemented yet.
 
 ## Data validation report
 
@@ -103,7 +103,7 @@ After preparing MC_Maze Small, generate a local data-quality report with:
 python scripts/analyze_mc_maze.py --config configs/mc_maze_small_eda.yaml
 ```
 
-The analysis writes JSON, CSV, Markdown, and PNG files under ignored `reports/mc_maze_small/` paths. It checks the processed dataset hash, split coverage, held-in and held-out masks, spike statistics, and trialization metadata. The report is exploratory validation only; no model training or benchmark evaluation is performed.
+The analysis writes JSON, CSV, Markdown, and PNG files under ignored `reports/mc_maze_small/` paths. It checks the processed dataset hash, split coverage, held-in and held-out masks, spike statistics, behavior availability, and trialization metadata. The report is exploratory validation only; no model training, behavior decoding metric, or benchmark evaluation is performed.
 
 ## Mean-rate baseline
 

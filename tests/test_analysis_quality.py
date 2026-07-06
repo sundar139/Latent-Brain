@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 
 from latentbrain.analysis.quality import (
+    compute_behavior_activity,
+    compute_behavior_summary,
     compute_dataset_summary,
     compute_neuron_activity,
     compute_quality_flags,
@@ -31,6 +33,19 @@ def _dataset(spikes: np.ndarray | None = None) -> NeuralDataset:
         bin_size_ms=5,
         metadata={},
     )
+
+
+def _dataset_with_behavior() -> NeuralDataset:
+    dataset = _dataset()
+    dataset.behavior = np.array(
+        [
+            [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]],
+            [[6.0, 7.0], [8.0, 9.0], [10.0, 11.0]],
+        ],
+        dtype=np.float64,
+    )
+    dataset.behavior_names = ["hand_pos_x", "hand_pos_y"]
+    return dataset
 
 
 def test_dataset_summary_has_expected_dimensions_and_rates() -> None:
@@ -97,3 +112,23 @@ def test_split_activity_summary_counts_trials() -> None:
 
     assert summary["split"].tolist() == ["train", "validation", "test"]
     assert summary["trial_count"].tolist() == [1, 1, 0]
+
+
+def test_behavior_summary_reports_missing_behavior() -> None:
+    summary = compute_behavior_summary(_dataset())
+
+    assert summary["has_behavior"] is False
+    assert summary["n_behavior_dims"] == 0
+
+
+def test_behavior_summary_and_activity_table_use_names() -> None:
+    dataset = _dataset_with_behavior()
+
+    summary = compute_behavior_summary(dataset)
+    activity = compute_behavior_activity(dataset)
+
+    assert summary["has_behavior"] is True
+    assert summary["behavior_names"] == ["hand_pos_x", "hand_pos_y"]
+    assert summary["behavior_nan_count"] == 0
+    assert activity["behavior_name"].tolist() == ["hand_pos_x", "hand_pos_y"]
+    assert activity.loc[activity["behavior_name"] == "hand_pos_x", "max"].item() == 10.0

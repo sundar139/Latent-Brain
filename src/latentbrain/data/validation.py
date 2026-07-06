@@ -53,6 +53,36 @@ def validate_neural_dataset(dataset: NeuralDataset) -> None:
             msg = "latents must be finite"
             raise ValueError(msg)
 
+    if dataset.behavior is not None:
+        _require_rank("behavior", dataset.behavior, 3)
+        if dataset.behavior.shape[:2] != (n_trials, n_time_bins):
+            msg = "behavior must match spike trial and time dimensions"
+            raise ValueError(msg)
+        if dataset.behavior.shape[2] == 0 or dataset.behavior.size == 0:
+            msg = "behavior must not be empty"
+            raise ValueError(msg)
+        if dataset.behavior_names is None:
+            msg = "behavior_names must exist when behavior exists"
+            raise ValueError(msg)
+        if len(dataset.behavior_names) != dataset.behavior.shape[2]:
+            msg = "behavior_names length must match behavior dimension"
+            raise ValueError(msg)
+        if any(not isinstance(name, str) or not name.strip() for name in dataset.behavior_names):
+            msg = "behavior_names must be non-empty strings"
+            raise ValueError(msg)
+        if len(set(dataset.behavior_names)) != len(dataset.behavior_names):
+            msg = "behavior_names must be unique"
+            raise ValueError(msg)
+        if np.isnan(dataset.behavior).all():
+            msg = "behavior must not be all NaN"
+            raise ValueError(msg)
+        if not np.all(np.isfinite(dataset.behavior)):
+            msg = "behavior must be finite"
+            raise ValueError(msg)
+    elif dataset.behavior_names is not None:
+        msg = "behavior_names require behavior"
+        raise ValueError(msg)
+
     _require_rank("trial_ids", dataset.trial_ids, 1)
     if len(dataset.trial_ids) != n_trials:
         msg = "trial_ids length must match number of trials"

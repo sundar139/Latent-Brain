@@ -41,21 +41,23 @@ Expected candidate files include `.nwb`, `.h5`, `.hdf5`, `.mat`, or `.npz`. MC_M
 
 ## MC_Maze Small trialization
 
-The real MC_Maze Small NWB loaded by `nlb_tools.NWBDataset` exposes continuous pandas dataframe data, not a direct `[trials, time, neurons]` tensor. LatentBrain calls NLB trial metadata through `NWBDataset.make_trial_data`, then extracts MultiIndex `spikes` columns and concatenates `heldout_spikes` after held-in spikes when available.
+The real MC_Maze Small NWB loaded by `nlb_tools.NWBDataset` exposes continuous pandas dataframe data, not a direct `[trials, time, neurons]` tensor. LatentBrain calls NLB trial metadata through `NWBDataset.make_trial_data`, then extracts MultiIndex `spikes` columns and concatenates `heldout_spikes` after held-in spikes when available. It also extracts configured behavior groups from the train file, currently `hand_pos` and `cursor_pos` when present.
 
-Trials may have different lengths. The current validation-oriented preprocessing policy is `crop_to_min`: crop every trial to the minimum positive trial length and record the original length distribution in metadata. Zero padding is intentionally not used because it can contaminate later likelihood calculations.
+Trials may have different lengths. The current validation-oriented preprocessing policy is `crop_to_min`: crop every spike trial to the minimum positive trial length and record the original length distribution in metadata. Behavior uses `crop_to_spike_window`, so behavior arrays use the same trial IDs, ordering, and number of time bins as the spike tensor. Zero padding is intentionally not used because it can contaminate later likelihood calculations.
 
-The output contract remains:
+The output contract is:
 
 ```text
 spikes: [n_trials, n_time_bins, n_neurons]
+behavior: [n_trials, n_time_bins, n_behavior_dims] when available
+behavior_names: [n_behavior_dims] when behavior is available
 trial_ids: [n_trials]
 time_ms: [n_time_bins]
 ```
 
-Behavior signals such as `cursor_pos`, `hand_pos`, `eye_pos`, and `hand_vel` are not saved as arrays yet. Their signal groups and column names are preserved in metadata for future exploratory analysis.
+Behavior arrays are saved only from train files that include supervised behavior. Test files such as `*desc-test_ecephys.nwb` are recorded in metadata and provenance but are not used as supervised behavior targets. This prevents test-target leakage while keeping local validation reproducible.
 
-This fixed-length tensor is for validation-oriented local analysis. Later baseline and evaluation work may need a more benchmark-faithful preprocessing path with alignment choices and held-out targets reviewed explicitly.
+This fixed-length tensor is for validation-oriented local analysis. Velocity decoding and other behavior-decoding metrics are intentionally not implemented yet. Later baseline and evaluation work may need a more benchmark-faithful preprocessing path with alignment choices and held-out targets reviewed explicitly.
 
 ## Optional dependencies
 
@@ -102,9 +104,9 @@ After local preparation succeeds, run:
 python scripts/analyze_mc_maze.py --config configs/mc_maze_small_eda.yaml
 ```
 
-The analysis reads the processed `.npz`, verifies the configured dataset hash, recreates deterministic train/validation/test splits and held-in/held-out masks, computes spike-count and firing-rate summaries, and writes local JSON, CSV, Markdown, and PNG outputs under ignored `reports/mc_maze_small/` paths.
+The analysis reads the processed `.npz`, verifies the configured dataset hash, recreates deterministic train/validation/test splits and held-in/held-out masks, computes spike-count, firing-rate, and behavior availability summaries, and writes local JSON, CSV, Markdown, and PNG outputs under ignored `reports/mc_maze_small/` paths.
 
-The generated Markdown report states that no model training or benchmark evaluation was performed. It is intended to catch data-quality issues before baseline modeling, not to report scientific findings or benchmark scores.
+The generated Markdown report states that no model training or benchmark evaluation was performed. Behavior reporting is validation-only: no velocity R², decoder, or benchmark claim is produced.
 
 ## Local mean-rate baseline
 

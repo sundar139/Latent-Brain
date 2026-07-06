@@ -12,9 +12,9 @@ dataset:
   provenance_filename: mc_maze_small_provenance.json
 
 validation:
-  require_behavior: false
+  require_behavior: true
   require_rates: false
-  allow_missing_behavior: true
+  allow_missing_behavior: false
   min_trials: 1
   min_neurons: 1
   min_time_bins: 1
@@ -40,6 +40,12 @@ trialization:
     - heldout_spikes
   combine_heldout_spikes: true
   variable_length_policy: crop_to_min
+  behavior_signal_types:
+    - hand_pos
+    - cursor_pos
+  require_behavior: true
+  behavior_variable_length_policy: crop_to_spike_window
+  allow_behavior_nans: false
 
 provenance:
   hash_size_limit_mb: 256

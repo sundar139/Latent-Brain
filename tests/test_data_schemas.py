@@ -23,6 +23,23 @@ def test_neural_dataset_schema_accepts_valid_arrays() -> None:
     assert dataset.spikes.shape == (2, 3, 4)
 
 
+def test_neural_dataset_schema_accepts_optional_behavior() -> None:
+    dataset = NeuralDataset(
+        spikes=np.zeros((2, 3, 4), dtype=np.int64),
+        rates=None,
+        latents=None,
+        trial_ids=np.array([10, 11], dtype=np.int64),
+        time_ms=np.array([0.0, 20.0, 40.0], dtype=np.float64),
+        bin_size_ms=20,
+        metadata={},
+        behavior=np.zeros((2, 3, 2), dtype=np.float64),
+        behavior_names=["hand_pos_x", "hand_pos_y"],
+    )
+
+    validate_neural_dataset(dataset)
+    assert dataset.behavior_names == ["hand_pos_x", "hand_pos_y"]
+
+
 def test_dataset_validation_rejects_negative_spikes() -> None:
     dataset = NeuralDataset(
         spikes=np.array([[[-1]]], dtype=np.int64),

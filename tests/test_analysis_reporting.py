@@ -45,6 +45,38 @@ def test_markdown_report_contains_required_statements(tmp_path: Path) -> None:
     assert "train.nwb" in text
 
 
+def test_markdown_report_includes_behavior_section(tmp_path: Path) -> None:
+    output_path = tmp_path / "report.md"
+
+    write_markdown_validation_report(
+        output_path=output_path,
+        dataset_name="mc_maze_small",
+        summary={
+            "dataset_hash": "abc",
+            "n_trials": 2,
+            "n_time_bins": 3,
+            "n_neurons": 4,
+            "behavior": {
+                "has_behavior": True,
+                "n_behavior_dims": 2,
+                "behavior_names": ["hand_pos_x", "hand_pos_y"],
+                "behavior_nan_count": 0,
+                "behavior_inf_count": 0,
+            },
+        },
+        quality_flags=[],
+        generated_tables={"behavior_activity": "behavior_activity.csv"},
+        generated_figures={},
+        metadata=None,
+        provenance=None,
+    )
+
+    text = output_path.read_text(encoding="utf-8")
+    assert "## Behavior" in text
+    assert "hand_pos_x" in text
+    assert "behavior_activity.csv" in text
+
+
 def test_figure_functions_create_png_files(tmp_path: Path) -> None:
     neuron_activity = pd.DataFrame(
         {"neuron_index": [0, 1], "mean_rate_hz": [1.0, 2.0], "zero_fraction": [0.0, 0.5]}

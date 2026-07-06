@@ -23,6 +23,49 @@ def _dataset() -> NeuralDataset:
     )
 
 
+def _dataset_with_behavior() -> NeuralDataset:
+    dataset = _dataset()
+    dataset.behavior = np.arange(12, dtype=np.float64).reshape(2, 3, 2)
+    dataset.behavior_names = ["hand_pos_x", "hand_pos_y"]
+    return dataset
+
+
+def test_validate_neural_dataset_accepts_valid_behavior() -> None:
+    validate_neural_dataset(_dataset_with_behavior())
+
+
+def test_validate_neural_dataset_rejects_wrong_behavior_shape() -> None:
+    dataset = _dataset_with_behavior()
+    dataset.behavior = np.zeros((2, 2, 2), dtype=np.float64)
+
+    with pytest.raises(ValueError, match="behavior.*trial and time"):
+        validate_neural_dataset(dataset)
+
+
+def test_validate_neural_dataset_rejects_behavior_name_mismatch() -> None:
+    dataset = _dataset_with_behavior()
+    dataset.behavior_names = ["hand_pos_x"]
+
+    with pytest.raises(ValueError, match="behavior_names length"):
+        validate_neural_dataset(dataset)
+
+
+def test_validate_neural_dataset_rejects_duplicate_behavior_names() -> None:
+    dataset = _dataset_with_behavior()
+    dataset.behavior_names = ["hand_pos_x", "hand_pos_x"]
+
+    with pytest.raises(ValueError, match="unique"):
+        validate_neural_dataset(dataset)
+
+
+def test_validate_neural_dataset_rejects_nan_behavior() -> None:
+    dataset = _dataset_with_behavior()
+    dataset.behavior[0, 0, 0] = np.nan
+
+    with pytest.raises(ValueError, match="finite"):
+        validate_neural_dataset(dataset)
+
+
 def test_validate_neural_dataset_rejects_duplicate_trial_ids() -> None:
     dataset = _dataset()
     dataset.trial_ids[1] = dataset.trial_ids[0]

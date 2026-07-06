@@ -106,6 +106,10 @@ class NLBTrializationSection(BaseModel):
     signal_types: list[str] = Field(default_factory=lambda: ["spikes", "heldout_spikes"])
     combine_heldout_spikes: bool = True
     variable_length_policy: str = "crop_to_min"
+    behavior_signal_types: list[str] = Field(default_factory=list)
+    require_behavior: bool = False
+    behavior_variable_length_policy: str = "crop_to_spike_window"
+    allow_behavior_nans: bool = False
 
     @field_validator("signal_types")
     @classmethod
@@ -120,6 +124,25 @@ class NLBTrializationSection(BaseModel):
     def variable_length_policy_must_be_supported(cls, value: str) -> str:
         if value != "crop_to_min":
             msg = "trialization.variable_length_policy must be 'crop_to_min'"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("behavior_variable_length_policy")
+    @classmethod
+    def behavior_variable_length_policy_must_be_supported(cls, value: str) -> str:
+        if value != "crop_to_spike_window":
+            msg = "trialization.behavior_variable_length_policy must be 'crop_to_spike_window'"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("behavior_signal_types")
+    @classmethod
+    def behavior_signal_types_must_be_nonempty_strings(cls, value: list[str]) -> list[str]:
+        if any(not signal_type.strip() for signal_type in value):
+            msg = "trialization.behavior_signal_types must contain non-empty strings"
+            raise ValueError(msg)
+        if len(set(value)) != len(value):
+            msg = "trialization.behavior_signal_types must be unique"
             raise ValueError(msg)
         return value
 
@@ -482,6 +505,124 @@ def dataframe_to_trial_tensor(
     return spikes, trial_ids.astype(np.int64, copy=False), time_ms, metadata
 
 
+def _behavior_name(signal_type: str, column: object, index: int) -> str:
+    suffix = ""
+    if isinstance(column, tuple):
+        parts = [str(value) for value in column[1:] if str(value)]
+        suffix = "_".join(parts)
+    return f"{signal_type}_{suffix or index}"
+
+
+def _unique_names(names: list[str]) -> list[str]:
+    counts: dict[str, int] = {}
+    unique: list[str] = []
+    for name in names:
+        count = counts.get(name, 0)
+        counts[name] = count + 1
+        unique.append(name if count == 0 else f"{name}_{count}")
+    return unique
+
+
+def dataframe_to_behavior_tensor(
+    trial_data: Any,
+    behavior_signal_types: list[str],
+    trial_ids: np.ndarray,
+    n_time_bins: int,
+    require_behavior: bool,
+    allow_behavior_nans: bool,
+    behavior_variable_length_policy: str,
+) -> tuple[np.ndarray | None, list[str] | None, dict[str, Any]]:
+    """Extract trial-major behavior aligned to the already-cropped spike window."""
+    if behavior_variable_length_policy != "crop_to_spike_window":
+        msg = "only behavior_variable_length_policy='crop_to_spike_window' is supported"
+        raise ValueError(msg)
+
+    found_frames: list[pd.DataFrame] = []
+    names: list[str] = []
+    groups_found: list[str] = []
+    for signal_type in behavior_signal_types:
+        frame = _signal_frame(trial_data, signal_type)
+        if frame is None:
+            continue
+        groups_found.append(signal_type)
+        found_frames.append(frame)
+        names.extend(
+            _behavior_name(signal_type, column, index) for index, column in enumerate(frame.columns)
+        )
+
+    missing = [
+        signal_type for signal_type in behavior_signal_types if signal_type not in groups_found
+    ]
+    if missing and require_behavior:
+        msg = f"required behavior signals missing: {missing}"
+        raise ValueError(msg)
+    if not found_frames:
+        return (
+            None,
+            None,
+            {
+                "present": False,
+                "groups_requested": behavior_signal_types,
+                "groups_found": [],
+                "missing_groups": missing,
+                "extraction_policy": behavior_variable_length_policy,
+            },
+        )
+
+    behavior_frame = pd.concat(found_frames, axis=1)
+    trial_id_values = _column_values(trial_data, "trial_id")
+    trial_time_key = None
+    with suppress(ValueError):
+        trial_time_key = _column_key(trial_data, "trial_time")
+
+    matrices: list[np.ndarray] = []
+    lengths: list[int] = []
+    cropped = False
+    for trial_id in trial_ids:
+        mask = trial_id_values == trial_id
+        group_behavior = behavior_frame.loc[mask]
+        if trial_time_key is not None:
+            group_times = trial_data.loc[mask, trial_time_key]
+            if isinstance(group_times, pd.DataFrame):
+                group_times = group_times.iloc[:, 0]
+            order = np.argsort(np.asarray(group_times))
+            group_behavior = group_behavior.iloc[order]
+        matrix = group_behavior.to_numpy(dtype=np.float64)
+        if matrix.shape[0] < n_time_bins:
+            msg = f"behavior for trial {trial_id} has fewer bins than spikes"
+            raise ValueError(msg)
+        cropped = cropped or matrix.shape[0] != n_time_bins
+        matrices.append(matrix[:n_time_bins])
+        lengths.append(int(matrix.shape[0]))
+
+    behavior = np.stack(matrices, axis=0)
+    nan_count = int(np.isnan(behavior).sum())
+    inf_count = int(np.isinf(behavior).sum())
+    if not allow_behavior_nans and nan_count:
+        msg = f"behavior contains NaN values: {nan_count}"
+        raise ValueError(msg)
+    if inf_count:
+        msg = f"behavior contains Inf values: {inf_count}"
+        raise ValueError(msg)
+
+    unique_names = _unique_names(names)
+    metadata = {
+        "present": True,
+        "groups_requested": behavior_signal_types,
+        "groups_found": groups_found,
+        "missing_groups": missing,
+        "dimensions": int(behavior.shape[2]),
+        "behavior_names": unique_names,
+        "extraction_policy": behavior_variable_length_policy,
+        "nan_count": nan_count,
+        "inf_count": inf_count,
+        "contains_nans": nan_count > 0,
+        "original_trial_lengths": lengths,
+        "cropped_to_spike_window": cropped,
+    }
+    return behavior, unique_names, metadata
+
+
 def _dataset_from_mapping_or_object(
     source: object,
     config: NLBConfig,
@@ -513,11 +654,17 @@ def _dataset_from_mapping_or_object(
         "source_files": [path.name for path in source_files],
     }
     if behavior is not None:
+        behavior = behavior.astype(np.float64, copy=False)
         metadata["behavior"] = {
             "shape": list(behavior.shape),
             "dtype": str(behavior.dtype),
             "present": True,
         }
+    if behavior is not None and behavior.ndim == 3:
+        behavior_names = [f"behavior_{index}" for index in range(int(behavior.shape[2]))]
+    else:
+        behavior = None
+        behavior_names = None
 
     dataset = NeuralDataset(
         spikes=_integer_spikes(spikes),
@@ -527,6 +674,8 @@ def _dataset_from_mapping_or_object(
         time_ms=time_ms.astype(np.float64, copy=False),
         bin_size_ms=config.dataset.bin_size_ms,
         metadata=metadata,
+        behavior=behavior,
+        behavior_names=behavior_names,
     )
     validate_neural_dataset(dataset)
     return dataset
@@ -584,6 +733,16 @@ def _load_with_nlb_tools(
         variable_length_policy=config.trialization.variable_length_policy,
         bin_size_ms=config.dataset.bin_size_ms,
     )
+    behavior, behavior_names, behavior_metadata = dataframe_to_behavior_tensor(
+        trial_data,
+        behavior_signal_types=config.trialization.behavior_signal_types,
+        trial_ids=trial_ids,
+        n_time_bins=spikes.shape[1],
+        require_behavior=config.trialization.require_behavior,
+        allow_behavior_nans=config.trialization.allow_behavior_nans,
+        behavior_variable_length_policy=config.trialization.behavior_variable_length_policy,
+    )
+    trial_metadata["behavior"] = behavior_metadata
     metadata: dict[str, Any] = {
         "dataset_name": config.dataset.name,
         "source": config.dataset.source,
@@ -605,6 +764,8 @@ def _load_with_nlb_tools(
         time_ms=time_ms,
         bin_size_ms=config.dataset.bin_size_ms,
         metadata=metadata,
+        behavior=behavior,
+        behavior_names=behavior_names,
     )
     validate_neural_dataset(dataset)
     return dataset
@@ -652,7 +813,7 @@ def load_nlb_dataset(dataset_root: Path, config: NLBConfig) -> NeuralDataset:
     if config.validation.require_rates and dataset.rates is None:
         msg = "NLB config requires rates, but the loaded dataset did not provide rates"
         raise ValueError(msg)
-    if config.validation.require_behavior and "behavior" not in dataset.metadata:
-        msg = "NLB config requires behavior metadata, but none was loaded"
+    if config.validation.require_behavior and dataset.behavior is None:
+        msg = "NLB config requires behavior, but none was loaded"
         raise ValueError(msg)
     return dataset
