@@ -38,3 +38,11 @@ notebooks/.ipynb_checkpoints/
 mlruns/
 wandb/
 logs/
+
+# Agent memory - local only
+latent-brain.memory.md
+*.memory.md
+.agent-memory/
+AGENT_MEMORY*.md
+.hermes-memory*.md
+.codex-memory*.md
