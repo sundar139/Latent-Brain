@@ -55,6 +55,8 @@ time_ms: [n_time_bins]
 
 Behavior signals such as `cursor_pos`, `hand_pos`, `eye_pos`, and `hand_vel` are not saved as arrays yet. Their signal groups and column names are preserved in metadata for future exploratory analysis.
 
+This fixed-length tensor is for validation-oriented local analysis. Later baseline and evaluation work may need a more benchmark-faithful preprocessing path with alignment choices and held-out targets reviewed explicitly.
+
 ## Optional dependencies
 
 The base development install does not require neural-data tooling:
@@ -91,6 +93,18 @@ python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
 If local data is missing, both commands exit nonzero with guidance and create no fake outputs. If local data is present and readable, processed `.npz`, metadata JSON, and provenance JSON outputs are written under ignored `data/processed/nlb/mc_maze_small` paths.
+
+## MC_Maze Small validation report
+
+After local preparation succeeds, run:
+
+```powershell
+python scripts/analyze_mc_maze.py --config configs/mc_maze_small_eda.yaml
+```
+
+The analysis reads the processed `.npz`, verifies the configured dataset hash, recreates deterministic train/validation/test splits and held-in/held-out masks, computes spike-count and firing-rate summaries, and writes local JSON, CSV, Markdown, and PNG outputs under ignored `reports/mc_maze_small/` paths.
+
+The generated Markdown report states that no model training or benchmark evaluation was performed. It is intended to catch data-quality issues before baseline modeling, not to report scientific findings or benchmark scores.
 
 ## Storage and version control
 

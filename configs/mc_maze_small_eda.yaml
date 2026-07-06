@@ -1,0 +1,29 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  metadata_path: data/processed/nlb/mc_maze_small/mc_maze_small_metadata.json
+  provenance_path: data/processed/nlb/mc_maze_small/mc_maze_small_provenance.json
+  expected_hash: 0ab1476ce6286546843ab1b0dab42287ee76f68dc5962dfe8aa58000100157a9
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+quality_thresholds:
+  min_trials: 1
+  min_time_bins: 1
+  min_neurons: 1
+  max_nan_count: 0
+  max_inf_count: 0
+  min_total_spikes: 1
+  max_zero_fraction_warning: 0.99
+  inactive_neuron_rate_hz_threshold: 0.01
+  high_rate_warning_hz: 200.0
+
+reporting:
+  output_dir: reports/mc_maze_small
+  figures_dir: reports/mc_maze_small/figures

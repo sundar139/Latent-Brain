@@ -26,7 +26,7 @@ Not implemented yet:
 - Model training or inference
 - LFADS, neural SDE, or switching dynamical system logic
 - Neural Latents Benchmark evaluation
-- Experiment runs, benchmark scores, plots, checkpoints, or reports
+- Experiment runs, benchmark scores, checkpoints, or model artifacts
 
 ## Local setup
 
@@ -94,6 +94,16 @@ python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
 The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. The real NWB train file loads as a continuous `NWBDataset.data` pandas dataframe; LatentBrain uses NLB trial metadata to trialize it into `spikes: [trials, time, neurons]`, concatenating `heldout_spikes` after `spikes` when available. The initial policy crops variable-length trials to the minimum trial length for a clean validation tensor. This is validation-oriented preprocessing, not final benchmark preprocessing. If files are missing, the script exits with guidance and creates no fake data. No trained model, benchmark score, EvalAI submission, or leaderboard claim exists. Future EDA should inspect alignment, behavior, trial lengths, and spike statistics.
+
+## Data validation report
+
+After preparing MC_Maze Small, generate a local data-quality report with:
+
+```powershell
+python scripts/analyze_mc_maze.py --config configs/mc_maze_small_eda.yaml
+```
+
+The analysis writes JSON, CSV, Markdown, and PNG files under ignored `reports/mc_maze_small/` paths. It checks the processed dataset hash, split coverage, held-in and held-out masks, spike statistics, and trialization metadata. The report is exploratory validation only; no model training or benchmark evaluation is performed.
 
 ## Data policy
 
