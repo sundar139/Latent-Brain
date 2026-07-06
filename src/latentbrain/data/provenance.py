@@ -25,7 +25,7 @@ def collect_file_manifest(
     root: Path,
     max_hash_size_bytes: int = DEFAULT_HASH_SIZE_LIMIT_BYTES,
 ) -> list[dict[str, str | int]]:
-    """Collect relative file names, sizes, and hashes for a local dataset root."""
+    """Collect relative file names, sizes, and size-limited hashes for a local dataset root."""
     resolved_root = root.expanduser().resolve()
     if not resolved_root.exists():
         msg = f"dataset root does not exist: {resolved_root}"
@@ -45,6 +45,7 @@ def collect_file_manifest(
             entry["sha256"] = compute_file_sha256(path)
         else:
             entry["sha256"] = "skipped:size_exceeds_limit"
+            entry["hash_skipped_reason"] = "size_exceeds_limit"
             entry["hash_size_limit_bytes"] = max_hash_size_bytes
         manifest.append(entry)
     return manifest
@@ -64,16 +65,31 @@ def _git_commit() -> str | None:
     return commit or None
 
 
+def _dataset_config(config: dict[str, Any]) -> dict[str, Any]:
+    dataset = config.get("dataset", {})
+    return dataset if isinstance(dataset, dict) else {}
+
+
+def _split_config(config: dict[str, Any]) -> dict[str, Any]:
+    splits = config.get("splits", {})
+    return splits if isinstance(splits, dict) else {}
+
+
 def write_provenance(
     dataset_name: str,
     dataset_root: Path,
     output_path: Path,
     config: dict[str, Any],
+    max_hash_size_bytes: int = DEFAULT_HASH_SIZE_LIMIT_BYTES,
 ) -> dict[str, Any]:
     """Write a provenance JSON document for a local dataset preparation run."""
-    manifest = collect_file_manifest(dataset_root)
+    manifest = collect_file_manifest(dataset_root, max_hash_size_bytes=max_hash_size_bytes)
+    dataset_config = _dataset_config(config)
+    split_config = _split_config(config)
     provenance: dict[str, Any] = {
         "dataset_name": dataset_name,
+        "variant": dataset_config.get("variant"),
+        "source": dataset_config.get("source"),
         "dataset_root": str(dataset_root.expanduser().resolve()),
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "file_count": len(manifest),
@@ -81,6 +97,10 @@ def write_provenance(
         "config": config,
         "package_version": __version__,
         "git_commit": _git_commit(),
+        "split_seed": split_config.get("seed"),
+        "bin_size_ms": dataset_config.get("bin_size_ms"),
+        "alignment_event": dataset_config.get("alignment_event"),
+        "hash_size_limit_bytes": max_hash_size_bytes,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(

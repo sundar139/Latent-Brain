@@ -62,7 +62,11 @@ Optional neural-data tooling for local real dataset preparation can be installed
 python -m pip install -e ".[dev,neurodata]"
 ```
 
-If `nlb-tools` is unavailable from pip in your environment, install it from the official Neural Latents Benchmark GitHub repository.
+If `nlb-tools` is unavailable from pip in your environment, install it from the official Neural Latents Benchmark GitHub repository:
+
+```powershell
+python -m pip install git+https://github.com/neurallatents/nlb_tools.git
+```
 
 ## Configuration and environment
 
@@ -85,10 +89,11 @@ The generated files are local validation artifacts, not benchmark results. Real 
 LatentBrain includes an NLB/MC_Maze-style local ingestion scaffold:
 
 ```powershell
-python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze.yaml
+python scripts/inspect_nlb_files.py --root data/raw/nlb/mc_maze_small
+python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
-The script does not download data. Place legally obtained local files under `data/raw/nlb` or set `LATENTBRAIN_NLB_ROOT`. If files are missing, the script exits with guidance and creates no fake data. Real-data support is scaffolded only; no trained model, benchmark result, or leaderboard claim exists.
+The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. If files are missing, the script exits with guidance and creates no fake data. Real-data support is validation-only; no trained model, benchmark result, or leaderboard claim exists.
 
 ## Data policy
 

@@ -14,6 +14,9 @@ def _require_rank(name: str, array: np.ndarray, rank: int) -> None:
 def validate_neural_dataset(dataset: NeuralDataset) -> None:
     """Validate neural population arrays and metadata-independent invariants."""
     _require_rank("spikes", dataset.spikes, 3)
+    if not np.all(np.isfinite(dataset.spikes)):
+        msg = "spikes must be finite"
+        raise ValueError(msg)
     if not np.issubdtype(dataset.spikes.dtype, np.integer):
         msg = "spikes must have an integer dtype"
         raise ValueError(msg)

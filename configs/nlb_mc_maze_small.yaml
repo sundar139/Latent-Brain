@@ -1,15 +1,15 @@
 dataset:
-  name: mc_maze
+  name: mc_maze_small
   source: neural_latents_benchmark
-  variant: standard
+  variant: small
   bin_size_ms: 5
   alignment_event: movement
   expected_format: nlb
-  dataset_root: data/raw/nlb
-  processed_root: data/processed/nlb
-  output_filename: mc_maze_processed.npz
-  metadata_filename: mc_maze_metadata.json
-  provenance_filename: mc_maze_provenance.json
+  dataset_root: data/raw/nlb/mc_maze_small
+  processed_root: data/processed/nlb/mc_maze_small
+  output_filename: mc_maze_small_processed.npz
+  metadata_filename: mc_maze_small_metadata.json
+  provenance_filename: mc_maze_small_provenance.json
 
 validation:
   require_behavior: false
