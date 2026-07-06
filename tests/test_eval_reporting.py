@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pandas as pd  # type: ignore[import-untyped]
 
-from latentbrain.eval.reporting import write_baseline_markdown_report, write_baseline_outputs
+from latentbrain.eval.reporting import (
+    write_baseline_markdown_report,
+    write_baseline_outputs,
+    write_cosmoothing_markdown_report,
+)
 
 
 def _split_metrics() -> pd.DataFrame:
@@ -80,3 +84,29 @@ def test_markdown_report_mentions_primary_metric_and_fit_policy(tmp_path: Path) 
     report = report_path.read_text(encoding="utf-8")
     assert "Primary metric: validation heldout bits/spike" in report
     assert "Fit policy: train trials only" in report
+
+
+def test_cosmoothing_report_includes_disclaimers(tmp_path: Path) -> None:
+    report_path = write_cosmoothing_markdown_report(
+        tmp_path / "cosmoothing_report.md",
+        metrics_summary={
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "input_neuron_group": "heldin",
+            "target_neuron_group": "heldout",
+            "smoothing": {"method": "gaussian", "sigma_ms": 50.0},
+            "decoder_name": "ridge",
+            "decoder_alpha": 100.0,
+            "fit_policy": "train trials only",
+            "standardization_policy": "train-only held-in features",
+            "reference_policy": "train-only held-out mean rates",
+            "primary_split": "validation",
+            "primary_bits_per_spike": 0.1,
+            "primary_poisson_nll": 5.0,
+        },
+        split_metrics=_split_metrics(),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "local co-smoothing sanity baseline, not an official NLB leaderboard result" in report
+    assert "No neural network model was trained" in report

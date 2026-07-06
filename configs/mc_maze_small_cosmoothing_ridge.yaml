@@ -1,0 +1,54 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+features:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  smoothing:
+    method: gaussian
+    sigma_ms: 50.0
+    truncate: 4.0
+  convert_to_hz: true
+  standardize_features: true
+
+targets:
+  target_transform: counts
+  fit_target_type: rate_hz
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+decoder:
+  name: ridge
+  alpha: 100.0
+  fit_intercept: true
+  train_trials_only: true
+
+reference:
+  name: train_mean_rate
+  fit_train_trials_only: true
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  primary_split: validation
+  metrics:
+    - poisson_nll
+    - poisson_log_likelihood
+    - bits_per_spike
+    - mse_rate_hz
+    - mae_rate_hz
+
+reporting:
+  output_dir: results/mc_maze_small/cosmoothing_ridge

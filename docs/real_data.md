@@ -132,6 +132,18 @@ It smooths spike counts within each trial, uses held-in neurons by default, comp
 
 This baseline is a bridge toward future LFADS/SDE behavior-decoding work. It is not an official NLB leaderboard result and does not train a neural network model.
 
+## Local co-smoothing ridge baseline
+
+The co-smoothing sanity baseline predicts held-out neuron rates from held-in neuron activity:
+
+```powershell
+python scripts/run_cosmoothing_baseline.py --config configs/mc_maze_small_cosmoothing_ridge.yaml
+```
+
+It smooths held-in spikes within each trial, converts them to rates, computes train-only feature standardization, and fits a ridge decoder on train trials only. Held-out spikes from validation and test trials are used only for evaluation. A train-only held-out mean-rate reference supplies the bits/spike comparison.
+
+This baseline is a bridge toward future GPFA/LFADS/SDE models. It is not an official NLB leaderboard result and does not train a neural network model.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

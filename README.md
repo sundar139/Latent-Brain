@@ -125,6 +125,16 @@ python scripts/run_behavior_decoder.py --config configs/mc_maze_small_behavior_d
 
 The baseline smooths binned spikes within each trial, uses held-in neurons by default, derives velocity targets from `hand_pos` and `cursor_pos`, and fits a train-only ridge decoder with train-only feature and target standardization. Outputs are written under ignored `results/mc_maze_small/behavior_decoder/` paths. This is not official benchmark performance, and no neural network model is trained.
 
+## Co-smoothing ridge baseline
+
+Run the local held-in to held-out neural co-smoothing sanity baseline with:
+
+```powershell
+python scripts/run_cosmoothing_baseline.py --config configs/mc_maze_small_cosmoothing_ridge.yaml
+```
+
+The baseline uses held-in neurons as inputs, held-out neurons as targets, smooths held-in spikes within each trial, and fits a train-only ridge decoder against a train-only held-out mean-rate reference. Outputs are written under ignored `results/mc_maze_small/cosmoothing_ridge/` paths. This is not an official NLB leaderboard result, and no neural network model is trained.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.
