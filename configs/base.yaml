@@ -1,0 +1,18 @@
+project:
+  name: LatentBrain
+  seed: 1337
+
+paths:
+  data_root: data
+  results_root: results
+  models_root: models
+  reports_root: reports
+  experiments_root: experiments
+
+logging:
+  level: INFO
+  json: false
+
+reproducibility:
+  deterministic: true
+  benchmark: false
