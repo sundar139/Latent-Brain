@@ -105,6 +105,16 @@ python scripts/analyze_mc_maze.py --config configs/mc_maze_small_eda.yaml
 
 The analysis writes JSON, CSV, Markdown, and PNG files under ignored `reports/mc_maze_small/` paths. It checks the processed dataset hash, split coverage, held-in and held-out masks, spike statistics, and trialization metadata. The report is exploratory validation only; no model training or benchmark evaluation is performed.
 
+## Mean-rate baseline
+
+After real-data preparation, run the first local sanity baseline with:
+
+```powershell
+python scripts/run_mean_rate_baseline.py --config configs/mc_maze_small_mean_rate.yaml
+```
+
+The baseline fits one constant firing rate per neuron using train trials only, then evaluates Poisson negative log-likelihood and bits/spike-style improvement on train, validation, and test splits for held-in, held-out, and all neurons. Outputs are written under ignored `results/mc_maze_small/mean_rate/` paths. This validates the local metric pipeline; it is not an official NLB benchmark result and does not train a neural network model.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

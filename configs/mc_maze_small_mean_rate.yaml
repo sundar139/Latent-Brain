@@ -1,0 +1,34 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 0ab1476ce6286546843ab1b0dab42287ee76f68dc5962dfe8aa58000100157a9
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+baseline:
+  name: mean_rate
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  use_train_trials_only: true
+  predict_constant_rate_per_neuron: true
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  evaluate_neuron_groups:
+    - heldin
+    - heldout
+    - all
+  primary_split: validation
+  primary_neuron_group: heldout
+
+reporting:
+  output_dir: results/mc_maze_small/mean_rate

@@ -106,10 +106,22 @@ The analysis reads the processed `.npz`, verifies the configured dataset hash, r
 
 The generated Markdown report states that no model training or benchmark evaluation was performed. It is intended to catch data-quality issues before baseline modeling, not to report scientific findings or benchmark scores.
 
+## Local mean-rate baseline
+
+The first local baseline is a mean-rate Poisson sanity check:
+
+```powershell
+python scripts/run_mean_rate_baseline.py --config configs/mc_maze_small_mean_rate.yaml
+```
+
+It reuses the deterministic trial split and held-in/held-out neuron mask from ingestion. The baseline fits one constant firing rate per neuron on train trials only, so validation and test spikes cannot affect fitted rates. It then reports Poisson negative log-likelihood and bits/spike-style improvement against a train-only global-rate reference for train, validation, and test splits across held-in, held-out, and all-neuron groups.
+
+Held-in neurons are the local training-observed group; held-out neurons are reserved for co-smoothing-style sanity checks. This baseline matters because it validates split reuse, masking, likelihood math, and report generation before introducing LFADS, SDE, or other stronger modeling approaches. The output is a local sanity baseline, not an official NLB leaderboard result.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.
 
 ## Future local evaluation
 
-The first real-data run is validation only. No model score exists yet and no EvalAI submission is planned. Future EDA should inspect alignment choices, behavior extraction, trial length distribution, and spike statistics before local reproducible evaluation is added.
+The first real-data run is validation only. The mean-rate baseline is the initial local metric sanity check and is not an official benchmark score. No EvalAI submission is planned. Future work should inspect alignment choices, behavior extraction, trial length distribution, and spike statistics before stronger local reproducible evaluation is added.
