@@ -1,0 +1,50 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+features:
+  neuron_group: heldin
+  smoothing:
+    method: gaussian
+    sigma_ms: 50.0
+    truncate: 4.0
+  convert_to_hz: true
+  standardize_features: true
+
+targets:
+  source_behavior_prefixes:
+    - hand_pos
+    - cursor_pos
+  derive_velocity: true
+  velocity_method: central_difference
+  standardize_targets: true
+
+decoder:
+  name: ridge
+  alpha: 100.0
+  fit_intercept: true
+  train_trials_only: true
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  primary_split: validation
+  primary_target_prefix: hand_pos_velocity
+  metrics:
+    - r2
+    - mse
+    - mae
+
+reporting:
+  output_dir: results/mc_maze_small/behavior_decoder

@@ -120,6 +120,18 @@ It reuses the deterministic trial split and held-in/held-out neuron mask from in
 
 Held-in neurons are the local training-observed group; held-out neurons are reserved for co-smoothing-style sanity checks. This baseline matters because it validates split reuse, masking, likelihood math, and report generation before introducing LFADS, SDE, or other stronger modeling approaches. The output is a local sanity baseline, not an official NLB leaderboard result.
 
+## Local behavior decoder baseline
+
+The behavior decoder sanity baseline derives velocity targets from saved `hand_pos` and `cursor_pos` position channels using central differences in behavior units per second:
+
+```powershell
+python scripts/run_behavior_decoder.py --config configs/mc_maze_small_behavior_decoder.yaml
+```
+
+It smooths spike counts within each trial, uses held-in neurons by default, computes feature standardization from train trials only, computes target standardization from train trials only, and fits a ridge decoder on train samples only. Validation and test samples are used only for evaluation. Generated JSON, CSV, and Markdown outputs are local artifacts under ignored `results/mc_maze_small/behavior_decoder/` paths.
+
+This baseline is a bridge toward future LFADS/SDE behavior-decoding work. It is not an official NLB leaderboard result and does not train a neural network model.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

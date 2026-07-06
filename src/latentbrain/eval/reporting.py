@@ -11,6 +11,8 @@ import pandas as pd  # type: ignore[import-untyped]
 def _json_default(value: object) -> object:
     if isinstance(value, np.generic):
         return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
     return str(value)
 
 
@@ -88,5 +90,73 @@ def write_baseline_outputs(
         metrics_summary=metrics_summary,
         split_metrics=split_metrics,
         neuron_metrics=neuron_metrics,
+    )
+    return paths
+
+
+def write_behavior_decoder_markdown_report(
+    output_path: Path,
+    metrics_summary: dict[str, Any],
+    split_metrics: pd.DataFrame,
+    target_metrics: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for the local behavior decoder baseline."""
+    lines = [
+        f"# {metrics_summary.get('dataset_name')} behavior decoder report",
+        "",
+        (
+            "This is a local behavior-decoding sanity baseline, "
+            "not an official NLB leaderboard result."
+        ),
+        "No neural network model was trained.",
+        "",
+        "## Dataset and decoder",
+        f"- Dataset hash: {metrics_summary.get('dataset_hash')}",
+        f"- Feature neuron group: {metrics_summary.get('feature_neuron_group')}",
+        f"- Smoothing: {metrics_summary.get('smoothing')}",
+        f"- Behavior targets: {metrics_summary.get('target_names')}",
+        f"- Decoder: {metrics_summary.get('decoder_name')}",
+        f"- Decoder alpha: {metrics_summary.get('decoder_alpha')}",
+        f"- Fit policy: {metrics_summary.get('fit_policy')}",
+        f"- Standardization policy: {metrics_summary.get('standardization_policy')}",
+        f"- Primary split: {metrics_summary.get('primary_split')}",
+        f"- Primary validation R2: {metrics_summary.get('primary_mean_r2')}",
+        "",
+        "## Split metrics",
+        *_format_table(split_metrics),
+        "",
+        "## Target metrics",
+        *_format_table(target_metrics),
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_behavior_decoder_outputs(
+    output_dir: Path,
+    metrics_summary: dict[str, Any],
+    split_metrics: pd.DataFrame,
+    target_metrics: pd.DataFrame,
+    decoder_coefficients: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write behavior decoder JSON, CSV, and Markdown outputs."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "metrics_summary": output_dir / "metrics_summary.json",
+        "split_metrics": output_dir / "split_metrics.csv",
+        "target_metrics": output_dir / "target_metrics.csv",
+        "decoder_coefficients": output_dir / "decoder_coefficients.csv",
+        "report": output_dir / "behavior_decoder_report.md",
+    }
+    paths["metrics_summary"].write_text(
+        json.dumps(metrics_summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    split_metrics.to_csv(paths["split_metrics"], index=False)
+    target_metrics.to_csv(paths["target_metrics"], index=False)
+    decoder_coefficients.to_csv(paths["decoder_coefficients"], index=False)
+    write_behavior_decoder_markdown_report(
+        paths["report"], metrics_summary, split_metrics, target_metrics
     )
     return paths

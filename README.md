@@ -26,7 +26,7 @@ Not implemented yet:
 - Model training or inference
 - LFADS, neural SDE, or switching dynamical system logic
 - Neural Latents Benchmark evaluation
-- Experiment runs, benchmark scores, checkpoints, or model artifacts
+- Official benchmark scores, checkpoints, or model artifacts
 
 ## Local setup
 
@@ -114,6 +114,16 @@ python scripts/run_mean_rate_baseline.py --config configs/mc_maze_small_mean_rat
 ```
 
 The baseline fits one constant firing rate per neuron using train trials only, then evaluates Poisson negative log-likelihood and bits/spike-style improvement on train, validation, and test splits for held-in, held-out, and all neurons. Outputs are written under ignored `results/mc_maze_small/mean_rate/` paths. This validates the local metric pipeline; it is not an official NLB benchmark result and does not train a neural network model.
+
+## Behavior decoder baseline
+
+After real-data preparation, run the local behavior-decoding sanity baseline with:
+
+```powershell
+python scripts/run_behavior_decoder.py --config configs/mc_maze_small_behavior_decoder.yaml
+```
+
+The baseline smooths binned spikes within each trial, uses held-in neurons by default, derives velocity targets from `hand_pos` and `cursor_pos`, and fits a train-only ridge decoder with train-only feature and target standardization. Outputs are written under ignored `results/mc_maze_small/behavior_decoder/` paths. This is not official benchmark performance, and no neural network model is trained.
 
 ## Data policy
 
