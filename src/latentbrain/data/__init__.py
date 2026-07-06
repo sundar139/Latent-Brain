@@ -1,1 +1,1 @@
-"""Data contracts, validation, and synthetic generators for LatentBrain."""
+"""Data contracts, validation, synthetic generators, and local neural data adapters."""

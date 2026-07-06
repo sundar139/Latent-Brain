@@ -73,6 +73,26 @@ def validate_neural_dataset(dataset: NeuralDataset) -> None:
         raise ValueError(msg)
 
 
+def validate_neural_dataset_minimums(
+    dataset: NeuralDataset,
+    min_trials: int,
+    min_neurons: int,
+    min_time_bins: int,
+) -> None:
+    """Validate minimum dimensions expected for a real-data ingestion contract."""
+    validate_neural_dataset(dataset)
+    n_trials, n_time_bins, n_neurons = dataset.spikes.shape
+    if n_trials < min_trials:
+        msg = f"dataset has {n_trials} trials, fewer than required minimum {min_trials}"
+        raise ValueError(msg)
+    if n_time_bins < min_time_bins:
+        msg = f"dataset has {n_time_bins} time bins, fewer than required minimum {min_time_bins}"
+        raise ValueError(msg)
+    if n_neurons < min_neurons:
+        msg = f"dataset has {n_neurons} neurons, fewer than required minimum {min_neurons}"
+        raise ValueError(msg)
+
+
 def validate_trial_split(split: TrialSplit, trial_ids: np.ndarray) -> None:
     """Validate split coverage and leakage against known trial identifiers."""
     for name, values in (

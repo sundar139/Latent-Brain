@@ -1,0 +1,25 @@
+dataset:
+  name: mc_maze
+  source: neural_latents_benchmark
+  bin_size_ms: 5
+  alignment_event: movement
+  expected_format: nlb
+  dataset_root: data/raw/nlb
+  processed_root: data/processed/nlb
+  output_filename: mc_maze_processed.npz
+  metadata_filename: mc_maze_metadata.json
+
+validation:
+  require_behavior: false
+  require_rates: false
+  allow_missing_behavior: true
+  min_trials: 1
+  min_neurons: 1
+  min_time_bins: 1
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25

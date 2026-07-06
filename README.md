@@ -16,12 +16,13 @@ Initialized foundation:
 - Standard logging utilities
 - Deterministic seeding utilities for Python, NumPy, and optional PyTorch
 - Synthetic Poisson LDS data generation for validating data contracts
+- Local NLB/MC_Maze ingestion scaffold with provenance capture
 - Typer-based CLI sanity commands
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions quality checks
 
 Not implemented yet:
 
-- Dataset download or preprocessing
+- Automatic dataset download or full preprocessing pipelines
 - Model training or inference
 - LFADS, neural SDE, or switching dynamical system logic
 - Neural Latents Benchmark evaluation
@@ -55,6 +56,14 @@ python -m latentbrain.cli info
 python scripts/check_environment.py
 ```
 
+Optional neural-data tooling for local real dataset preparation can be installed with:
+
+```powershell
+python -m pip install -e ".[dev,neurodata]"
+```
+
+If `nlb-tools` is unavailable from pip in your environment, install it from the official Neural Latents Benchmark GitHub repository.
+
 ## Configuration and environment
 
 The default configuration lives in `configs/base.yaml`. Local machine-specific values may be supplied through environment variables or a local `.env` file, but `.env` files must never be committed.
@@ -70,6 +79,16 @@ python scripts/generate_synthetic_data.py --config configs/synthetic_poisson_lds
 ```
 
 The generated files are local validation artifacts, not benchmark results. Real neural datasets are not integrated yet, and generated synthetic files under `data/` are ignored by Git.
+
+## Real data
+
+LatentBrain includes an NLB/MC_Maze-style local ingestion scaffold:
+
+```powershell
+python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze.yaml
+```
+
+The script does not download data. Place legally obtained local files under `data/raw/nlb` or set `LATENTBRAIN_NLB_ROOT`. If files are missing, the script exits with guidance and creates no fake data. Real-data support is scaffolded only; no trained model, benchmark result, or leaderboard claim exists.
 
 ## Data policy
 

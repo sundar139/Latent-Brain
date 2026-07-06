@@ -33,6 +33,11 @@ dev = [
   "pre-commit",
   "types-PyYAML",
 ]
+neurodata = [
+  "h5py",
+  "dandi",
+  "nlb-tools",
+]
 
 [project.scripts]
 latentbrain = "latentbrain.cli:app"
