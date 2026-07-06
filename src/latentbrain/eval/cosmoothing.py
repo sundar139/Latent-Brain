@@ -13,6 +13,7 @@ from latentbrain.eval.decoding import (
 )
 from latentbrain.eval.metrics import safe_clip_rates, summarize_poisson_metrics
 from latentbrain.eval.smoothing import smooth_spike_counts, spike_counts_to_rates_hz
+from latentbrain.eval.sweeps import expand_grid, rank_sweep_results, select_best_config
 
 
 def _validate_3d(name: str, values: np.ndarray) -> np.ndarray:
@@ -321,3 +322,181 @@ def run_cosmoothing_baseline(
         pd.DataFrame(neuron_rows, columns=neuron_columns),
         metadata,
     )
+
+
+SWEEP_RESULT_COLUMNS = [
+    "run_id",
+    "split",
+    "smoothing_sigma_ms",
+    "ridge_alpha",
+    "standardize_features",
+    "fit_intercept",
+    "n_train_trials",
+    "n_eval_trials",
+    "n_input_neurons",
+    "n_target_neurons",
+    "spike_count",
+    "poisson_nll",
+    "poisson_log_likelihood",
+    "reference_log_likelihood",
+    "bits_per_spike",
+    "mse_rate_hz",
+    "mae_rate_hz",
+    "mean_predicted_rate_hz",
+    "mean_reference_rate_hz",
+]
+
+
+def _sweep_grid(config: dict[str, Any]) -> list[dict[str, Any]]:
+    sweep = config["sweep"]
+    return expand_grid(
+        {
+            "smoothing_sigma_ms": list(sweep["smoothing_sigma_ms"]),
+            "ridge_alpha": list(sweep["ridge_alpha"]),
+            "standardize_features": list(sweep["standardize_features"]),
+            "fit_intercept": list(sweep["fit_intercept"]),
+        }
+    )
+
+
+def _input_rates_for_sigma(
+    input_spikes: np.ndarray,
+    bin_size_ms: int,
+    sigma_ms: float,
+    convert_to_hz: bool,
+) -> np.ndarray:
+    smoothed = smooth_spike_counts(
+        input_spikes,
+        bin_size_ms,
+        method="gaussian",
+        sigma_ms=sigma_ms,
+        truncate=4.0,
+    )
+    return spike_counts_to_rates_hz(smoothed, bin_size_ms) if convert_to_hz else smoothed
+
+
+def run_cosmoothing_sweep(
+    dataset: NeuralDataset,
+    split: TrialSplit,
+    neuron_mask: NeuronMask,
+    config: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame, pd.DataFrame]:
+    """Run a train-only ridge co-smoothing diagnostic sweep."""
+    if config["targets"].get("fit_target_type", "rate_hz") != "rate_hz":
+        msg = "only rate_hz co-smoothing targets are supported"
+        raise ValueError(msg)
+
+    features_config = config["features"]
+    targets_config = config["targets"]
+    evaluation_config = config["evaluation"]
+    min_rate = float(targets_config["min_rate_hz"])
+    max_rate = float(targets_config["max_rate_hz"])
+    evaluate_splits = list(evaluation_config["evaluate_splits"])
+
+    input_spikes, input_indices = select_neuron_group(
+        dataset.spikes, neuron_mask, features_config.get("input_neuron_group", "heldin")
+    )
+    target_counts, target_indices = select_neuron_group(
+        dataset.spikes, neuron_mask, features_config.get("target_neuron_group", "heldout")
+    )
+    train_mask = _trial_mask(dataset, split.train)
+    reference = _reference_rates(target_counts[train_mask], dataset.bin_size_ms, min_rate, max_rate)
+
+    rows: list[dict[str, Any]] = []
+    neuron_rows: list[dict[str, Any]] = []
+    rates_by_sigma: dict[float, np.ndarray] = {}
+    for run_index, params in enumerate(_sweep_grid(config)):
+        run_id = f"run_{run_index:03d}"
+        sigma_ms = float(params["smoothing_sigma_ms"])
+        if sigma_ms not in rates_by_sigma:
+            rates_by_sigma[sigma_ms] = _input_rates_for_sigma(
+                input_spikes,
+                dataset.bin_size_ms,
+                sigma_ms,
+                convert_to_hz=bool(features_config.get("convert_to_hz", True)),
+            )
+        input_rates = rates_by_sigma[sigma_ms]
+        model = fit_cosmoothing_ridge(
+            flatten_trial_time(input_rates[train_mask]),
+            flatten_trial_time(target_counts[train_mask]),
+            dataset.bin_size_ms,
+            alpha=float(params["ridge_alpha"]),
+            min_rate_hz=min_rate,
+            max_rate_hz=max_rate,
+            standardize_features=bool(params["standardize_features"]),
+            fit_intercept=bool(params["fit_intercept"]),
+        )
+        for split_name in evaluate_splits:
+            eval_mask = _trial_mask(dataset, _split_ids(split, split_name))
+            counts = target_counts[eval_mask]
+            predicted = predict_cosmoothing_rates(input_rates[eval_mask], model, min_rate, max_rate)
+            reference_rates = _broadcast_reference(reference, counts)
+            metrics = evaluate_cosmoothing_predictions(
+                counts,
+                predicted,
+                reference_rates,
+                dataset.bin_size_ms,
+            )
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "split": split_name,
+                    "smoothing_sigma_ms": sigma_ms,
+                    "ridge_alpha": float(params["ridge_alpha"]),
+                    "standardize_features": bool(params["standardize_features"]),
+                    "fit_intercept": bool(params["fit_intercept"]),
+                    "n_train_trials": int(np.count_nonzero(train_mask)),
+                    "n_eval_trials": int(np.count_nonzero(eval_mask)),
+                    "n_input_neurons": int(input_indices.size),
+                    "n_target_neurons": int(target_indices.size),
+                    **metrics,
+                }
+            )
+            for neuron_row in _neuron_rows(
+                split_name,
+                counts,
+                predicted,
+                reference_rates,
+                target_indices,
+                dataset.bin_size_ms,
+            ):
+                neuron_rows.append(
+                    {
+                        "run_id": run_id,
+                        "smoothing_sigma_ms": sigma_ms,
+                        "ridge_alpha": float(params["ridge_alpha"]),
+                        "standardize_features": bool(params["standardize_features"]),
+                        "fit_intercept": bool(params["fit_intercept"]),
+                        **neuron_row,
+                    }
+                )
+
+    sweep_results = pd.DataFrame(rows, columns=SWEEP_RESULT_COLUMNS)
+    if sweep_results.empty:
+        msg = "co-smoothing sweep produced no results"
+        raise ValueError(msg)
+    ranked = rank_sweep_results(
+        sweep_results,
+        primary_split=str(evaluation_config["primary_split"]),
+        primary_metric=str(evaluation_config["primary_metric"]),
+    )
+    best_config = select_best_config(ranked)
+    best_config.update(
+        {
+            "input_neuron_group": features_config.get("input_neuron_group", "heldin"),
+            "target_neuron_group": features_config.get("target_neuron_group", "heldout"),
+            "fit_target_type": config["targets"].get("fit_target_type", "rate_hz"),
+            "min_rate_hz": min_rate,
+            "max_rate_hz": max_rate,
+            "reference": config.get("reference", {}).get("name", "train_mean_rate"),
+            "train_only_fit": True,
+        }
+    )
+    best_split_metrics = sweep_results[
+        sweep_results["run_id"] == best_config["run_id"]
+    ].reset_index(drop=True)
+    best_neuron_metrics = pd.DataFrame(neuron_rows)
+    best_neuron_metrics = best_neuron_metrics[
+        best_neuron_metrics["run_id"] == best_config["run_id"]
+    ].reset_index(drop=True)
+    return sweep_results, best_config, best_split_metrics, best_neuron_metrics

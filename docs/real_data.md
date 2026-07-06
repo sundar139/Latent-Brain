@@ -144,6 +144,18 @@ It smooths held-in spikes within each trial, converts them to rates, computes tr
 
 This baseline is a bridge toward future GPFA/LFADS/SDE models. It is not an official NLB leaderboard result and does not train a neural network model.
 
+## Local co-smoothing diagnostic sweep
+
+The initial single co-smoothing ridge configuration produced validation held-out bits/spike below the train-only mean-rate reference. Before adding GPFA, LFADS, neural SDE, switching, or neural-network models, run a transparent diagnostic sweep:
+
+```powershell
+python scripts/run_cosmoothing_sweep.py --config configs/mc_maze_small_cosmoothing_sweep.yaml
+```
+
+The sweep evaluates smoothing sigma, ridge alpha, feature standardization, and intercept choices while keeping the leakage policy fixed: train trials only for fitting, held-in neurons as inputs, held-out neurons as targets, train-only feature standardization when enabled, and train-only held-out mean rates as the reference. It reports train, validation, and test metrics, selects the best configuration by validation held-out bits/spike, and writes local outputs under ignored `results/mc_maze_small/cosmoothing_sweep/` paths.
+
+This sweep helps select and diagnose a transparent baseline before more complex latent-dynamics models are considered. It is not an official NLB leaderboard result and does not train a neural network model.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

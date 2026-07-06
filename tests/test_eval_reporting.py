@@ -9,6 +9,7 @@ from latentbrain.eval.reporting import (
     write_baseline_markdown_report,
     write_baseline_outputs,
     write_cosmoothing_markdown_report,
+    write_cosmoothing_sweep_markdown_report,
 )
 
 
@@ -110,3 +111,33 @@ def test_cosmoothing_report_includes_disclaimers(tmp_path: Path) -> None:
     report = report_path.read_text(encoding="utf-8")
     assert "local co-smoothing sanity baseline, not an official NLB leaderboard result" in report
     assert "No neural network model was trained" in report
+
+
+def test_cosmoothing_sweep_report_includes_disclaimers_and_best_config(tmp_path: Path) -> None:
+    report_path = write_cosmoothing_sweep_markdown_report(
+        tmp_path / "sweep_report.md",
+        summary={
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "sweep_grid": {"smoothing_sigma_ms": [10.0], "ridge_alpha": [1.0]},
+            "n_configurations": 1,
+            "best_validation_bits_per_spike": 0.2,
+            "best_validation_poisson_nll": 4.0,
+            "best_config": {
+                "smoothing_sigma_ms": 10.0,
+                "ridge_alpha": 1.0,
+                "standardize_features": True,
+                "fit_intercept": False,
+            },
+            "all_validation_bits_per_spike_negative": False,
+        },
+        best_split_metrics=pd.DataFrame(
+            {"split": ["validation"], "bits_per_spike": [0.2], "poisson_nll": [4.0]}
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "local co-smoothing diagnostic sweep, not an official NLB leaderboard result" in report
+    assert "No neural network model was trained" in report
+    assert "Best smoothing sigma: 10.0" in report
+    assert "Best ridge alpha: 1.0" in report

@@ -135,6 +135,16 @@ python scripts/run_cosmoothing_baseline.py --config configs/mc_maze_small_cosmoo
 
 The baseline uses held-in neurons as inputs, held-out neurons as targets, smooths held-in spikes within each trial, and fits a train-only ridge decoder against a train-only held-out mean-rate reference. Outputs are written under ignored `results/mc_maze_small/cosmoothing_ridge/` paths. This is not an official NLB leaderboard result, and no neural network model is trained.
 
+## Co-smoothing ridge diagnostic sweep
+
+The first single ridge co-smoothing run underperformed the train-only mean-rate reference, so LatentBrain includes a local diagnostic sweep before any GPFA, LFADS, neural SDE, switching, or neural-network model work:
+
+```powershell
+python scripts/run_cosmoothing_sweep.py --config configs/mc_maze_small_cosmoothing_sweep.yaml
+```
+
+The sweep varies smoothing sigma, ridge alpha, feature standardization, and intercept use. Every fit uses train trials only, held-in neurons as inputs, held-out neurons as targets, train-only feature standardization when enabled, and a train-only held-out mean-rate reference. It evaluates train, validation, and test splits, selects the best configuration by validation held-out bits/spike, and writes local CSV/JSON/Markdown outputs under ignored `results/mc_maze_small/cosmoothing_sweep/` paths. These files are diagnostic artifacts ignored by Git, not official benchmark performance, and no neural network model is trained.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

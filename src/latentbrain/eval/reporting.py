@@ -221,3 +221,72 @@ def write_cosmoothing_outputs(
     decoder_coefficients.to_csv(paths["decoder_coefficients"], index=False)
     write_cosmoothing_markdown_report(paths["report"], metrics_summary, split_metrics)
     return paths
+
+
+def write_cosmoothing_sweep_markdown_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    best_split_metrics: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for the local co-smoothing diagnostic sweep."""
+    best_config = dict(summary.get("best_config", {}))
+    lines = [
+        f"# {summary.get('dataset_name')} co-smoothing diagnostic sweep report",
+        "",
+        "This is a local co-smoothing diagnostic sweep, not an official NLB leaderboard result.",
+        "No neural network model was trained.",
+        "",
+        "## Dataset",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        "",
+        "## Sweep grid",
+        f"- Grid: {summary.get('sweep_grid')}",
+        f"- Configurations tested: {summary.get('n_configurations')}",
+        "",
+        "## Best validation configuration",
+        f"- Best validation bits/spike: {summary.get('best_validation_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        f"- Best smoothing sigma: {best_config.get('smoothing_sigma_ms')}",
+        f"- Best ridge alpha: {best_config.get('ridge_alpha')}",
+        f"- Feature standardization: {best_config.get('standardize_features')}",
+        f"- Fit intercept: {best_config.get('fit_intercept')}",
+    ]
+    if bool(summary.get("all_validation_bits_per_spike_negative", False)):
+        lines.extend(
+            [
+                "",
+                "All validation bits/spike values were negative in this local sweep.",
+            ]
+        )
+    lines.extend(["", "## Best train/validation/test metrics", *_format_table(best_split_metrics)])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_cosmoothing_sweep_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    sweep_results: pd.DataFrame,
+    best_config: dict[str, Any],
+    best_split_metrics: pd.DataFrame,
+    best_neuron_metrics: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write co-smoothing sweep tables, best config, and Markdown report."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "sweep_results": output_dir / "sweep_results.csv",
+        "best_config": output_dir / "best_config.json",
+        "best_split_metrics": output_dir / "best_split_metrics.csv",
+        "best_neuron_metrics": output_dir / "best_neuron_metrics.csv",
+        "report": output_dir / "sweep_report.md",
+    }
+    sweep_results.to_csv(paths["sweep_results"], index=False)
+    paths["best_config"].write_text(
+        json.dumps(best_config, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    best_split_metrics.to_csv(paths["best_split_metrics"], index=False)
+    best_neuron_metrics.to_csv(paths["best_neuron_metrics"], index=False)
+    write_cosmoothing_sweep_markdown_report(paths["report"], summary, best_split_metrics)
+    return paths

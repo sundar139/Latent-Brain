@@ -1,0 +1,58 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+features:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  convert_to_hz: true
+
+sweep:
+  smoothing_sigma_ms:
+    - 10.0
+    - 25.0
+    - 50.0
+    - 100.0
+    - 200.0
+  ridge_alpha:
+    - 0.1
+    - 1.0
+    - 10.0
+    - 100.0
+    - 1000.0
+    - 10000.0
+  standardize_features:
+    - true
+    - false
+  fit_intercept:
+    - true
+    - false
+
+targets:
+  fit_target_type: rate_hz
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+reference:
+  name: train_mean_rate
+  fit_train_trials_only: true
+
+evaluation:
+  primary_split: validation
+  primary_metric: bits_per_spike
+  evaluate_splits:
+    - train
+    - validation
+    - test
+
+reporting:
+  output_dir: results/mc_maze_small/cosmoothing_sweep
