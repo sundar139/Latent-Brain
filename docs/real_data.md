@@ -168,6 +168,18 @@ The baseline smooths held-in spikes into firing-rate features, computes feature 
 
 This is a transparent precursor to stronger GPFA/LFADS/SDE models. It is GPFA-style only because no temporal GP prior is implemented. It is not an official NLB leaderboard result and does not train a neural network model.
 
+## Local factor latent diagnostic sweep
+
+Tune the factor latent baseline with:
+
+```powershell
+python scripts/run_factor_latent_sweep.py --config configs/mc_maze_small_factor_latent_sweep.yaml
+```
+
+The sweep selects the best configuration by validation held-out bits/spike. Behavior mean R² is reported as a secondary metric, not as the selector. The train-only mean-rate held-out baseline remains the sanity reference for neural prediction, so the report includes that comparison alongside the previous single factor latent result.
+
+The same leakage policy applies: train held-in features fit standardization and Factor Analysis, train latents fit held-out and behavior decoders, and validation/test samples are evaluation-only. This is local diagnostic output, not official benchmark performance, not full GPFA without a temporal GP prior, and no neural network model is trained.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

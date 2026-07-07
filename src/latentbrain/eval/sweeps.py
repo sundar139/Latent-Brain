@@ -43,7 +43,16 @@ def rank_sweep_results(
     if "poisson_nll" in primary.columns:
         sort_columns.append("poisson_nll")
         ascending.append(True)
-    for column in ("ridge_alpha", "smoothing_sigma_ms", "run_id"):
+    if "behavior_mean_r2" in primary.columns:
+        sort_columns.append("behavior_mean_r2")
+        ascending.append(False)
+    for column in (
+        "latent_dim",
+        "heldout_decoder_alpha",
+        "ridge_alpha",
+        "smoothing_sigma_ms",
+        "run_id",
+    ):
         if column in primary.columns:
             sort_columns.append(column)
             ascending.append(True)

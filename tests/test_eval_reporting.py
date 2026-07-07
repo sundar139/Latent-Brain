@@ -11,6 +11,7 @@ from latentbrain.eval.reporting import (
     write_cosmoothing_markdown_report,
     write_cosmoothing_sweep_markdown_report,
     write_factor_latent_markdown_report,
+    write_factor_latent_sweep_markdown_report,
 )
 
 
@@ -176,3 +177,38 @@ def test_factor_latent_report_includes_required_disclaimers(tmp_path: Path) -> N
     assert "local latent-variable sanity baseline, not an official NLB leaderboard result" in report
     assert "No neural network model was trained" in report
     assert "GPFA-style only; no temporal GP prior is implemented" in report
+
+
+def test_factor_latent_sweep_report_includes_disclaimers_and_best_config(
+    tmp_path: Path,
+) -> None:
+    report_path = write_factor_latent_sweep_markdown_report(
+        tmp_path / "sweep_report.md",
+        summary={
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "sweep_grid": {"latent_dim": [2], "heldout_decoder_alpha": [1.0]},
+            "n_configurations": 1,
+            "best_validation_bits_per_spike": 0.2,
+            "best_validation_poisson_nll": 4.0,
+            "best_validation_behavior_mean_r2": 0.3,
+            "best_config": {
+                "latent_dim": 2,
+                "smoothing_sigma_ms": 50.0,
+                "heldout_decoder_alpha": 1.0,
+                "standardize_features": True,
+            },
+            "single_factor_latent_validation_bits_per_spike": 0.04747691544524409,
+            "mean_rate_validation_heldout_bits_per_spike": 0.5465273967210786,
+        },
+        best_split_metrics=pd.DataFrame(
+            {"split": ["validation"], "bits_per_spike": [0.2], "poisson_nll": [4.0]}
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "local factor latent diagnostic sweep, not an official NLB leaderboard result" in report
+    assert "No neural network model was trained" in report
+    assert "not full GPFA because no temporal GP prior is implemented" in report
+    assert "Best latent dimension: 2" in report
+    assert "Best held-out decoder alpha: 1.0" in report

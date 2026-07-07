@@ -373,3 +373,85 @@ def write_factor_latent_outputs(
         paths["report"], metrics_summary, split_metrics, behavior_metrics
     )
     return paths
+
+
+def write_factor_latent_sweep_markdown_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    best_split_metrics: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for the local factor latent diagnostic sweep."""
+    best_config = dict(summary.get("best_config", {}))
+    lines = [
+        f"# {summary.get('dataset_name')} factor latent diagnostic sweep report",
+        "",
+        "This is a local factor latent diagnostic sweep, not an official NLB leaderboard result.",
+        "This is not full GPFA because no temporal GP prior is implemented.",
+        "No neural network model was trained.",
+        "",
+        "## Dataset",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        "",
+        "## Sweep grid",
+        f"- Grid: {summary.get('sweep_grid')}",
+        f"- Configurations tested: {summary.get('n_configurations')}",
+        "",
+        "## Best validation configuration",
+        f"- Best validation bits/spike: {summary.get('best_validation_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        f"- Best validation behavior mean R2: {summary.get('best_validation_behavior_mean_r2')}",
+        f"- Best latent dimension: {best_config.get('latent_dim')}",
+        f"- Best smoothing sigma: {best_config.get('smoothing_sigma_ms')}",
+        f"- Best held-out decoder alpha: {best_config.get('heldout_decoder_alpha')}",
+        f"- Feature standardization: {best_config.get('standardize_features')}",
+        "",
+        "## Baseline comparisons",
+        (
+            "- Previous latent_dim 8 validation bits/spike: "
+            f"{summary.get('single_factor_latent_validation_bits_per_spike')}"
+        ),
+        (
+            "- Mean-rate validation heldout bits/spike: "
+            f"{summary.get('mean_rate_validation_heldout_bits_per_spike')}"
+        ),
+        "",
+        "## Best train/validation/test metrics",
+        *_format_table(best_split_metrics),
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_factor_latent_sweep_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    sweep_results: pd.DataFrame,
+    best_config: dict[str, Any],
+    best_split_metrics: pd.DataFrame,
+    best_neuron_metrics: pd.DataFrame,
+    best_behavior_metrics: pd.DataFrame,
+    best_latent_summary: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write factor latent sweep tables, best config, and Markdown report."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "sweep_results": output_dir / "sweep_results.csv",
+        "best_config": output_dir / "best_config.json",
+        "best_split_metrics": output_dir / "best_split_metrics.csv",
+        "best_neuron_metrics": output_dir / "best_neuron_metrics.csv",
+        "best_behavior_metrics": output_dir / "best_behavior_metrics.csv",
+        "best_latent_summary": output_dir / "best_latent_summary.csv",
+        "report": output_dir / "sweep_report.md",
+    }
+    sweep_results.to_csv(paths["sweep_results"], index=False)
+    paths["best_config"].write_text(
+        json.dumps(best_config, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    best_split_metrics.to_csv(paths["best_split_metrics"], index=False)
+    best_neuron_metrics.to_csv(paths["best_neuron_metrics"], index=False)
+    best_behavior_metrics.to_csv(paths["best_behavior_metrics"], index=False)
+    best_latent_summary.to_csv(paths["best_latent_summary"], index=False)
+    write_factor_latent_sweep_markdown_report(paths["report"], summary, best_split_metrics)
+    return paths
