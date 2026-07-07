@@ -12,6 +12,7 @@ from latentbrain.eval.reporting import (
     write_cosmoothing_sweep_markdown_report,
     write_factor_latent_markdown_report,
     write_factor_latent_sweep_markdown_report,
+    write_lfads_audit_report,
     write_lfads_gru_evaluation_report,
     write_lfads_tuning_report,
     write_window_matched_comparison_report,
@@ -338,3 +339,32 @@ def test_lfads_tuning_report_includes_required_statements(tmp_path: Path) -> Non
     assert "This is local validation tuning only, not an official NLB leaderboard result." in report
     assert "The model is LFADS-style only, not full LFADS." in report
     assert "Generated checkpoints are local and ignored by Git." in report
+
+
+def test_lfads_audit_report_includes_required_statements(tmp_path: Path) -> None:
+    report_path = write_lfads_audit_report(
+        tmp_path / "audit_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "window_time_bins": 256,
+            "cuda_device": "Unit GPU",
+            "checkpoint_audited": "checkpoint.pt",
+            "validation_bits_per_spike": 0.1,
+            "mean_rate_reference_bits_per_spike": 0.7,
+            "mean_predicted_rate_hz": 2.0,
+            "observed_rate_hz": 3.0,
+            "prediction_reference_correlation": 0.5,
+            "active_factor_count": 1,
+            "tiny_overfit_initial_loss": 10.0,
+            "tiny_overfit_final_loss": 5.0,
+            "tiny_overfit_loss_drop_fraction": 0.5,
+            "likely_issue_flags": ["underfitting", "rate underprediction"],
+        },
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Calibration summary" in report
+    assert "Tiny subset overfit" in report
+    assert "The model is LFADS-style only, not full LFADS." in report
+    assert "This is a local diagnostic audit, not an official NLB leaderboard result." in report

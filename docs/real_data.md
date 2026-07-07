@@ -250,6 +250,18 @@ The workflow keeps the MC_Maze Small dataset hash, deterministic split, held-in/
 
 CUDA is required for real MC_Maze LFADS-style tuning workflows. If a CUDA-enabled PyTorch build or GPU is unavailable, tuning fails before model training rather than falling back to CPU.
 
+## Local LFADS-style diagnostic audit
+
+After the controlled tuning workflow, audit the tuned checkpoint with:
+
+```powershell
+python scripts/audit_lfads_gru.py --config configs/mc_maze_small_lfads_audit.yaml
+```
+
+The audit uses the same MC_Maze Small processed dataset hash, deterministic split, held-in/held-out mask, and 256-bin window as the window-matched comparison and tuning runs. It checks loss scale, bits/spike reference agreement, held-out rate calibration, factor usage, target sparsity, direct-model diagnostics, and a tiny-subset overfit run. The tiny-subset overfit run is a local diagnostic only: it is used to test whether the current objective can reduce training loss on a very small slice, not to produce a benchmark result.
+
+Generated audit tables, figures, reports, and optional checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_audit/` paths. The audit is not official NLB leaderboard performance and the model remains LFADS-style only, not full LFADS.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

@@ -788,3 +788,79 @@ def write_lfads_tuning_outputs(
     paths["best_config"].write_text(yaml.safe_dump(best_config, sort_keys=False), encoding="utf-8")
     write_lfads_tuning_report(paths["report"], summary, validation_leaderboard)
     return paths
+
+
+def write_lfads_audit_report(output_path: Path, summary: dict[str, Any]) -> Path:
+    """Write a Markdown report for the local LFADS-style diagnostic audit."""
+    flags = summary.get("likely_issue_flags", []) or ["none flagged"]
+    lines = [
+        f"# {summary.get('dataset_name')} LFADS-style diagnostic audit",
+        "",
+        "This is a local diagnostic audit, not an official NLB leaderboard result.",
+        "The model is LFADS-style only, not full LFADS.",
+        "Diagnostic overfit runs are local and not benchmark results.",
+        "",
+        "## Dataset and checkpoint",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Window length: {summary.get('window_time_bins')} bins",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Checkpoint audited: {summary.get('checkpoint_audited')}",
+        "",
+        "## Validation summary",
+        f"- Validation bits/spike: {summary.get('validation_bits_per_spike')}",
+        "- Window-matched mean-rate reference: "
+        f"{summary.get('mean_rate_reference_bits_per_spike')}",
+        "- Window-matched factor-latent reference: "
+        f"{summary.get('factor_latent_reference_bits_per_spike')}",
+        "",
+        "## Calibration summary",
+        f"- Mean predicted held-out rate: {summary.get('mean_predicted_rate_hz')}",
+        f"- Observed held-out rate: {summary.get('observed_rate_hz')}",
+        f"- Prediction/reference correlation: {summary.get('prediction_reference_correlation')}",
+        "",
+        "## Factor usage summary",
+        f"- Active factor count: {summary.get('active_factor_count')}",
+        f"- Total factor count: {summary.get('total_factor_count')}",
+        "",
+        "## Tiny subset overfit",
+        f"- Initial train loss: {summary.get('tiny_overfit_initial_loss')}",
+        f"- Final train loss: {summary.get('tiny_overfit_final_loss')}",
+        f"- Loss drop fraction: {summary.get('tiny_overfit_loss_drop_fraction')}",
+        f"- Meets configured drop criterion: {summary.get('tiny_overfit_passed')}",
+        "",
+        "## Likely issue flags",
+        *[f"- {flag}" for flag in flags],
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_lfads_audit_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tables: dict[str, pd.DataFrame],
+) -> dict[str, Path]:
+    """Write local LFADS-style audit JSON/CSV/Markdown artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "audit_summary.json",
+        "split_diagnostics": output_dir / "split_diagnostics.csv",
+        "neuron_diagnostics": output_dir / "neuron_diagnostics.csv",
+        "rate_calibration": output_dir / "rate_calibration.csv",
+        "loss_scale_diagnostics": output_dir / "loss_scale_diagnostics.csv",
+        "tiny_subset_overfit": output_dir / "tiny_subset_overfit.csv",
+        "factor_usage": output_dir / "factor_usage.csv",
+        "report": output_dir / "audit_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    for name, path in paths.items():
+        if name in {"summary", "report"}:
+            continue
+        tables.get(name, pd.DataFrame()).to_csv(path, index=False)
+    write_lfads_audit_report(paths["report"], summary)
+    return paths

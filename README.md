@@ -233,6 +233,16 @@ python scripts/tune_lfads_gru.py --config configs/mc_maze_small_lfads_gru_tuning
 
 The workflow runs a small deterministic grid capped by `search.max_runs`, keeps the MC_Maze Small dataset hash, split, held-in/held-out mask, and 256-bin crop fixed, and selects by local validation bits/spike. It compares runs only against the 256-bin window-matched scoreboard references, including the window-matched mean-rate and factor-latent baselines. Tuning outputs, reports, and checkpoints are written under ignored `results/mc_maze_small/lfads_gru_tuning/` paths and must stay local. No official NLB benchmark or leaderboard result is reported, and the model remains LFADS-style only, not full LFADS.
 
+## LFADS-style diagnostic audit
+
+After tuning, diagnose why the LFADS-style masked co-smoothing model trails simple window-matched references with:
+
+```powershell
+python scripts/audit_lfads_gru.py --config configs/mc_maze_small_lfads_audit.yaml
+```
+
+The audit reloads the same MC_Maze Small processed dataset hash, deterministic split, held-in/held-out mask, and 256-bin crop, then audits the tuned local checkpoint for loss scale, bits/spike reference agreement, rate calibration, factor usage, direct-model behavior, held-out sparsity, and tiny-subset overfit behavior. It writes local CSV/JSON/Markdown outputs and matplotlib figures under ignored `results/mc_maze_small/lfads_audit/` paths. This is only a local diagnostic audit for deciding what to fix before adding larger architecture changes; it is not an official benchmark result and the checkpoint remains LFADS-style only, not full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

@@ -48,6 +48,14 @@ Neural tuning comes after the window-matched comparison so every candidate is co
 
 Each candidate trains only on train trials, uses validation loss for checkpoint selection, and reports validation held-out prediction metrics with the existing direct-rate and factor-decoder evaluation logic. The selected run is the best local validation bits/spike run, with lower validation Poisson NLL, higher behavior mean R², smaller parameter-count estimate, and lower run index as deterministic tie-breakers. These tuning results are local validation artifacts only, not official NLB leaderboard performance, and the model remains LFADS-style only.
 
+## LFADS-style diagnostic audit
+
+When a tuned LFADS-style checkpoint remains below the window-matched mean-rate and factor-latent references, the next scientific question is not whether a larger architecture can win. The next question is whether the current objective, normalization, reference likelihood, and calibration are internally consistent. The diagnostic audit therefore comes before adding neural SDEs, controller inputs, switching dynamics, or larger tuning policies.
+
+The audit holds the dataset hash, deterministic split, held-in/held-out mask, 256-bin crop, and references fixed. It measures loss scale and bits/spike agreement, predicted-rate calibration against observed held-out rates and train-only references, factor usage and possible posterior underuse, direct-model versus factor-decoder disagreement through the existing evaluator, held-out target sparsity, and whether a tiny train subset can be overfit with the same masked co-smoothing objective. A failure to overfit the tiny subset is treated as stronger evidence for an implementation or objective issue than ordinary validation underperformance.
+
+Audit outputs are local reproducibility artifacts only. They are intended to identify likely issue flags and next debugging targets, not to report official NLB benchmark performance. The audited model remains LFADS-style only, not full LFADS.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

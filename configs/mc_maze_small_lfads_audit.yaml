@@ -1,0 +1,47 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  max_time_bins: 256
+  crop_policy: from_start
+
+runtime:
+  device: cuda
+  fail_if_cuda_unavailable: true
+
+references:
+  window_matched_mean_rate_validation_bits_per_spike: 0.7019005614036461
+  window_matched_factor_latent_validation_bits_per_spike: 0.032071735658499065
+  best_tuned_lfads_validation_bits_per_spike: 0.005572769142238611
+  best_tuned_lfads_run_id: run_009_enc64_gen96_lat16_fac32_drop0p0_hw2p0
+
+checkpoints:
+  tuned_lfads_best: results/mc_maze_small/lfads_gru_tuning/runs/run_009_enc64_gen96_lat16_fac32_drop0p0_hw2p0/checkpoints/best_validation.pt
+  masked_cosmoothing_best: results/mc_maze_small/lfads_gru_cosmoothing/checkpoints/best_validation.pt
+
+audit:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  primary_split: validation
+  rate_bins: 12
+  tiny_subset_trials: 8
+  tiny_subset_epochs: 50
+  tiny_subset_max_time_bins: 128
+  tiny_subset_learning_rate: 1.0e-3
+  tiny_subset_expected_loss_drop_fraction: 0.1
+  save_figures: true
+
+reporting:
+  output_dir: results/mc_maze_small/lfads_audit
