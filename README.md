@@ -23,8 +23,7 @@ Initialized foundation:
 Not implemented yet:
 
 - Automatic dataset download or final benchmark preprocessing pipelines
-- Model training or inference
-- LFADS, neural SDE, or switching dynamical system logic
+- Full LFADS, neural SDE, or switching dynamical system logic
 - Neural Latents Benchmark evaluation
 - Official benchmark scores, checkpoints, or model artifacts
 
@@ -164,6 +163,23 @@ python scripts/run_factor_latent_sweep.py --config configs/mc_maze_small_factor_
 ```
 
 The sweep varies latent dimension, smoothing sigma, held-out decoder alpha, and feature standardization. It selects by validation held-out bits/spike, reports behavior R² as a secondary metric, compares to the mean-rate sanity reference, and writes local ignored outputs under `results/mc_maze_small/factor_latent_sweep/`. This is not official benchmark performance, not full GPFA because no temporal GP prior is implemented, and no neural network model is trained.
+
+## LFADS-style GRU training foundation
+
+Run the first PyTorch neural modeling foundation with:
+
+```powershell
+python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru.yaml
+```
+
+For a small synthetic smoke run, generate synthetic data first and use the synthetic training config:
+
+```powershell
+python scripts/generate_synthetic_data.py --config configs/synthetic_poisson_lds.yaml
+python scripts/train_lfads_gru.py --config configs/synthetic_lfads_gru.yaml
+```
+
+This model is an LFADS-style sequential VAE foundation, not a full LFADS implementation. It uses held-in neurons as input and currently reconstructs held-in activity with a Poisson observation model; held-out co-smoothing claims come later. Metrics, checkpoints, config snapshots, and reports are local outputs under ignored `results/` paths. No official NLB leaderboard result is reported.
 
 ## Data policy
 

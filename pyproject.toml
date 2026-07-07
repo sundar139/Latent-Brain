@@ -20,6 +20,7 @@ dependencies = [
   "pydantic",
   "pydantic-settings",
   "scikit-learn",
+  "torch",
   "PyYAML",
   "python-dotenv",
   "typer",

@@ -1,0 +1,54 @@
+dataset:
+  name: synthetic_poisson_lds
+  processed_path: data/synthetic/synthetic_poisson_lds.npz
+  expected_hash:
+  bin_size_ms: 20
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+data:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  max_time_bins: 64
+  batch_size: 8
+  num_workers: 0
+  drop_last: false
+
+model:
+  name: lfads_gru
+  encoder_hidden_dim: 32
+  generator_hidden_dim: 32
+  latent_dim: 8
+  factor_dim: 16
+  dropout: 0.0
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+training:
+  seed: 2027
+  device: cpu
+  epochs: 2
+  learning_rate: 1.0e-3
+  weight_decay: 0.0
+  gradient_clip_norm: 5.0
+  kl_warmup_epochs: 2
+  log_every_batches: 10
+  checkpoint_metric: validation_loss
+  checkpoint_mode: min
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+  primary_split: validation
+  metrics:
+    - poisson_nll
+    - bits_per_spike
+
+reporting:
+  output_dir: results/synthetic_poisson_lds/lfads_gru

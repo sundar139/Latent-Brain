@@ -1,0 +1,56 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+data:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  max_time_bins: 256
+  batch_size: 4
+  num_workers: 0
+  drop_last: false
+
+model:
+  name: lfads_gru
+  input_dim:
+  output_dim:
+  encoder_hidden_dim: 64
+  generator_hidden_dim: 64
+  latent_dim: 16
+  factor_dim: 32
+  dropout: 0.1
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+training:
+  seed: 2027
+  device: auto
+  epochs: 3
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-5
+  gradient_clip_norm: 5.0
+  kl_warmup_epochs: 3
+  log_every_batches: 10
+  checkpoint_metric: validation_loss
+  checkpoint_mode: min
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+  primary_split: validation
+  metrics:
+    - poisson_nll
+    - bits_per_spike
+
+reporting:
+  output_dir: results/mc_maze_small/lfads_gru

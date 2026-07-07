@@ -455,3 +455,42 @@ def write_factor_latent_sweep_outputs(
     best_latent_summary.to_csv(paths["best_latent_summary"], index=False)
     write_factor_latent_sweep_markdown_report(paths["report"], summary, best_split_metrics)
     return paths
+
+
+def write_lfads_gru_training_report(
+    output_path: Path,
+    summary: dict[str, Any],
+) -> Path:
+    """Write a Markdown report for local LFADS-style GRU training."""
+    lines = [
+        f"# {summary.get('dataset_name')} LFADS-style GRU training report",
+        "",
+        "This is an LFADS-style sequential VAE foundation, not a full LFADS implementation.",
+        "No official NLB leaderboard result is reported.",
+        "Held-out co-smoothing is not yet claimed.",
+        "",
+        "## Dataset and model",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Model name: {summary.get('model_name')}",
+        "- Input neurons: held-in only",
+        "- Current target: held-in reconstruction",
+        f"- Input neuron count: {summary.get('input_dim')}",
+        f"- Output neuron count: {summary.get('output_dim')}",
+        f"- Encoder hidden dimension: {summary.get('encoder_hidden_dim')}",
+        f"- Generator hidden dimension: {summary.get('generator_hidden_dim')}",
+        f"- Factor dimension: {summary.get('factor_dim')}",
+        f"- Latent dimension: {summary.get('latent_dim')}",
+        "",
+        "## Training",
+        f"- Training epochs: {summary.get('epochs')}",
+        f"- KL warmup epochs: {summary.get('kl_warmup_epochs')}",
+        f"- Best validation loss: {summary.get('best_validation_loss')}",
+        f"- Final validation loss: {summary.get('final_validation_loss')}",
+        "",
+        "## Checkpoints",
+        f"- Latest checkpoint: {summary.get('latest_checkpoint')}",
+        f"- Best validation checkpoint: {summary.get('best_validation_checkpoint')}",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path

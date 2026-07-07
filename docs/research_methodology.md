@@ -16,6 +16,12 @@ The first latent baseline is Factor Analysis over smoothed held-in firing rates.
 
 Latent-dimension, smoothing, and regularization sweeps tune this transparent baseline before any neural model comparison, so future LFADS/SDE work is not compared against an avoidably weak untuned baseline.
 
+## LFADS-style sequential VAE foundation
+
+The first neural model is a minimal LFADS-style sequential VAE foundation, not a full LFADS implementation. A bidirectional GRU encoder reads held-in spike counts and parameterizes a Gaussian posterior over an initial latent condition. A GRU generator is initialized from that latent sample, emits factor trajectories, and maps factors to positive Poisson firing rates. Training uses a Poisson reconstruction term, a Gaussian KL term to a standard normal prior, KL warmup, gradient clipping, deterministic seeding, and local checkpointing.
+
+The current target is held-in reconstruction. This is intentional: it verifies PyTorch device handling, tensor datasets, model shapes, finite losses, gradients, checkpoints, and short MC_Maze Small training before adding held-out readouts or making co-smoothing claims. Held-out neurons remain masked from inputs and are available as targets for later neural co-smoothing work.
+
 ## Planned evaluation direction
 
 Evaluation is expected to include predictive quality, latent structure diagnostics, reproducibility checks, and benchmark compatibility when the project reaches that scope. No evaluation claims are made in the current repository state.

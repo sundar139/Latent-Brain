@@ -180,6 +180,18 @@ The sweep selects the best configuration by validation held-out bits/spike. Beha
 
 The same leakage policy applies: train held-in features fit standardization and Factor Analysis, train latents fit held-out and behavior decoders, and validation/test samples are evaluation-only. This is local diagnostic output, not official benchmark performance, not full GPFA without a temporal GP prior, and no neural network model is trained.
 
+## Local LFADS-style GRU smoke training
+
+MC_Maze Small is now also used for short neural training smoke runs:
+
+```powershell
+python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru.yaml
+```
+
+The run trains an LFADS-style sequential VAE foundation on held-in reconstruction only. It verifies that the PyTorch dataloaders, GRU encoder/generator, Poisson loss, KL warmup, gradient clipping, checkpointing, and report writing work on the real processed tensor. It is not full LFADS, does not claim held-out co-smoothing performance, and reports no official NLB leaderboard result.
+
+Generated neural metrics, reports, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_gru/` paths and must stay out of Git.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.
