@@ -34,6 +34,8 @@ Held-out spikes are never concatenated into the model input. They are used as su
 
 This is the natural next improvement after held-in reconstruction because it tests whether the sequential latent representation can directly support held-out neural prediction, rather than requiring a separate post hoc factor decoder. It is still LFADS-style only: there is no full LFADS controller input pathway, no AutoLFADS/PBT, and no official NLB benchmark claim.
 
+Real MC_Maze LFADS-style training and evaluation configs request CUDA explicitly so these local neural runs do not silently fall back to CPU. Synthetic smoke configs may remain CPU-compatible for ordinary tests.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

@@ -180,6 +180,7 @@ python scripts/train_lfads_gru.py --config configs/synthetic_lfads_gru.yaml
 ```
 
 This model is an LFADS-style sequential VAE foundation, not a full LFADS implementation. It uses held-in neurons as input and reconstructs held-in activity with a Poisson observation model. Metrics, checkpoints, config snapshots, and reports are local outputs under ignored `results/` paths. No official NLB leaderboard result is reported.
+The real MC_Maze LFADS-style configs request CUDA explicitly and fail fast if a CUDA-enabled PyTorch build is unavailable; synthetic configs may still run on CPU.
 
 ## LFADS-style masked co-smoothing training
 
@@ -198,6 +199,7 @@ python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_co
 ```
 
 The evaluation script creates no new neural-network checkpoint. It reports direct model held-out prediction when available, optionally also reports a train-only factor decoder, and compares local validation bits/spike to the previous LFADS-style factor evaluation, factor-latent, and mean-rate references. These outputs are local artifacts under ignored `results/mc_maze_small/lfads_gru_cosmoothing_eval/` paths, not official benchmark performance, and not a full LFADS claim.
+The real MC_Maze co-smoothing training and evaluation configs request CUDA explicitly and do not silently fall back to CPU.
 
 ## LFADS-style held-out evaluation
 

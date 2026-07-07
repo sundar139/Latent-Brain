@@ -181,6 +181,12 @@ class ReportingSection(BaseModel):
     output_dir: str = Field(min_length=1)
 
 
+class RuntimeSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device: Literal["cpu", "cuda", "auto"] = "auto"
+
+
 class LFADSGRUEvalConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -194,6 +200,7 @@ class LFADSGRUEvalConfig(BaseModel):
     reference: ReferenceSection
     evaluation: EvaluationSection
     reporting: ReportingSection
+    runtime: RuntimeSection = Field(default_factory=RuntimeSection)
 
     @model_validator(mode="after")
     def split_fractions_sum_to_one(self) -> LFADSGRUEvalConfig:
@@ -281,7 +288,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     validate_trial_split(split, dataset.trial_ids)
     validate_neuron_mask(neuron_mask, dataset.spikes.shape[2])
-    device = resolve_device("auto")
+    try:
+        device = resolve_device(config.runtime.device)
+    except RuntimeError as exc:
+        console.print(str(exc))
+        return 2
     config_dict = config.model_dump(mode="python")
     config_dict["model"]["checkpoint_path"] = str(checkpoint_path)
     config_dict["dataset"]["bin_size_ms"] = dataset.bin_size_ms

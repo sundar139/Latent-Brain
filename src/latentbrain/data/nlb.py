@@ -687,7 +687,7 @@ def _load_with_nlb_tools(
     source_files: list[Path],
 ) -> NeuralDataset:
     try:
-        from nlb_tools.nwb_interface import NWBDataset  # type: ignore[import-untyped]
+        from nlb_tools.nwb_interface import NWBDataset
     except ImportError as exc:
         raise ImportError(OPTIONAL_INSTALL_MESSAGE) from exc
 

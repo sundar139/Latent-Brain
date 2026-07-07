@@ -265,7 +265,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_rate_hz=config.model.max_rate_hz,
     )
     model = LFADSGRU(model_config)
-    device = resolve_device(config.training.device)
+    try:
+        device = resolve_device(config.training.device)
+    except RuntimeError as exc:
+        console.print(str(exc))
+        return 2
     config_dict = config.model_dump(mode="python")
     config_dict["dataset"]["bin_size_ms"] = dataset.bin_size_ms
     config_dict["model"]["input_dim"] = model_config.input_dim

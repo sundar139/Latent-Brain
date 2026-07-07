@@ -74,3 +74,6 @@ evaluation:
 
 reporting:
   output_dir: results/mc_maze_small/lfads_gru_cosmoothing_eval
+
+runtime:
+  device: cuda

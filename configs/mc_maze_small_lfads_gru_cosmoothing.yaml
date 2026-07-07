@@ -33,7 +33,7 @@ model:
 
 training:
   seed: 2027
-  device: auto
+  device: cuda
   epochs: 5
   learning_rate: 1.0e-3
   weight_decay: 1.0e-5

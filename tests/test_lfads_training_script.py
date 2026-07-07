@@ -7,6 +7,7 @@ from pathlib import Path
 from types import ModuleType
 
 import numpy as np
+import pytest
 import yaml
 
 from latentbrain.data.io import save_neural_dataset
@@ -166,3 +167,25 @@ def test_cosmoothing_script_like_run_writes_training_outputs(tmp_path: Path) -> 
     report = (output_dir / "lfads_gru_training_report.md").read_text(encoding="utf-8")
     assert "masked co-smoothing training run" in report
     assert "local validation only" in report
+
+
+def test_cuda_request_failure_returns_clear_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    module = _script_module()
+    dataset = _dataset()
+    processed_path = tmp_path / "dataset.npz"
+    save_neural_dataset(dataset, processed_path)
+    output_dir = tmp_path / "out"
+    config = _config(str(processed_path), str(output_dir), dataset.metadata["dataset_hash"])
+    config["training"]["device"] = "cuda"  # type: ignore[index]
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    def fail_cuda(device: str) -> object:
+        raise RuntimeError("CUDA was requested, but torch.cuda.is_available() is False.")
+
+    monkeypatch.setattr(module, "resolve_device", fail_cuda)
+
+    assert module.main(["--config", str(config_path)]) == 2
+    assert "CUDA was requested" in capsys.readouterr().out

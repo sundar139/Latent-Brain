@@ -6,6 +6,7 @@ from pathlib import Path
 from types import ModuleType
 
 import numpy as np
+import pytest
 import torch
 import yaml
 
@@ -217,3 +218,28 @@ def test_cosmoothing_checkpoint_evaluation_uses_direct_model_as_primary(tmp_path
     assert "direct_model" in split_metrics
     report = (output_dir / "lfads_gru_eval_report.md").read_text(encoding="utf-8")
     assert "No new neural network model was trained by this evaluation script" in report
+
+
+def test_cuda_eval_request_failure_returns_clear_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    module = _script_module()
+    dataset = _dataset()
+    processed = tmp_path / "dataset.npz"
+    save_neural_dataset(dataset, processed)
+    checkpoint = _checkpoint(tmp_path / "checkpoint.pt")
+    output_dir = tmp_path / "out"
+    config = _config(
+        str(processed), str(checkpoint), str(output_dir), dataset.metadata["dataset_hash"]
+    )
+    config["runtime"] = {"device": "cuda"}
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    def fail_cuda(device: str) -> object:
+        raise RuntimeError("CUDA was requested, but torch.cuda.is_available() is False.")
+
+    monkeypatch.setattr(module, "resolve_device", fail_cuda)
+
+    assert module.main(["--config", str(config_path)]) == 2
+    assert "CUDA was requested" in capsys.readouterr().out

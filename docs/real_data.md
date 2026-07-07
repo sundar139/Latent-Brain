@@ -191,6 +191,7 @@ python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru.yaml
 The run trains an LFADS-style sequential VAE foundation on held-in reconstruction only. It verifies that the PyTorch dataloaders, GRU encoder/generator, Poisson loss, KL warmup, gradient clipping, checkpointing, and report writing work on the real processed tensor. It is not full LFADS, does not claim held-out co-smoothing performance, and reports no official NLB leaderboard result.
 
 Generated neural metrics, reports, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_gru/` paths and must stay out of Git.
+The real MC_Maze LFADS-style training and evaluation configs request CUDA explicitly; if CUDA is unavailable, scripts fail with a clear runtime message instead of falling back to CPU.
 
 ## Local LFADS-style held-out evaluation
 
@@ -223,6 +224,7 @@ python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_co
 The evaluation reports direct model held-out rates when the checkpoint output covers all neurons, and can also report the factor-decoder diagnostic for continuity with the previous LFADS-style evaluation. It creates JSON, CSV, and Markdown outputs under ignored `results/mc_maze_small/lfads_gru_cosmoothing_eval/` paths and creates no new neural-network checkpoint.
 
 This MC_Maze Small masked co-smoothing run is local validation only. It is not full LFADS, not official NLB leaderboard performance, and all generated checkpoints and result files must remain out of Git.
+The real MC_Maze masked co-smoothing configs also request CUDA explicitly and are intended for a CUDA-enabled PyTorch environment.
 
 ## Storage and version control
 
