@@ -156,6 +156,18 @@ The sweep evaluates smoothing sigma, ridge alpha, feature standardization, and i
 
 This sweep helps select and diagnose a transparent baseline before more complex latent-dynamics models are considered. It is not an official NLB leaderboard result and does not train a neural network model.
 
+## Local factor latent baseline
+
+After the mean-rate, behavior-decoder, co-smoothing ridge, and co-smoothing sweep checks pass, run the first non-neural latent-variable sanity baseline:
+
+```powershell
+python scripts/run_factor_latent_baseline.py --config configs/mc_maze_small_factor_latent.yaml
+```
+
+The baseline smooths held-in spikes into firing-rate features, computes feature standardization from train trials only, fits Factor Analysis on train held-in samples only, and transforms train/validation/test held-in samples into latent trajectories. Held-out rate decoding, behavior velocity decoding, and train-only held-out mean-rate references are fit from train trials only; validation and test samples are evaluation-only.
+
+This is a transparent precursor to stronger GPFA/LFADS/SDE models. It is GPFA-style only because no temporal GP prior is implemented. It is not an official NLB leaderboard result and does not train a neural network model.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

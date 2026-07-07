@@ -10,6 +10,7 @@ from latentbrain.eval.reporting import (
     write_baseline_outputs,
     write_cosmoothing_markdown_report,
     write_cosmoothing_sweep_markdown_report,
+    write_factor_latent_markdown_report,
 )
 
 
@@ -141,3 +142,37 @@ def test_cosmoothing_sweep_report_includes_disclaimers_and_best_config(tmp_path:
     assert "No neural network model was trained" in report
     assert "Best smoothing sigma: 10.0" in report
     assert "Best ridge alpha: 1.0" in report
+
+
+def test_factor_latent_report_includes_required_disclaimers(tmp_path: Path) -> None:
+    report_path = write_factor_latent_markdown_report(
+        tmp_path / "factor_latent_report.md",
+        metrics_summary={
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "model_name": "factor analysis latent baseline",
+            "input_neuron_group": "heldin",
+            "target_neuron_group": "heldout",
+            "smoothing": {"method": "gaussian", "sigma_ms": 50.0},
+            "latent_dim": 2,
+            "heldout_decoder_name": "ridge",
+            "heldout_decoder_alpha": 1.0,
+            "behavior_decoder_enabled": True,
+            "behavior_decoder_alpha": 1.0,
+            "fit_policy": "train trials only",
+            "standardization_policy": "train-only statistics",
+            "reference_policy": "train-only held-out mean rates",
+            "primary_bits_per_spike": 0.1,
+            "primary_poisson_nll": 5.0,
+            "primary_behavior_mean_r2": 0.2,
+        },
+        split_metrics=pd.DataFrame(
+            {"split": ["validation"], "bits_per_spike": [0.1], "poisson_nll": [5.0]}
+        ),
+        behavior_metrics=pd.DataFrame({"split": ["validation"], "target_name": ["x"], "r2": [0.2]}),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "local latent-variable sanity baseline, not an official NLB leaderboard result" in report
+    assert "No neural network model was trained" in report
+    assert "GPFA-style only; no temporal GP prior is implemented" in report

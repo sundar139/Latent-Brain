@@ -145,6 +145,16 @@ python scripts/run_cosmoothing_sweep.py --config configs/mc_maze_small_cosmoothi
 
 The sweep varies smoothing sigma, ridge alpha, feature standardization, and intercept use. Every fit uses train trials only, held-in neurons as inputs, held-out neurons as targets, train-only feature standardization when enabled, and a train-only held-out mean-rate reference. It evaluates train, validation, and test splits, selects the best configuration by validation held-out bits/spike, and writes local CSV/JSON/Markdown outputs under ignored `results/mc_maze_small/cosmoothing_sweep/` paths. These files are diagnostic artifacts ignored by Git, not official benchmark performance, and no neural network model is trained.
 
+## Factor latent baseline
+
+Run the first non-neural latent-variable sanity baseline with:
+
+```powershell
+python scripts/run_factor_latent_baseline.py --config configs/mc_maze_small_factor_latent.yaml
+```
+
+This baseline smooths held-in spike counts into firing rates, fits train-only Factor Analysis latents, decodes held-out neuron rates from those latents, and decodes behavior velocity when behavior is available. It is GPFA-style only: no temporal GP prior is implemented, so it is not a full GPFA claim. Outputs are local artifacts under ignored `results/mc_maze_small/factor_latent/` paths, not official benchmark performance, and no neural network model is trained.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

@@ -1,0 +1,72 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+features:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  smoothing:
+    method: gaussian
+    sigma_ms: 50.0
+    truncate: 4.0
+  convert_to_hz: true
+  standardize_features: true
+
+latent_model:
+  name: factor_analysis
+  latent_dim: 8
+  random_state: 2027
+  max_iter: 1000
+  tol: 1.0e-4
+  train_trials_only: true
+
+heldout_decoder:
+  name: ridge
+  alpha: 1000.0
+  fit_intercept: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  train_trials_only: true
+
+behavior_decoder:
+  enabled: true
+  alpha: 100.0
+  fit_intercept: true
+  target_prefixes:
+    - hand_pos
+    - cursor_pos
+  derive_velocity: true
+  velocity_method: central_difference
+  standardize_targets: true
+  train_trials_only: true
+
+reference:
+  name: train_mean_rate
+  fit_train_trials_only: true
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  primary_split: validation
+  primary_metric: bits_per_spike
+  metrics:
+    - poisson_nll
+    - poisson_log_likelihood
+    - bits_per_spike
+    - mse_rate_hz
+    - mae_rate_hz
+    - behavior_r2
+
+reporting:
+  output_dir: results/mc_maze_small/factor_latent

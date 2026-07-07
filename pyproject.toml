@@ -19,6 +19,7 @@ dependencies = [
   "scipy",
   "pydantic",
   "pydantic-settings",
+  "scikit-learn",
   "PyYAML",
   "python-dotenv",
   "typer",
