@@ -22,6 +22,12 @@ The first neural model is a minimal LFADS-style sequential VAE foundation, not a
 
 The current target is held-in reconstruction. This is intentional: it verifies PyTorch device handling, tensor datasets, model shapes, finite losses, gradients, checkpoints, and short MC_Maze Small training before adding held-out readouts or making co-smoothing claims. Held-out neurons remain masked from inputs and are available as targets for later neural co-smoothing work.
 
+## LFADS-style factor evaluation
+
+The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.
+
+Poisson likelihood, log-likelihood, and bits/spike are computed against a train-only held-out mean-rate reference. A behavior velocity decoder from the same factors is a secondary diagnostic when behavior is available, and it also uses train trials only for fitting and standardization. This is local co-smoothing-style evaluation of a minimal LFADS-style foundation, not a full LFADS implementation and not an official NLB leaderboard result.
+
 ## Planned evaluation direction
 
 Evaluation is expected to include predictive quality, latent structure diagnostics, reproducibility checks, and benchmark compatibility when the project reaches that scope. No evaluation claims are made in the current repository state.

@@ -181,6 +181,18 @@ python scripts/train_lfads_gru.py --config configs/synthetic_lfads_gru.yaml
 
 This model is an LFADS-style sequential VAE foundation, not a full LFADS implementation. It uses held-in neurons as input and currently reconstructs held-in activity with a Poisson observation model; held-out co-smoothing claims come later. Metrics, checkpoints, config snapshots, and reports are local outputs under ignored `results/` paths. No official NLB leaderboard result is reported.
 
+## LFADS-style held-out evaluation
+
+After the short LFADS-style GRU training command has created a local checkpoint, evaluate held-out neural prediction from its factors with:
+
+```powershell
+python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_eval.yaml
+```
+
+The evaluation script loads the existing checkpoint and does not train a new neural network. It feeds held-in spikes through the LFADS-style model, extracts factor trajectories, and fits a train-only ridge decoder from those factors to held-out neuron rates. Validation and test samples are evaluation-only, and the train-only held-out mean rate remains the reference for bits/spike. Behavior velocity decoding from factors is reported as a secondary local diagnostic when behavior is available.
+
+Evaluation JSON, CSV, and Markdown outputs are local artifacts under ignored `results/mc_maze_small/lfads_gru_eval/` paths. This is a local held-out evaluation, not an official NLB leaderboard result, and it is not a full LFADS claim.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

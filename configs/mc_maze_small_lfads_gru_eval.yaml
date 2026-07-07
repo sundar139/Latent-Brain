@@ -1,0 +1,71 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+data:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  max_time_bins: 256
+  batch_size: 4
+  num_workers: 0
+  drop_last: false
+
+model:
+  name: lfads_gru
+  checkpoint_path: results/mc_maze_small/lfads_gru/checkpoints/best_validation.pt
+  encoder_hidden_dim: 64
+  generator_hidden_dim: 64
+  latent_dim: 16
+  factor_dim: 32
+  dropout: 0.1
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+heldout_decoder:
+  name: ridge
+  alpha: 1000.0
+  fit_intercept: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  standardize_factors: true
+  train_trials_only: true
+
+behavior_decoder:
+  enabled: true
+  alpha: 100.0
+  fit_intercept: true
+  standardize_factors: true
+  standardize_targets: true
+  target_prefixes:
+    - hand_pos
+    - cursor_pos
+  derive_velocity: true
+  velocity_method: central_difference
+  train_trials_only: true
+
+reference:
+  name: train_mean_rate
+  fit_train_trials_only: true
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  primary_split: validation
+  baseline_references:
+    mean_rate_validation_bits_per_spike: 0.5465273967210786
+    factor_latent_best_validation_bits_per_spike: 0.12511028113946446
+    factor_latent_best_behavior_mean_r2: 0.03509651986829149
+
+reporting:
+  output_dir: results/mc_maze_small/lfads_gru_eval

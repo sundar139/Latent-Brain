@@ -494,3 +494,113 @@ def write_lfads_gru_training_report(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return output_path
+
+
+def write_lfads_gru_evaluation_report(output_path: Path, summary: dict[str, Any]) -> Path:
+    """Write a Markdown report for local LFADS-style held-out evaluation."""
+    lines = [
+        f"# {summary.get('dataset_name')} LFADS-style GRU held-out evaluation report",
+        "",
+        "This is an LFADS-style sequential VAE foundation, not a full LFADS implementation.",
+        "This is a local held-out evaluation, not an official NLB leaderboard result.",
+        "No new neural network model was trained by this evaluation script.",
+        "",
+        "## Dataset and checkpoint",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Checkpoint path: {summary.get('checkpoint_path')}",
+        f"- Model name: {summary.get('model_name')}",
+        "- Input group: held-in neurons",
+        "- Held-out target group: held-out neurons",
+        f"- Factor dimension: {summary.get('factor_dim')}",
+        f"- Latent dimension: {summary.get('latent_dim')}",
+        "",
+        "## Decoders",
+        f"- Held-out decoder alpha: {summary.get('heldout_decoder_alpha')}",
+        f"- Behavior decoder enabled: {summary.get('behavior_decoder_enabled')}",
+        f"- Behavior decoder alpha: {summary.get('behavior_decoder_alpha')}",
+        f"- Fit policy: {summary.get('fit_policy')}",
+        "",
+        "## Primary metrics",
+        f"- Primary split: {summary.get('primary_split')}",
+        f"- Primary validation bits/spike: {summary.get('primary_bits_per_spike')}",
+        f"- Primary validation Poisson NLL: {summary.get('primary_poisson_nll')}",
+        f"- Primary validation behavior mean R²: {summary.get('primary_behavior_mean_r2')}",
+        "",
+        "## Baseline comparisons",
+        (
+            "- Mean-rate validation bits/spike: "
+            f"{summary.get('mean_rate_validation_bits_per_spike')}"
+        ),
+        (
+            "- Factor latent best validation bits/spike: "
+            f"{summary.get('factor_latent_best_validation_bits_per_spike')}"
+        ),
+        f"- Beats mean-rate reference: {summary.get('beats_mean_rate_reference')}",
+        f"- Beats factor-latent reference: {summary.get('beats_factor_latent_reference')}",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def _decoder_coefficients_table(
+    coefficients: np.ndarray,
+    target_names: list[str],
+    target_indices: list[int] | None = None,
+) -> pd.DataFrame:
+    rows = []
+    for factor_index in range(coefficients.shape[0]):
+        for target_rank, target_name in enumerate(target_names):
+            row = {
+                "factor_index": factor_index,
+                "target_name": target_name,
+                "target_rank": target_rank,
+                "coefficient": float(coefficients[factor_index, target_rank]),
+            }
+            if target_indices is not None:
+                row["target_neuron_index"] = int(target_indices[target_rank])
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def write_lfads_gru_evaluation_outputs(
+    output_dir: Path,
+    metrics_summary: dict[str, Any],
+    split_metrics: pd.DataFrame,
+    neuron_metrics: pd.DataFrame,
+    behavior_metrics: pd.DataFrame,
+    factor_summary: pd.DataFrame,
+    metadata: dict[str, Any],
+) -> dict[str, Path]:
+    """Write local LFADS-style held-out evaluation outputs."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "metrics_summary": output_dir / "metrics_summary.json",
+        "split_metrics": output_dir / "split_metrics.csv",
+        "neuron_metrics": output_dir / "neuron_metrics.csv",
+        "behavior_metrics": output_dir / "behavior_metrics.csv",
+        "factor_summary": output_dir / "factor_summary.csv",
+        "heldout_decoder_coefficients": output_dir / "heldout_decoder_coefficients.csv",
+        "behavior_decoder_coefficients": output_dir / "behavior_decoder_coefficients.csv",
+        "report": output_dir / "lfads_gru_eval_report.md",
+    }
+    paths["metrics_summary"].write_text(
+        json.dumps(metrics_summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    split_metrics.to_csv(paths["split_metrics"], index=False)
+    neuron_metrics.to_csv(paths["neuron_metrics"], index=False)
+    behavior_metrics.to_csv(paths["behavior_metrics"], index=False)
+    factor_summary.to_csv(paths["factor_summary"], index=False)
+    target_indices = [int(value) for value in metadata.get("target_neuron_indices", [])]
+    _decoder_coefficients_table(
+        np.asarray(metadata["heldout_decoder_coefficients"], dtype=np.float64),
+        [str(index) for index in target_indices],
+        target_indices,
+    ).to_csv(paths["heldout_decoder_coefficients"], index=False)
+    _decoder_coefficients_table(
+        np.asarray(metadata["behavior_decoder_coefficients"], dtype=np.float64),
+        [str(value) for value in metadata.get("behavior_target_names", [])],
+    ).to_csv(paths["behavior_decoder_coefficients"], index=False)
+    write_lfads_gru_evaluation_report(paths["report"], metrics_summary)
+    return paths

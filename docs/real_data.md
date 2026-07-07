@@ -192,6 +192,18 @@ The run trains an LFADS-style sequential VAE foundation on held-in reconstructio
 
 Generated neural metrics, reports, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_gru/` paths and must stay out of Git.
 
+## Local LFADS-style held-out evaluation
+
+After the short training smoke run has produced `results/mc_maze_small/lfads_gru/checkpoints/best_validation.pt`, evaluate held-out prediction from checkpointed LFADS-style factors with:
+
+```powershell
+python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_eval.yaml
+```
+
+The evaluation loads the checkpoint, extracts factors from held-in spikes, and fits train-only ridge decoders for held-out neuron rates and optional behavior velocity targets. Validation and test trials are never used for decoder fitting or standardization. The script writes JSON, CSV, and Markdown outputs under ignored `results/mc_maze_small/lfads_gru_eval/` paths and creates no new checkpoints.
+
+This MC_Maze Small evaluation is local only. It is not a full LFADS implementation, not a neural network retraining command, and not an official NLB leaderboard result.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

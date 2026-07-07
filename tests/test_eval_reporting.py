@@ -12,6 +12,7 @@ from latentbrain.eval.reporting import (
     write_cosmoothing_sweep_markdown_report,
     write_factor_latent_markdown_report,
     write_factor_latent_sweep_markdown_report,
+    write_lfads_gru_evaluation_report,
 )
 
 
@@ -212,3 +213,34 @@ def test_factor_latent_sweep_report_includes_disclaimers_and_best_config(
     assert "not full GPFA because no temporal GP prior is implemented" in report
     assert "Best latent dimension: 2" in report
     assert "Best held-out decoder alpha: 1.0" in report
+
+
+def test_lfads_evaluation_report_includes_disclaimers_and_references(tmp_path: Path) -> None:
+    report_path = write_lfads_gru_evaluation_report(
+        tmp_path / "lfads_gru_eval_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "checkpoint_path": "results/mc_maze_small/lfads_gru/checkpoints/best_validation.pt",
+            "model_name": "lfads_gru",
+            "factor_dim": 32,
+            "latent_dim": 16,
+            "heldout_decoder_alpha": 1000.0,
+            "behavior_decoder_enabled": True,
+            "behavior_decoder_alpha": 100.0,
+            "fit_policy": "train trials only",
+            "primary_split": "validation",
+            "primary_bits_per_spike": 0.2,
+            "primary_poisson_nll": 4.0,
+            "primary_behavior_mean_r2": 0.1,
+            "mean_rate_validation_bits_per_spike": 0.5,
+            "factor_latent_best_validation_bits_per_spike": 0.125,
+        },
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "LFADS-style sequential VAE foundation, not a full LFADS implementation" in report
+    assert "local held-out evaluation, not an official NLB leaderboard result" in report
+    assert "No new neural network model was trained by this evaluation script" in report
+    assert "Mean-rate validation bits/spike: 0.5" in report
+    assert "Factor latent best validation bits/spike: 0.125" in report
