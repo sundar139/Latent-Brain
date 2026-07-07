@@ -238,6 +238,18 @@ python scripts/run_window_matched_comparison.py --config configs/mc_maze_small_w
 
 The pipeline reloads the processed dataset, verifies the configured dataset hash, applies the same 256-bin crop, recreates the deterministic split and neuron mask, recomputes mean-rate/ridge/factor-latent baselines on the cropped tensor, and evaluates existing LFADS-style checkpoints without training a new neural network. Generated tables and the Markdown report are written under ignored `results/mc_maze_small/window_matched_comparison/` paths. They are local reproducibility artifacts only, not official NLB leaderboard results.
 
+## Local LFADS-style CUDA tuning
+
+Run the controlled masked co-smoothing tuning workflow with:
+
+```powershell
+python scripts/tune_lfads_gru.py --config configs/mc_maze_small_lfads_gru_tuning.yaml
+```
+
+The workflow keeps the MC_Maze Small dataset hash, deterministic split, held-in/held-out mask, and 256-bin crop fixed while training a small deterministic CUDA grid. It compares validation bits/spike only to the window-matched mean-rate, factor-latent, and previous LFADS-style masked references. Results, reports, and checkpoints are written under ignored `results/mc_maze_small/lfads_gru_tuning/` paths. This is local validation tuning only, not official NLB leaderboard performance, and the model is LFADS-style only, not full LFADS.
+
+CUDA is required for real MC_Maze LFADS-style tuning workflows. If a CUDA-enabled PyTorch build or GPU is unavailable, tuning fails before model training rather than falling back to CPU.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

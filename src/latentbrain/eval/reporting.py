@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
+import yaml
 
 
 def _json_default(value: object) -> object:
@@ -707,4 +708,83 @@ def write_window_matched_comparison_outputs(
     validation_leaderboard.to_csv(paths["validation_leaderboard"], index=False)
     behavior_comparison.to_csv(paths["behavior_comparison"], index=False)
     write_window_matched_comparison_report(paths["report"], summary, validation_leaderboard)
+    return paths
+
+
+def write_lfads_tuning_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    validation_leaderboard: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local LFADS-style CUDA tuning."""
+    refs = dict(summary.get("baseline_references", {}))
+    best_params = json.loads(json.dumps(summary.get("best_run_params"), default=_json_default))
+    lines = [
+        f"# {summary.get('dataset_name')} LFADS-style GRU tuning report",
+        "",
+        "This is local validation tuning only, not an official NLB leaderboard result.",
+        "The model is LFADS-style only, not full LFADS.",
+        "Generated checkpoints are local and ignored by Git.",
+        "",
+        "## Dataset and window",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Window length: {summary.get('window_time_bins')} bins",
+        f"- Window duration: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        "",
+        "## Runs",
+        f"- Runs attempted: {summary.get('runs_attempted')}",
+        f"- Successful runs: {summary.get('successful_runs')}",
+        f"- Best run ID: {summary.get('best_run_id')}",
+        f"- Best run parameters: {best_params}",
+        f"- Best validation bits/spike: {summary.get('best_validation_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        f"- Best validation behavior mean R²: {summary.get('best_validation_behavior_mean_r2')}",
+        "",
+        "## Validation leaderboard",
+        *_format_table(validation_leaderboard),
+        "",
+        "## Baseline comparisons",
+        "- Window-matched mean-rate validation bits/spike: "
+        f"{refs.get('window_matched_mean_rate_validation_bits_per_spike')}",
+        f"- Beats window-matched mean-rate: {summary.get('beats_window_matched_mean_rate')}",
+        "- Window-matched factor-latent validation bits/spike: "
+        f"{refs.get('window_matched_factor_latent_validation_bits_per_spike')}",
+        "- Beats window-matched factor-latent: "
+        f"{summary.get('beats_window_matched_factor_latent')}",
+        "- Previous LFADS-style masked direct validation bits/spike: "
+        f"{refs.get('previous_lfads_masked_direct_validation_bits_per_spike')}",
+        "- Beats previous LFADS-style masked direct: "
+        f"{summary.get('beats_previous_lfads_masked_direct')}",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_lfads_tuning_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tuning_results: pd.DataFrame,
+    validation_leaderboard: pd.DataFrame,
+    best_config: dict[str, Any],
+) -> dict[str, Path]:
+    """Write local LFADS-style tuning tables and report."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "tuning_summary.json",
+        "tuning_results": output_dir / "tuning_results.csv",
+        "validation_leaderboard": output_dir / "validation_leaderboard.csv",
+        "best_config": output_dir / "best_config.yaml",
+        "report": output_dir / "tuning_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    tuning_results.to_csv(paths["tuning_results"], index=False)
+    validation_leaderboard.to_csv(paths["validation_leaderboard"], index=False)
+    paths["best_config"].write_text(yaml.safe_dump(best_config, sort_keys=False), encoding="utf-8")
+    write_lfads_tuning_report(paths["report"], summary, validation_leaderboard)
     return paths

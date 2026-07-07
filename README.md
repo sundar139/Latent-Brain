@@ -223,6 +223,16 @@ python scripts/run_window_matched_comparison.py --config configs/mc_maze_small_w
 
 The comparison script evaluates windowed mean-rate, ridge co-smoothing, factor-latent, and existing LFADS-style checkpoints without training a new neural network. It writes `comparison_summary.json`, `comparison_metrics.csv`, `validation_leaderboard.csv`, `behavior_comparison.csv`, and `comparison_report.md` under ignored `results/mc_maze_small/window_matched_comparison/` paths. These are local comparison artifacts only, not official benchmark outputs, and neural methods remain LFADS-style only rather than full LFADS.
 
+## LFADS-style CUDA tuning
+
+Run the controlled CUDA tuning workflow for the LFADS-style masked co-smoothing model with:
+
+```powershell
+python scripts/tune_lfads_gru.py --config configs/mc_maze_small_lfads_gru_tuning.yaml
+```
+
+The workflow runs a small deterministic grid capped by `search.max_runs`, keeps the MC_Maze Small dataset hash, split, held-in/held-out mask, and 256-bin crop fixed, and selects by local validation bits/spike. It compares runs only against the 256-bin window-matched scoreboard references, including the window-matched mean-rate and factor-latent baselines. Tuning outputs, reports, and checkpoints are written under ignored `results/mc_maze_small/lfads_gru_tuning/` paths and must stay local. No official NLB benchmark or leaderboard result is reported, and the model remains LFADS-style only, not full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

@@ -42,6 +42,12 @@ Local method rankings are meaningful only when every method uses the same datase
 
 The window-matched comparison pipeline recomputes the transparent baselines and evaluates existing LFADS-style checkpoints on the same cropped tensor before building a validation leaderboard. This matters before tuning neural models because apparent improvements can come from different spike totals, reference likelihoods, or time windows rather than a better latent representation. The comparison remains local: it is not an official NLB leaderboard result, and LFADS-style checkpoints are not full LFADS.
 
+## Controlled LFADS-style CUDA tuning
+
+Neural tuning comes after the window-matched comparison so every candidate is compared against references computed on the same local scoreboard. The controlled LFADS-style tuning workflow fixes the MC_Maze Small dataset hash, deterministic trial split, deterministic held-in/held-out neuron mask, 256-bin crop, Poisson likelihood convention, bits/spike reference, and behavior target convention. The grid order is deterministic and capped by `search.max_runs`, so local compute stays practical and reproducible.
+
+Each candidate trains only on train trials, uses validation loss for checkpoint selection, and reports validation held-out prediction metrics with the existing direct-rate and factor-decoder evaluation logic. The selected run is the best local validation bits/spike run, with lower validation Poisson NLL, higher behavior mean R², smaller parameter-count estimate, and lower run index as deterministic tie-breakers. These tuning results are local validation artifacts only, not official NLB leaderboard performance, and the model remains LFADS-style only.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

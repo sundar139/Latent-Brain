@@ -13,6 +13,7 @@ from latentbrain.eval.reporting import (
     write_factor_latent_markdown_report,
     write_factor_latent_sweep_markdown_report,
     write_lfads_gru_evaluation_report,
+    write_lfads_tuning_report,
     write_window_matched_comparison_report,
 )
 
@@ -293,3 +294,47 @@ def test_window_matched_report_includes_required_caveats(tmp_path: Path) -> None
     assert "not an official NLB leaderboard result" in report
     assert "LFADS-style only, not full LFADS" in report
     assert "No new neural network model was trained" in report
+
+
+def test_lfads_tuning_report_includes_required_statements(tmp_path: Path) -> None:
+    report_path = write_lfads_tuning_report(
+        tmp_path / "tuning_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "window_time_bins": 256,
+            "window_seconds": 1.28,
+            "cuda_device": "Unit GPU",
+            "runs_attempted": 2,
+            "successful_runs": 1,
+            "best_run_id": "run_000",
+            "best_run_params": {"latent_dim": 16, "factor_dim": 32},
+            "best_validation_bits_per_spike": 0.2,
+            "best_validation_poisson_nll": 5.0,
+            "best_validation_behavior_mean_r2": 0.1,
+            "beats_window_matched_mean_rate": False,
+            "beats_window_matched_factor_latent": True,
+            "beats_previous_lfads_masked_direct": True,
+            "baseline_references": {
+                "window_matched_mean_rate_validation_bits_per_spike": 0.7,
+                "window_matched_factor_latent_validation_bits_per_spike": 0.03,
+                "previous_lfads_masked_direct_validation_bits_per_spike": -0.04,
+            },
+        },
+        pd.DataFrame(
+            {
+                "rank": [1],
+                "run_id": ["run_000"],
+                "validation_bits_per_spike": [0.2],
+                "validation_poisson_nll": [5.0],
+                "validation_behavior_mean_r2": [0.1],
+            }
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "CUDA device: Unit GPU" in report
+    assert "window-matched mean-rate" in report
+    assert "This is local validation tuning only, not an official NLB leaderboard result." in report
+    assert "The model is LFADS-style only, not full LFADS." in report
+    assert "Generated checkpoints are local and ignored by Git." in report

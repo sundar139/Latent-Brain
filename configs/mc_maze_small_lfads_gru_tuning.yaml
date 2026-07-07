@@ -1,0 +1,87 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+data:
+  input_neuron_group: heldin
+  target_neuron_group: heldout
+  max_time_bins: 256
+  batch_size: 4
+  num_workers: 0
+  drop_last: false
+
+runtime:
+  device: cuda
+  fail_if_cuda_unavailable: true
+
+search:
+  max_runs: 12
+  selection_metric: validation_bits_per_spike
+  selection_mode: max
+  run_order: deterministic
+
+grid:
+  encoder_hidden_dim:
+    - 64
+    - 96
+  generator_hidden_dim:
+    - 64
+    - 96
+  latent_dim:
+    - 16
+    - 32
+  factor_dim:
+    - 32
+  dropout:
+    - 0.0
+    - 0.1
+  learning_rate:
+    - 1.0e-3
+  weight_decay:
+    - 1.0e-5
+  heldout_loss_weight:
+    - 1.0
+    - 2.0
+  kl_warmup_epochs:
+    - 5
+
+model:
+  name: lfads_gru
+  input_dim: null
+  output_dim: all
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+training:
+  seed: 2027
+  epochs: 10
+  gradient_clip_norm: 5.0
+  heldin_loss_weight: 1.0
+  loss_normalization: per_observed_spike_bin
+  log_every_batches: 10
+  checkpoint_metric: validation_total_loss
+  checkpoint_mode: min
+
+evaluation:
+  primary_split: validation
+  primary_metric: bits_per_spike
+  direct_model_primary: true
+  also_evaluate_factor_decoder: true
+  behavior_decoder_enabled: true
+  baseline_references:
+    window_matched_mean_rate_validation_bits_per_spike: 0.7019005614036461
+    window_matched_factor_latent_validation_bits_per_spike: 0.032071735658499065
+    previous_lfads_masked_direct_validation_bits_per_spike: -0.04322328107677573
+    previous_lfads_masked_factor_decoder_validation_bits_per_spike: -0.014566751715440028
+
+reporting:
+  output_dir: results/mc_maze_small/lfads_gru_tuning
