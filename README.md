@@ -179,7 +179,25 @@ python scripts/generate_synthetic_data.py --config configs/synthetic_poisson_lds
 python scripts/train_lfads_gru.py --config configs/synthetic_lfads_gru.yaml
 ```
 
-This model is an LFADS-style sequential VAE foundation, not a full LFADS implementation. It uses held-in neurons as input and currently reconstructs held-in activity with a Poisson observation model; held-out co-smoothing claims come later. Metrics, checkpoints, config snapshots, and reports are local outputs under ignored `results/` paths. No official NLB leaderboard result is reported.
+This model is an LFADS-style sequential VAE foundation, not a full LFADS implementation. It uses held-in neurons as input and reconstructs held-in activity with a Poisson observation model. Metrics, checkpoints, config snapshots, and reports are local outputs under ignored `results/` paths. No official NLB leaderboard result is reported.
+
+## LFADS-style masked co-smoothing training
+
+Train the LFADS-style GRU with a masked co-smoothing objective using held-in spikes as the only model input and all-neuron rates as the model output:
+
+```powershell
+python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru_cosmoothing.yaml
+```
+
+In this run the model input dimension is the held-in neuron count, while the readout predicts rates for all neurons. Held-in reconstruction loss is computed on held-in targets, and held-out prediction loss is computed only from train-trial held-out targets during optimization. Validation and test held-out spikes remain evaluation-only. The run writes local metrics, reports, and checkpoints under ignored `results/mc_maze_small/lfads_gru_cosmoothing/` paths.
+
+Evaluate the checkpoint with direct model held-out rates and the factor-decoder diagnostic with:
+
+```powershell
+python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_cosmoothing_eval.yaml
+```
+
+The evaluation script creates no new neural-network checkpoint. It reports direct model held-out prediction when available, optionally also reports a train-only factor decoder, and compares local validation bits/spike to the previous LFADS-style factor evaluation, factor-latent, and mean-rate references. These outputs are local artifacts under ignored `results/mc_maze_small/lfads_gru_cosmoothing_eval/` paths, not official benchmark performance, and not a full LFADS claim.
 
 ## LFADS-style held-out evaluation
 

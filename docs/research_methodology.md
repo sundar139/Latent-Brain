@@ -20,7 +20,19 @@ Latent-dimension, smoothing, and regularization sweeps tune this transparent bas
 
 The first neural model is a minimal LFADS-style sequential VAE foundation, not a full LFADS implementation. A bidirectional GRU encoder reads held-in spike counts and parameterizes a Gaussian posterior over an initial latent condition. A GRU generator is initialized from that latent sample, emits factor trajectories, and maps factors to positive Poisson firing rates. Training uses a Poisson reconstruction term, a Gaussian KL term to a standard normal prior, KL warmup, gradient clipping, deterministic seeding, and local checkpointing.
 
-The current target is held-in reconstruction. This is intentional: it verifies PyTorch device handling, tensor datasets, model shapes, finite losses, gradients, checkpoints, and short MC_Maze Small training before adding held-out readouts or making co-smoothing claims. Held-out neurons remain masked from inputs and are available as targets for later neural co-smoothing work.
+The initial target was held-in reconstruction. This was intentional: it verified PyTorch device handling, tensor datasets, model shapes, finite losses, gradients, checkpoints, and short MC_Maze Small training before adding held-out readouts.
+
+## LFADS-style masked co-smoothing objective
+
+The next architectural improvement keeps the same minimal LFADS-style GRU foundation but changes the readout and objective. Held-in spike counts remain the only sequence input. The model readout can predict all-neuron firing rates, and the training objective combines three terms:
+
+- held-in Poisson reconstruction loss on held-in targets;
+- held-out Poisson prediction loss on masked held-out targets from train trials only;
+- Gaussian KL regularization on the inferred initial latent condition, with warmup.
+
+Held-out spikes are never concatenated into the model input. They are used as supervised targets for the train split when the masked co-smoothing objective is enabled. Validation and test held-out spikes are evaluation-only; they may be used to report local validation/test losses and select the local checkpoint by validation total loss, but they do not update model parameters.
+
+This is the natural next improvement after held-in reconstruction because it tests whether the sequential latent representation can directly support held-out neural prediction, rather than requiring a separate post hoc factor decoder. It is still LFADS-style only: there is no full LFADS controller input pathway, no AutoLFADS/PBT, and no official NLB benchmark claim.
 
 ## LFADS-style factor evaluation
 

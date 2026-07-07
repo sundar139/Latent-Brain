@@ -35,6 +35,7 @@ from latentbrain.torch.datasets import create_dataloaders, create_torch_datasets
 
 SPLIT_COLUMNS = [
     "split",
+    "prediction_source",
     "n_trials",
     "n_time_bins",
     "factor_dim",
@@ -51,6 +52,7 @@ SPLIT_COLUMNS = [
 ]
 NEURON_COLUMNS = [
     "split",
+    "prediction_source",
     "target_neuron_index",
     "target_neuron_rank",
     "spike_count",
@@ -64,6 +66,15 @@ NEURON_COLUMNS = [
     "mean_predicted_rate_hz",
 ]
 BEHAVIOR_COLUMNS = ["split", "target_name", "r2", "mse", "mae", "target_variance"]
+
+
+def _resolve_output_dim(config: dict[str, Any], input_dim: int, total_neurons: int) -> int:
+    output_policy = config.get("model", {}).get("output_dim")
+    if output_policy == "all":
+        return total_neurons
+    if output_policy in {None, "heldin"}:
+        return input_dim
+    return int(output_policy)
 
 
 def load_lfads_gru_from_checkpoint(
@@ -106,6 +117,7 @@ def extract_lfads_factors(
             chunks: dict[str, list[np.ndarray]] = {
                 "factors": [],
                 "heldin_rates_hz": [],
+                "model_rates_hz": [],
                 "heldin_spikes": [],
                 "heldout_spikes": [],
                 "trial_ids": [],
@@ -113,8 +125,10 @@ def extract_lfads_factors(
             for batch in loader:
                 heldin = batch["heldin_spikes"].to(device)
                 output = model(heldin)
+                rates = output["rates_hz"].detach().cpu().numpy()
                 chunks["factors"].append(output["factors"].detach().cpu().numpy())
-                chunks["heldin_rates_hz"].append(output["rates_hz"].detach().cpu().numpy())
+                chunks["model_rates_hz"].append(rates)
+                chunks["heldin_rates_hz"].append(rates[:, :, : heldin.shape[-1]])
                 chunks["heldin_spikes"].append(batch["heldin_spikes"].detach().cpu().numpy())
                 chunks["heldout_spikes"].append(batch["heldout_spikes"].detach().cpu().numpy())
                 chunks["trial_ids"].append(batch["trial_id"].detach().cpu().numpy())
@@ -172,6 +186,7 @@ def _checkpoint_epoch(path: Path) -> int | None:
 
 def _safe_neuron_rows(
     split_name: str,
+    prediction_source: str,
     target_counts: np.ndarray,
     predicted_rates: np.ndarray,
     reference_rates: np.ndarray,
@@ -196,6 +211,7 @@ def _safe_neuron_rows(
         rows.append(
             {
                 "split": split_name,
+                "prediction_source": prediction_source,
                 "target_neuron_index": int(neuron_index),
                 "target_neuron_rank": int(rank),
                 "spike_count": spike_count,
@@ -212,6 +228,43 @@ def _safe_neuron_rows(
     return rows
 
 
+def _append_prediction_metrics(
+    split_rows: list[dict[str, Any]],
+    neuron_rows: list[dict[str, Any]],
+    split_name: str,
+    prediction_source: str,
+    factors: np.ndarray,
+    counts: np.ndarray,
+    predicted: np.ndarray,
+    reference_rates: np.ndarray,
+    target_indices: np.ndarray,
+    bin_size_ms: int,
+) -> None:
+    metrics = evaluate_cosmoothing_predictions(counts, predicted, reference_rates, bin_size_ms)
+    split_rows.append(
+        {
+            "split": split_name,
+            "prediction_source": prediction_source,
+            "n_trials": int(counts.shape[0]),
+            "n_time_bins": int(counts.shape[1]),
+            "factor_dim": int(factors.shape[2]),
+            "n_target_neurons": int(counts.shape[2]),
+            **metrics,
+        }
+    )
+    neuron_rows.extend(
+        _safe_neuron_rows(
+            split_name,
+            prediction_source,
+            counts,
+            predicted,
+            reference_rates,
+            target_indices,
+            bin_size_ms,
+        )
+    )
+
+
 def run_lfads_gru_evaluation(
     dataset: NeuralDataset,
     split: TrialSplit,
@@ -219,15 +272,19 @@ def run_lfads_gru_evaluation(
     config: dict[str, Any],
     device: torch.device,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Evaluate held-out prediction from checkpointed LFADS-style factors."""
+    """Evaluate held-out prediction from checkpointed LFADS-style factors or direct rates."""
     data_config = dict(config["data"])
     decoder_config = dict(config["heldout_decoder"])
     behavior_config = dict(config.get("behavior_decoder", {}))
     eval_config = dict(config["evaluation"])
+    eval_mode = dict(config.get("evaluation_mode", {}))
     target_indices = np.flatnonzero(neuron_mask.heldout)
+    heldin_indices = np.flatnonzero(neuron_mask.heldin)
     input_dim = int(np.count_nonzero(neuron_mask.heldin))
+    total_neurons = int(dataset.spikes.shape[2])
+    output_dim = _resolve_output_dim(config, input_dim, total_neurons)
     checkpoint_path = Path(str(config["model"]["checkpoint_path"]))
-    model = load_lfads_gru_from_checkpoint(checkpoint_path, input_dim, input_dim, config, device)
+    model = load_lfads_gru_from_checkpoint(checkpoint_path, input_dim, output_dim, config, device)
     dataloaders = create_dataloaders(
         create_torch_datasets(dataset, split, neuron_mask, data_config.get("max_time_bins")),
         batch_size=int(data_config["batch_size"]),
@@ -239,61 +296,90 @@ def run_lfads_gru_evaluation(
 
     min_rate = float(decoder_config["min_rate_hz"])
     max_rate = float(decoder_config["max_rate_hz"])
-    train_factors_raw = flatten_batch_time(extracted["train"]["factors"])
-    train_counts = flatten_batch_time(extracted["train"]["heldout_spikes"])
-    train_targets = safe_clip_rates(
-        _rates_from_counts(train_counts, dataset.bin_size_ms), min_rate, max_rate
-    )
-    train_factors, _, factor_stats = _apply_optional_standardization(
-        train_factors_raw,
-        train_factors_raw,
-        bool(decoder_config.get("standardize_factors", True)),
-    )
-    heldout_decoder = fit_ridge_decoder(
-        train_factors,
-        train_targets,
-        alpha=float(decoder_config["alpha"]),
-        fit_intercept=bool(decoder_config.get("fit_intercept", True)),
-    )
     reference = _reference_rates(
         extracted["train"]["heldout_spikes"], dataset.bin_size_ms, min_rate, max_rate
     )
+    direct_available = output_dim == total_neurons and bool(
+        eval_mode.get("use_direct_model_rates_for_heldout", False)
+    )
+    evaluate_factor_decoder = (
+        bool(eval_mode.get("also_evaluate_factor_decoder", True)) or not direct_available
+    )
+
+    heldout_decoder: dict[str, np.ndarray]
+    factor_stats: dict[str, np.ndarray]
+    if evaluate_factor_decoder:
+        train_factors_raw = flatten_batch_time(extracted["train"]["factors"])
+        train_counts = flatten_batch_time(extracted["train"]["heldout_spikes"])
+        train_targets = safe_clip_rates(
+            _rates_from_counts(train_counts, dataset.bin_size_ms), min_rate, max_rate
+        )
+        train_factors, _, factor_stats = _apply_optional_standardization(
+            train_factors_raw,
+            train_factors_raw,
+            bool(decoder_config.get("standardize_factors", True)),
+        )
+        heldout_decoder = fit_ridge_decoder(
+            train_factors,
+            train_targets,
+            alpha=float(decoder_config["alpha"]),
+            fit_intercept=bool(decoder_config.get("fit_intercept", True)),
+        )
+    else:
+        train_factors_raw = flatten_batch_time(extracted["train"]["factors"])
+        heldout_decoder = {
+            "coefficients": np.empty((model.config.factor_dim, 0)),
+            "intercept": np.empty(0),
+        }
+        factor_stats = {}
 
     split_rows: list[dict[str, Any]] = []
     neuron_rows: list[dict[str, Any]] = []
     factor_tables = []
     for split_name in eval_config["evaluate_splits"]:
-        factors = extracted[str(split_name)]["factors"]
-        counts = extracted[str(split_name)]["heldout_spikes"]
-        flat_factors = flatten_batch_time(factors)
-        if factor_stats:
-            flat_factors = apply_standardization(flat_factors, factor_stats)
-        predicted_flat = safe_clip_rates(
-            predict_ridge_decoder(flat_factors, heldout_decoder), min_rate, max_rate
-        )
-        predicted = reshape_flat_predictions(
-            predicted_flat, counts.shape[0], counts.shape[1], counts.shape[2]
-        )
+        split_key = str(split_name)
+        factors = extracted[split_key]["factors"]
+        counts = extracted[split_key]["heldout_spikes"]
         reference_rates = _broadcast_reference(reference, counts)
-        metrics = evaluate_cosmoothing_predictions(
-            counts, predicted, reference_rates, dataset.bin_size_ms
-        )
-        split_rows.append(
-            {
-                "split": split_name,
-                "n_trials": int(counts.shape[0]),
-                "n_time_bins": int(counts.shape[1]),
-                "factor_dim": int(factors.shape[2]),
-                "n_target_neurons": int(counts.shape[2]),
-                **metrics,
-            }
-        )
-        neuron_rows.extend(
-            _safe_neuron_rows(
-                split_name, counts, predicted, reference_rates, target_indices, dataset.bin_size_ms
+        if direct_available:
+            direct_rates = safe_clip_rates(
+                extracted[split_key]["model_rates_hz"][:, :, target_indices], min_rate, max_rate
             )
-        )
-        factor_tables.append(summarize_factor_activity(factors, str(split_name)))
+            _append_prediction_metrics(
+                split_rows,
+                neuron_rows,
+                split_key,
+                "direct_model",
+                factors,
+                counts,
+                direct_rates,
+                reference_rates,
+                target_indices,
+                dataset.bin_size_ms,
+            )
+        if evaluate_factor_decoder:
+            flat_factors = flatten_batch_time(factors)
+            if factor_stats:
+                flat_factors = apply_standardization(flat_factors, factor_stats)
+            predicted_flat = safe_clip_rates(
+                predict_ridge_decoder(flat_factors, heldout_decoder), min_rate, max_rate
+            )
+            predicted = reshape_flat_predictions(
+                predicted_flat, counts.shape[0], counts.shape[1], counts.shape[2]
+            )
+            _append_prediction_metrics(
+                split_rows,
+                neuron_rows,
+                split_key,
+                "factor_decoder",
+                factors,
+                counts,
+                predicted,
+                reference_rates,
+                target_indices,
+                dataset.bin_size_ms,
+            )
+        factor_tables.append(summarize_factor_activity(factors, split_key))
 
     if bool(behavior_config.get("enabled", False)):
         behavior_feature_stats: dict[str, np.ndarray] = {}
@@ -358,8 +444,11 @@ def run_lfads_gru_evaluation(
         "checkpoint_epoch": _checkpoint_epoch(checkpoint_path),
         "factor_dim": model.config.factor_dim,
         "latent_dim": model.config.latent_dim,
-        "input_neuron_indices": np.flatnonzero(neuron_mask.heldin).tolist(),
+        "input_neuron_indices": heldin_indices.tolist(),
         "target_neuron_indices": target_indices.tolist(),
+        "output_dim": output_dim,
+        "direct_model_available": direct_available,
+        "factor_decoder_evaluated": evaluate_factor_decoder,
         "heldout_decoder_coefficients": heldout_decoder["coefficients"],
         "heldout_decoder_intercept": heldout_decoder["intercept"],
         "reference_rates_hz": reference,

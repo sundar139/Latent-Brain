@@ -47,8 +47,8 @@ def _dataset() -> NeuralDataset:
     )
 
 
-def _checkpoint(path: Path) -> Path:
-    model = LFADSGRU(LFADSGRUConfig(4, 4, 6, 6, 3, 5, 0.0, 1.0e-4, 500.0))
+def _checkpoint(path: Path, output_dim: int = 4) -> Path:
+    model = LFADSGRU(LFADSGRUConfig(4, output_dim, 6, 6, 3, 5, 0.0, 1.0e-4, 500.0))
     optimizer = torch.optim.AdamW(model.parameters(), lr=1.0e-3)
     return save_checkpoint(path, model, optimizer, 1, {"validation_loss": 1.0}, {"unit": True})
 
@@ -81,6 +81,7 @@ def _config(
         "model": {
             "name": "lfads_gru",
             "checkpoint_path": checkpoint_path,
+            "output_dim": None,
             "encoder_hidden_dim": 6,
             "generator_hidden_dim": 6,
             "latent_dim": 3,
@@ -117,6 +118,7 @@ def _config(
                 "mean_rate_validation_bits_per_spike": 0.5,
                 "factor_latent_best_validation_bits_per_spike": 0.1,
                 "factor_latent_best_behavior_mean_r2": 0.03,
+                "previous_lfads_eval_validation_bits_per_spike": -0.01,
             },
         },
         "reporting": {"output_dir": output_dir},
@@ -185,3 +187,33 @@ def test_script_like_execution_writes_outputs_and_report(tmp_path: Path) -> None
     report = (output_dir / "lfads_gru_eval_report.md").read_text(encoding="utf-8")
     assert "No new neural network model was trained by this evaluation script" in report
     assert "not an official NLB leaderboard result" in report
+
+
+def test_cosmoothing_checkpoint_evaluation_uses_direct_model_as_primary(tmp_path: Path) -> None:
+    module = _script_module()
+    dataset = _dataset()
+    processed = tmp_path / "dataset.npz"
+    save_neural_dataset(dataset, processed)
+    checkpoint = _checkpoint(tmp_path / "checkpoint.pt", output_dim=6)
+    output_dir = tmp_path / "out"
+    config = _config(
+        str(processed), str(checkpoint), str(output_dir), dataset.metadata["dataset_hash"]
+    )
+    config["model"]["output_dim"] = "all"  # type: ignore[index]
+    config["evaluation_mode"] = {
+        "use_direct_model_rates_for_heldout": True,
+        "also_evaluate_factor_decoder": True,
+    }
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert module.main(["--config", str(config_path)]) == 0
+
+    summary = yaml.safe_load((output_dir / "metrics_summary.json").read_text(encoding="utf-8"))
+    assert summary["primary_prediction_source"] == "direct_model"
+    assert summary["direct_model_validation_bits_per_spike"] is not None
+    split_metrics = (output_dir / "split_metrics.csv").read_text(encoding="utf-8")
+    assert "prediction_source" in split_metrics
+    assert "direct_model" in split_metrics
+    report = (output_dir / "lfads_gru_eval_report.md").read_text(encoding="utf-8")
+    assert "No new neural network model was trained by this evaluation script" in report

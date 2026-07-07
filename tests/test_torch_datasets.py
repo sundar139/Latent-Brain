@@ -43,8 +43,11 @@ def test_dataset_returns_heldin_and_heldout_shapes_without_leakage() -> None:
     assert item["heldin_spikes"].shape == (4, 3)
     assert item["heldout_spikes"].shape == (4, 2)
     assert item["all_spikes"].shape == (4, 5)
+    torch.testing.assert_close(item["heldin_indices"], torch.tensor([0, 2, 3]))
+    torch.testing.assert_close(item["heldout_indices"], torch.tensor([1, 4]))
     torch.testing.assert_close(item["heldin_spikes"], item["all_spikes"][:, [0, 2, 3]])
     torch.testing.assert_close(item["heldout_spikes"], item["all_spikes"][:, [1, 4]])
+    assert set(item["heldin_indices"].tolist()).isdisjoint(item["heldout_indices"].tolist())
     assert not torch.equal(item["heldin_spikes"][:, :2], item["heldout_spikes"])
 
 

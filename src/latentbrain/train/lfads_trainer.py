@@ -4,15 +4,17 @@ import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import torch
 from torch.utils.data import DataLoader
 
 from latentbrain.models.lfads_gru import LFADSGRU
 from latentbrain.torch.checkpoints import save_checkpoint
-from latentbrain.torch.losses import lfads_elbo_loss
+from latentbrain.torch.losses import lfads_cosmoothing_loss, lfads_elbo_loss
 from latentbrain.torch.schedules import linear_warmup
+
+TrainingMode = Literal["heldin_reconstruction", "cosmoothing"]
 
 
 @dataclass(slots=True)
@@ -43,17 +45,85 @@ def _mean(values: list[float]) -> float:
     return float(sum(values) / max(len(values), 1))
 
 
+def _training_mode(config: dict[str, Any], model: LFADSGRU) -> TrainingMode:
+    training_config = dict(config.get("training", {}))
+    model_config = dict(config.get("model", {}))
+    heldout_weight = float(training_config.get("heldout_loss_weight", 0.0))
+    output_policy = model_config.get("output_dim")
+    if heldout_weight > 0.0 and (
+        output_policy == "all" or model.config.output_dim > model.config.input_dim
+    ):
+        return "cosmoothing"
+    return "heldin_reconstruction"
+
+
+def _first_indices(batch: dict[str, torch.Tensor], key: str, device: torch.device) -> torch.Tensor:
+    indices = batch[key]
+    if indices.ndim == 2:
+        indices = indices[0]
+    return indices.to(device=device, dtype=torch.long)
+
+
+def _loss_for_batch(
+    model: LFADSGRU,
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+    bin_size_ms: int,
+    kl_beta: float,
+    training_config: dict[str, Any],
+    mode: TrainingMode,
+) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
+    heldin = batch["heldin_spikes"].to(device)
+    output = model(heldin)
+    if mode == "cosmoothing":
+        loss = lfads_cosmoothing_loss(
+            heldin_counts=heldin,
+            heldout_counts=batch["heldout_spikes"].to(device),
+            all_rates_hz=output["rates_hz"],
+            heldin_indices=_first_indices(batch, "heldin_indices", device),
+            heldout_indices=_first_indices(batch, "heldout_indices", device),
+            posterior_mean=output["z0_mean"],
+            posterior_logvar=output["z0_logvar"],
+            bin_size_ms=bin_size_ms,
+            kl_beta=kl_beta,
+            heldin_loss_weight=float(training_config.get("heldin_loss_weight", 1.0)),
+            heldout_loss_weight=float(training_config.get("heldout_loss_weight", 1.0)),
+            normalization=str(training_config.get("loss_normalization", "mean")),
+        )
+    else:
+        elbo = lfads_elbo_loss(
+            heldin,
+            output["rates_hz"],
+            output["z0_mean"],
+            output["z0_logvar"],
+            bin_size_ms,
+            kl_beta,
+        )
+        zero = elbo["loss"].new_tensor(0.0)
+        loss = {
+            "loss": elbo["loss"],
+            "heldin_reconstruction_loss": elbo["reconstruction_loss"],
+            "heldout_prediction_loss": zero,
+            "kl_loss": elbo["kl_loss"],
+            "kl_beta": elbo["kl_beta"],
+        }
+    return loss, output["rates_hz"]
+
+
 def _split_metrics(
     model: LFADSGRU,
     loader: DataLoader[dict[str, torch.Tensor]],
     device: torch.device,
     bin_size_ms: int,
     kl_beta: float,
+    training_config: dict[str, Any],
+    mode: TrainingMode,
 ) -> dict[str, float]:
     model.eval()
     losses: dict[str, list[float]] = {
-        "loss": [],
-        "reconstruction_loss": [],
+        "total_loss": [],
+        "heldin_reconstruction_loss": [],
+        "heldout_prediction_loss": [],
         "kl_loss": [],
         "mean_rate_hz": [],
         "min_rate_hz": [],
@@ -61,23 +131,21 @@ def _split_metrics(
     }
     with torch.no_grad():
         for batch in loader:
-            heldin = batch["heldin_spikes"].to(device)
-            output = model(heldin)
-            loss = lfads_elbo_loss(
-                heldin,
-                output["rates_hz"],
-                output["z0_mean"],
-                output["z0_logvar"],
-                bin_size_ms,
-                kl_beta,
+            loss, rates = _loss_for_batch(
+                model, batch, device, bin_size_ms, kl_beta, training_config, mode
             )
             _ensure_finite("evaluation loss", loss["loss"])
-            losses["loss"].append(float(loss["loss"].detach().cpu()))
-            losses["reconstruction_loss"].append(float(loss["reconstruction_loss"].detach().cpu()))
+            losses["total_loss"].append(float(loss["loss"].detach().cpu()))
+            losses["heldin_reconstruction_loss"].append(
+                float(loss["heldin_reconstruction_loss"].detach().cpu())
+            )
+            losses["heldout_prediction_loss"].append(
+                float(loss["heldout_prediction_loss"].detach().cpu())
+            )
             losses["kl_loss"].append(float(loss["kl_loss"].detach().cpu()))
-            losses["mean_rate_hz"].append(float(output["rates_hz"].mean().detach().cpu()))
-            losses["min_rate_hz"].append(float(output["rates_hz"].min().detach().cpu()))
-            losses["max_rate_hz"].append(float(output["rates_hz"].max().detach().cpu()))
+            losses["mean_rate_hz"].append(float(rates.mean().detach().cpu()))
+            losses["min_rate_hz"].append(float(rates.min().detach().cpu()))
+            losses["max_rate_hz"].append(float(rates.max().detach().cpu()))
     return {key: _mean(value) for key, value in losses.items()}
 
 
@@ -99,7 +167,7 @@ def train_lfads_gru(
     output_dir: Path,
     device: torch.device,
 ) -> TrainingState:
-    """Train the minimal LFADS-style GRU model and write local ignored outputs."""
+    """Train the LFADS-style GRU model and write local ignored outputs."""
     train_loader = dataloaders["train"]
     training_config = dict(config["training"])
     bin_size_ms = int(config["dataset"]["bin_size_ms"])
@@ -116,7 +184,10 @@ def train_lfads_gru(
     )
     clip_norm = float(training_config["gradient_clip_norm"])
     warmup_epochs = int(training_config["kl_warmup_epochs"])
-    checkpoint_metric = str(training_config.get("checkpoint_metric", "validation_loss"))
+    mode = _training_mode(config, model)
+    checkpoint_metric = str(training_config.get("checkpoint_metric", "validation_total_loss"))
+    if checkpoint_metric == "validation_loss":
+        checkpoint_metric = "validation_total_loss"
     checkpoint_mode = str(training_config.get("checkpoint_mode", "min"))
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = output_dir / "checkpoints"
@@ -130,16 +201,9 @@ def train_lfads_gru(
         train_losses: list[float] = []
         gradient_norms: list[float] = []
         for batch in train_loader:
-            heldin = batch["heldin_spikes"].to(device)
             optimizer.zero_grad(set_to_none=True)
-            output = model(heldin)
-            loss = lfads_elbo_loss(
-                heldin,
-                output["rates_hz"],
-                output["z0_mean"],
-                output["z0_logvar"],
-                bin_size_ms,
-                kl_beta,
+            loss, _ = _loss_for_batch(
+                model, batch, device, bin_size_ms, kl_beta, training_config, mode
             )
             _ensure_finite("training loss", loss["loss"])
             torch.autograd.backward(loss["loss"])
@@ -154,18 +218,30 @@ def train_lfads_gru(
             "kl_beta": float(kl_beta),
             "gradient_norm": _mean(gradient_norms),
             "training_batch_loss": _mean(train_losses),
+            "training_mode_cosmoothing": 1.0 if mode == "cosmoothing" else 0.0,
         }
         for split_name in evaluate_splits:
-            metrics = _split_metrics(model, dataloaders[split_name], device, bin_size_ms, kl_beta)
-            row[f"{split_name}_loss"] = metrics["loss"]
-            row[f"{split_name}_reconstruction_loss"] = metrics["reconstruction_loss"]
+            metrics = _split_metrics(
+                model,
+                dataloaders[split_name],
+                device,
+                bin_size_ms,
+                kl_beta,
+                training_config,
+                mode,
+            )
+            row[f"{split_name}_total_loss"] = metrics["total_loss"]
+            row[f"{split_name}_heldin_reconstruction_loss"] = metrics["heldin_reconstruction_loss"]
+            row[f"{split_name}_heldout_prediction_loss"] = metrics["heldout_prediction_loss"]
             row[f"{split_name}_kl_loss"] = metrics["kl_loss"]
             row[f"{split_name}_mean_rate_hz"] = metrics["mean_rate_hz"]
             row[f"{split_name}_min_rate_hz"] = metrics["min_rate_hz"]
             row[f"{split_name}_max_rate_hz"] = metrics["max_rate_hz"]
-        if "validation_loss" in row:
-            row["loss"] = row["validation_loss"]
-            row["reconstruction_loss"] = row["validation_reconstruction_loss"]
+        if "validation_total_loss" in row:
+            row["validation_loss"] = row["validation_total_loss"]
+            row["validation_reconstruction_loss"] = row["validation_heldin_reconstruction_loss"]
+            row["loss"] = row["validation_total_loss"]
+            row["reconstruction_loss"] = row["validation_heldin_reconstruction_loss"]
             row["kl_loss"] = row["validation_kl_loss"]
             row["mean_predicted_rate_hz"] = row["validation_mean_rate_hz"]
             row["min_predicted_rate_hz"] = row["validation_min_rate_hz"]

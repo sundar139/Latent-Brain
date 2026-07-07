@@ -65,6 +65,7 @@ def _config(
         },
         "model": {
             "name": "lfads_gru",
+            "output_dim": None,
             "encoder_hidden_dim": 8,
             "generator_hidden_dim": 8,
             "latent_dim": 3,
@@ -81,6 +82,9 @@ def _config(
             "weight_decay": 0.0,
             "gradient_clip_norm": 5.0,
             "kl_warmup_epochs": 1,
+            "heldin_loss_weight": 1.0,
+            "heldout_loss_weight": 0.0,
+            "loss_normalization": "batch_mean",
             "log_every_batches": 10,
             "checkpoint_metric": "validation_loss",
             "checkpoint_mode": "min",
@@ -130,4 +134,35 @@ def test_script_like_run_on_tiny_data_writes_outputs_and_report(tmp_path: Path) 
     assert np.isfinite(final_metrics["validation_loss"])
     report = (output_dir / "lfads_gru_report.md").read_text(encoding="utf-8")
     assert "not a full LFADS implementation" in report
-    assert "No official NLB leaderboard result is reported" in report
+    assert "not an official NLB leaderboard result" in report
+
+
+def test_cosmoothing_script_like_run_writes_training_outputs(tmp_path: Path) -> None:
+    module = _script_module()
+    dataset = _dataset()
+    processed_path = tmp_path / "dataset.npz"
+    save_neural_dataset(dataset, processed_path)
+    output_dir = tmp_path / "out"
+    config = _config(str(processed_path), str(output_dir), dataset.metadata["dataset_hash"])
+    config["model"]["output_dim"] = "all"  # type: ignore[index]
+    config["training"]["heldout_loss_weight"] = 1.0  # type: ignore[index]
+    config["training"]["loss_normalization"] = "mean"  # type: ignore[index]
+    config["training"]["checkpoint_metric"] = "validation_total_loss"  # type: ignore[index]
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert module.main(["--config", str(config_path)]) == 0
+
+    expected = {
+        "config_snapshot.yaml",
+        "metrics_history.csv",
+        "final_metrics.json",
+        "lfads_gru_training_report.md",
+    }
+    assert expected.issubset({path.name for path in output_dir.iterdir() if path.is_file()})
+    final_metrics = json.loads((output_dir / "final_metrics.json").read_text(encoding="utf-8"))
+    assert np.isfinite(final_metrics["validation_total_loss"])
+    assert np.isfinite(final_metrics["validation_heldout_prediction_loss"])
+    report = (output_dir / "lfads_gru_training_report.md").read_text(encoding="utf-8")
+    assert "masked co-smoothing training run" in report
+    assert "local validation only" in report

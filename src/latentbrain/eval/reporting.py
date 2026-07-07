@@ -465,15 +465,15 @@ def write_lfads_gru_training_report(
     lines = [
         f"# {summary.get('dataset_name')} LFADS-style GRU training report",
         "",
-        "This is an LFADS-style sequential VAE foundation, not a full LFADS implementation.",
-        "No official NLB leaderboard result is reported.",
-        "Held-out co-smoothing is not yet claimed.",
+        "This is an LFADS-style masked co-smoothing training run, not a full LFADS implementation.",
+        "This is local validation only, not an official NLB leaderboard result.",
         "",
         "## Dataset and model",
         f"- Dataset hash: {summary.get('dataset_hash')}",
         f"- Model name: {summary.get('model_name')}",
         "- Input neurons: held-in only",
-        "- Current target: held-in reconstruction",
+        f"- Training mode: {summary.get('training_mode')}",
+        f"- Output dimension policy: {summary.get('output_dim_policy')}",
         f"- Input neuron count: {summary.get('input_dim')}",
         f"- Output neuron count: {summary.get('output_dim')}",
         f"- Encoder hidden dimension: {summary.get('encoder_hidden_dim')}",
@@ -484,8 +484,15 @@ def write_lfads_gru_training_report(
         "## Training",
         f"- Training epochs: {summary.get('epochs')}",
         f"- KL warmup epochs: {summary.get('kl_warmup_epochs')}",
+        f"- Held-in loss weight: {summary.get('heldin_loss_weight')}",
+        f"- Held-out loss weight: {summary.get('heldout_loss_weight')}",
         f"- Best validation loss: {summary.get('best_validation_loss')}",
+        f"- Best validation total loss: {summary.get('best_validation_total_loss')}",
         f"- Final validation loss: {summary.get('final_validation_loss')}",
+        (
+            "- Final validation held-out prediction loss: "
+            f"{summary.get('final_validation_heldout_prediction_loss')}"
+        ),
         "",
         "## Checkpoints",
         f"- Latest checkpoint: {summary.get('latest_checkpoint')}",
@@ -515,6 +522,9 @@ def write_lfads_gru_evaluation_report(output_path: Path, summary: dict[str, Any]
         f"- Latent dimension: {summary.get('latent_dim')}",
         "",
         "## Decoders",
+        f"- Primary prediction source: {summary.get('primary_prediction_source')}",
+        f"- Direct model held-out rates available: {summary.get('direct_model_available')}",
+        f"- Factor decoder evaluated: {summary.get('factor_decoder_evaluated')}",
         f"- Held-out decoder alpha: {summary.get('heldout_decoder_alpha')}",
         f"- Behavior decoder enabled: {summary.get('behavior_decoder_enabled')}",
         f"- Behavior decoder alpha: {summary.get('behavior_decoder_alpha')}",
@@ -525,6 +535,14 @@ def write_lfads_gru_evaluation_report(output_path: Path, summary: dict[str, Any]
         f"- Primary validation bits/spike: {summary.get('primary_bits_per_spike')}",
         f"- Primary validation Poisson NLL: {summary.get('primary_poisson_nll')}",
         f"- Primary validation behavior mean R²: {summary.get('primary_behavior_mean_r2')}",
+        (
+            "- Direct model validation bits/spike: "
+            f"{summary.get('direct_model_validation_bits_per_spike')}"
+        ),
+        (
+            "- Factor decoder validation bits/spike: "
+            f"{summary.get('factor_decoder_validation_bits_per_spike')}"
+        ),
         "",
         "## Baseline comparisons",
         (
@@ -535,6 +553,11 @@ def write_lfads_gru_evaluation_report(output_path: Path, summary: dict[str, Any]
             "- Factor latent best validation bits/spike: "
             f"{summary.get('factor_latent_best_validation_bits_per_spike')}"
         ),
+        (
+            "- Previous LFADS-style held-out bits/spike: "
+            f"{summary.get('previous_lfads_eval_validation_bits_per_spike')}"
+        ),
+        f"- Beats previous LFADS-style evaluation: {summary.get('beats_previous_lfads_eval')}",
         f"- Beats mean-rate reference: {summary.get('beats_mean_rate_reference')}",
         f"- Beats factor-latent reference: {summary.get('beats_factor_latent_reference')}",
     ]
@@ -549,6 +572,11 @@ def _decoder_coefficients_table(
     target_indices: list[int] | None = None,
 ) -> pd.DataFrame:
     rows = []
+    if coefficients.size == 0 or coefficients.shape[1] == 0:
+        return pd.DataFrame(
+            columns=["factor_index", "target_name", "target_rank", "coefficient"]
+            + (["target_neuron_index"] if target_indices is not None else [])
+        )
     for factor_index in range(coefficients.shape[0]):
         for target_rank, target_name in enumerate(target_names):
             row = {

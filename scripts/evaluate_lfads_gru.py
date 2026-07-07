@@ -62,6 +62,7 @@ class ModelSection(BaseModel):
 
     name: Literal["lfads_gru"]
     checkpoint_path: str = Field(min_length=1)
+    output_dim: int | Literal["all", "heldin"] | None = None
     encoder_hidden_dim: int = Field(gt=0)
     generator_hidden_dim: int = Field(gt=0)
     latent_dim: int = Field(gt=0)
@@ -76,6 +77,13 @@ class ModelSection(BaseModel):
             msg = "model.max_rate_hz must exceed model.min_rate_hz"
             raise ValueError(msg)
         return self
+
+
+class EvaluationModeSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    use_direct_model_rates_for_heldout: bool = False
+    also_evaluate_factor_decoder: bool = True
 
 
 class HeldoutDecoderSection(BaseModel):
@@ -148,7 +156,8 @@ class BaselineReferences(BaseModel):
 
     mean_rate_validation_bits_per_spike: float
     factor_latent_best_validation_bits_per_spike: float
-    factor_latent_best_behavior_mean_r2: float
+    factor_latent_best_behavior_mean_r2: float | None = None
+    previous_lfads_eval_validation_bits_per_spike: float | None = None
 
 
 class EvaluationSection(BaseModel):
@@ -179,6 +188,7 @@ class LFADSGRUEvalConfig(BaseModel):
     splits: SplitSection
     data: DataSection
     model: ModelSection
+    evaluation_mode: EvaluationModeSection = Field(default_factory=EvaluationModeSection)
     heldout_decoder: HeldoutDecoderSection
     behavior_decoder: BehaviorDecoderSection
     reference: ReferenceSection
@@ -279,7 +289,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     split_metrics, neuron_metrics, behavior_metrics, factor_summary, metadata = (
         run_lfads_gru_evaluation(dataset, split, neuron_mask, config_dict, device)
     )
-    primary = split_metrics[split_metrics["split"] == config.evaluation.primary_split].iloc[0]
+    primary_candidates = split_metrics[split_metrics["split"] == config.evaluation.primary_split]
+    direct_candidates = primary_candidates[
+        primary_candidates["prediction_source"] == "direct_model"
+    ]
+    primary = (
+        direct_candidates.iloc[0] if not direct_candidates.empty else primary_candidates.iloc[0]
+    )
+    primary_prediction_source = str(primary["prediction_source"])
+    direct_validation = split_metrics[
+        (split_metrics["split"] == config.evaluation.primary_split)
+        & (split_metrics["prediction_source"] == "direct_model")
+    ]
+    factor_validation = split_metrics[
+        (split_metrics["split"] == config.evaluation.primary_split)
+        & (split_metrics["prediction_source"] == "factor_decoder")
+    ]
+    direct_bits = (
+        None if direct_validation.empty else float(direct_validation.iloc[0]["bits_per_spike"])
+    )
+    factor_bits = (
+        None if factor_validation.empty else float(factor_validation.iloc[0]["bits_per_spike"])
+    )
     primary_behavior_r2 = None
     if not behavior_metrics.empty:
         primary_behavior_r2 = _mean_finite(
@@ -300,11 +331,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         "primary_bits_per_spike": primary_bits,
         "primary_poisson_nll": float(primary["poisson_nll"]),
         "primary_behavior_mean_r2": primary_behavior_r2,
+        "primary_prediction_source": primary_prediction_source,
+        "direct_model_available": bool(metadata.get("direct_model_available", False)),
+        "factor_decoder_evaluated": bool(metadata.get("factor_decoder_evaluated", False)),
+        "direct_model_validation_bits_per_spike": direct_bits,
+        "factor_decoder_validation_bits_per_spike": factor_bits,
+        "previous_lfads_eval_validation_bits_per_spike": (
+            refs.previous_lfads_eval_validation_bits_per_spike
+        ),
         "mean_rate_validation_bits_per_spike": refs.mean_rate_validation_bits_per_spike,
         "factor_latent_best_validation_bits_per_spike": (
             refs.factor_latent_best_validation_bits_per_spike
         ),
         "factor_latent_best_behavior_mean_r2": refs.factor_latent_best_behavior_mean_r2,
+        "beats_previous_lfads_eval": (
+            None
+            if refs.previous_lfads_eval_validation_bits_per_spike is None
+            else primary_bits > refs.previous_lfads_eval_validation_bits_per_spike
+        ),
         "beats_mean_rate_reference": primary_bits > refs.mean_rate_validation_bits_per_spike,
         "beats_factor_latent_reference": primary_bits
         > refs.factor_latent_best_validation_bits_per_spike,
@@ -331,9 +375,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     console.print(f"checkpoint_path: {_relative(checkpoint_path, repo_root)}")
     console.print(f"factor_dim: {metadata['factor_dim']}")
     console.print(f"primary_split: {config.evaluation.primary_split}")
+    console.print(f"primary_prediction_source: {metrics_summary['primary_prediction_source']}")
     console.print(f"primary_bits_per_spike: {metrics_summary['primary_bits_per_spike']}")
     console.print(f"primary_poisson_nll: {metrics_summary['primary_poisson_nll']}")
+    console.print(
+        "direct_model_validation_bits_per_spike: "
+        f"{metrics_summary['direct_model_validation_bits_per_spike']}"
+    )
+    console.print(
+        "factor_decoder_validation_bits_per_spike: "
+        f"{metrics_summary['factor_decoder_validation_bits_per_spike']}"
+    )
+    console.print(
+        "previous_lfads_eval_validation_bits_per_spike: "
+        f"{metrics_summary['previous_lfads_eval_validation_bits_per_spike']}"
+    )
     console.print(f"primary_behavior_mean_r2: {primary_behavior_r2}")
+    console.print(f"beats_previous_lfads_eval: {metrics_summary['beats_previous_lfads_eval']}")
     console.print(f"beats_mean_rate_reference: {metrics_summary['beats_mean_rate_reference']}")
     console.print(
         f"beats_factor_latent_reference: {metrics_summary['beats_factor_latent_reference']}"

@@ -204,6 +204,26 @@ The evaluation loads the checkpoint, extracts factors from held-in spikes, and f
 
 This MC_Maze Small evaluation is local only. It is not a full LFADS implementation, not a neural network retraining command, and not an official NLB leaderboard result.
 
+## Local LFADS-style masked co-smoothing training
+
+After held-in reconstruction and factor-based held-out evaluation pass, MC_Maze Small can run a masked co-smoothing training configuration:
+
+```powershell
+python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru_cosmoothing.yaml
+```
+
+The model receives held-in spikes only and predicts all-neuron rates. Held-in reconstruction loss is computed on held-in targets, and held-out prediction loss is computed from train-trial held-out targets only. Validation and test held-out targets are evaluation-only: they can appear in local validation/test metrics but never in optimizer updates or train-only decoder fits. Generated metrics, reports, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_gru_cosmoothing/` paths.
+
+Evaluate the masked co-smoothing checkpoint with:
+
+```powershell
+python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_cosmoothing_eval.yaml
+```
+
+The evaluation reports direct model held-out rates when the checkpoint output covers all neurons, and can also report the factor-decoder diagnostic for continuity with the previous LFADS-style evaluation. It creates JSON, CSV, and Markdown outputs under ignored `results/mc_maze_small/lfads_gru_cosmoothing_eval/` paths and creates no new neural-network checkpoint.
+
+This MC_Maze Small masked co-smoothing run is local validation only. It is not full LFADS, not official NLB leaderboard performance, and all generated checkpoints and result files must remain out of Git.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

@@ -58,18 +58,25 @@ def _mask() -> NeuronMask:
     )
 
 
-def _checkpoint(path: Path) -> Path:
-    model = LFADSGRU(LFADSGRUConfig(4, 4, 6, 6, 3, 5, 0.0, 1.0e-4, 500.0))
+def _checkpoint(path: Path, output_dim: int = 4) -> Path:
+    model = LFADSGRU(LFADSGRUConfig(4, output_dim, 6, 6, 3, 5, 0.0, 1.0e-4, 500.0))
     optimizer = torch.optim.AdamW(model.parameters(), lr=1.0e-3)
     return save_checkpoint(path, model, optimizer, 2, {"validation_loss": 1.0}, {"unit": True})
 
 
-def _config(checkpoint_path: Path, behavior_enabled: bool = True) -> dict[str, object]:
+def _config(
+    checkpoint_path: Path,
+    behavior_enabled: bool = True,
+    output_dim: str | int | None = None,
+    direct: bool = False,
+) -> dict[str, object]:
     return {
         "dataset": {"bin_size_ms": 10},
+        "splits": {"seed": 1},
         "data": {"max_time_bins": 6, "batch_size": 2, "num_workers": 0, "drop_last": False},
         "model": {
             "checkpoint_path": str(checkpoint_path),
+            "output_dim": output_dim,
             "encoder_hidden_dim": 6,
             "generator_hidden_dim": 6,
             "latent_dim": 3,
@@ -77,6 +84,10 @@ def _config(checkpoint_path: Path, behavior_enabled: bool = True) -> dict[str, o
             "dropout": 0.0,
             "min_rate_hz": 1.0e-4,
             "max_rate_hz": 500.0,
+        },
+        "evaluation_mode": {
+            "use_direct_model_rates_for_heldout": direct,
+            "also_evaluate_factor_decoder": True,
         },
         "heldout_decoder": {
             "alpha": 1.0,
@@ -140,7 +151,10 @@ def test_lfads_evaluation_outputs_metrics_and_uses_train_only_decoder(tmp_path: 
         _dataset(validation_offset=100), _split(), _mask(), _config(path), torch.device("cpu")
     )
 
-    assert {"split", "bits_per_spike", "poisson_nll", "factor_dim"}.issubset(split_metrics.columns)
+    assert {"split", "prediction_source", "bits_per_spike", "poisson_nll", "factor_dim"}.issubset(
+        split_metrics.columns
+    )
+    assert set(split_metrics["prediction_source"]) == {"factor_decoder"}
     assert {"split", "target_neuron_index", "mean_predicted_rate_hz"}.issubset(
         neuron_metrics.columns
     )
@@ -153,6 +167,24 @@ def test_lfads_evaluation_outputs_metrics_and_uses_train_only_decoder(tmp_path: 
     np.testing.assert_allclose(
         metadata["heldout_decoder_coefficients"], changed_metadata["heldout_decoder_coefficients"]
     )
+
+
+def test_direct_model_heldout_evaluation_is_available_for_all_neuron_output(tmp_path: Path) -> None:
+    path = _checkpoint(tmp_path / "model.pt", output_dim=6)
+
+    split_metrics, neuron_metrics, _, _, metadata = run_lfads_gru_evaluation(
+        _dataset(),
+        _split(),
+        _mask(),
+        _config(path, output_dim="all", direct=True),
+        torch.device("cpu"),
+    )
+
+    validation = split_metrics[split_metrics["split"] == "validation"]
+    assert {"direct_model", "factor_decoder"} == set(validation["prediction_source"])
+    assert metadata["direct_model_available"] is True
+    assert np.isfinite(validation["bits_per_spike"]).all()
+    assert "direct_model" in set(neuron_metrics["prediction_source"])
 
 
 def test_lfads_evaluation_works_with_behavior_decoder_disabled(tmp_path: Path) -> None:

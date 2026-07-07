@@ -61,6 +61,8 @@ class NeuralTrialDataset(Dataset[dict[str, torch.Tensor]]):
             "heldin_spikes": all_spikes[:, self._heldin_indices],
             "heldout_spikes": all_spikes[:, self._heldout_indices],
             "all_spikes": all_spikes,
+            "heldin_indices": torch.as_tensor(self._heldin_indices, dtype=torch.int64),
+            "heldout_indices": torch.as_tensor(self._heldout_indices, dtype=torch.int64),
             "trial_id": torch.tensor(int(self._dataset.trial_ids[trial_index]), dtype=torch.int64),
         }
 

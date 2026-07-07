@@ -48,6 +48,7 @@ def test_tiny_dataset_trains_and_writes_outputs(tmp_path: Path) -> None:
         _loaders(),
         config={
             "dataset": {"bin_size_ms": 10},
+            "model": {"output_dim": None},
             "training": {
                 "epochs": 1,
                 "learning_rate": 1.0e-3,
@@ -70,3 +71,37 @@ def test_tiny_dataset_trains_and_writes_outputs(tmp_path: Path) -> None:
     assert (tmp_path / "checkpoints" / "latest.pt").exists()
     assert (tmp_path / "checkpoints" / "best_validation.pt").exists()
     assert np.isfinite(pd.read_csv(tmp_path / "metrics_history.csv")["validation_loss"]).all()
+
+
+def test_tiny_cosmoothing_training_writes_heldout_metrics(tmp_path: Path) -> None:
+    model = LFADSGRU(LFADSGRUConfig(3, 4, 8, 8, 3, 4, 0.0, 1.0e-4, 500.0))
+    state = train_lfads_gru(
+        model,
+        _loaders(),
+        config={
+            "dataset": {"bin_size_ms": 10},
+            "model": {"output_dim": "all"},
+            "training": {
+                "epochs": 1,
+                "learning_rate": 1.0e-3,
+                "weight_decay": 0.0,
+                "gradient_clip_norm": 5.0,
+                "kl_warmup_epochs": 1,
+                "heldin_loss_weight": 1.0,
+                "heldout_loss_weight": 1.0,
+                "loss_normalization": "mean",
+                "checkpoint_metric": "validation_total_loss",
+                "checkpoint_mode": "min",
+            },
+            "evaluation": {"evaluate_splits": ["train", "validation"]},
+        },
+        output_dir=tmp_path,
+        device=torch.device("cpu"),
+    )
+
+    row = state.history[0]
+    assert np.isfinite(row["validation_total_loss"])
+    assert np.isfinite(row["validation_heldout_prediction_loss"])
+    assert row["validation_heldout_prediction_loss"] > 0.0
+    assert (tmp_path / "checkpoints" / "latest.pt").exists()
+    assert (tmp_path / "checkpoints" / "best_validation.pt").exists()

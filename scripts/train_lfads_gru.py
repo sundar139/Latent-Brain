@@ -63,7 +63,7 @@ class ModelSection(BaseModel):
 
     name: Literal["lfads_gru"]
     input_dim: int | None = Field(default=None, gt=0)
-    output_dim: int | None = Field(default=None, gt=0)
+    output_dim: int | Literal["all", "heldin"] | None = None
     encoder_hidden_dim: int = Field(gt=0)
     generator_hidden_dim: int = Field(gt=0)
     latent_dim: int = Field(gt=0)
@@ -76,6 +76,9 @@ class ModelSection(BaseModel):
     def max_rate_exceeds_min_rate(self) -> ModelSection:
         if self.max_rate_hz <= self.min_rate_hz:
             msg = "model.max_rate_hz must exceed model.min_rate_hz"
+            raise ValueError(msg)
+        if isinstance(self.output_dim, int) and self.output_dim <= 0:
+            msg = "model.output_dim must be positive when explicit"
             raise ValueError(msg)
         return self
 
@@ -90,9 +93,21 @@ class TrainingSection(BaseModel):
     weight_decay: float = Field(ge=0.0)
     gradient_clip_norm: float = Field(gt=0.0)
     kl_warmup_epochs: int = Field(ge=0)
+    heldin_loss_weight: float = Field(default=1.0, ge=0.0)
+    heldout_loss_weight: float = Field(default=0.0, ge=0.0)
+    loss_normalization: Literal["sum", "mean", "batch_mean", "per_observed_spike_bin"] = (
+        "batch_mean"
+    )
     log_every_batches: int = Field(gt=0)
     checkpoint_metric: str = Field(min_length=1)
     checkpoint_mode: Literal["min", "max"]
+
+    @model_validator(mode="after")
+    def at_least_one_observation_loss_is_enabled(self) -> TrainingSection:
+        if self.heldin_loss_weight == 0.0 and self.heldout_loss_weight == 0.0:
+            msg = "at least one of heldin_loss_weight or heldout_loss_weight must be positive"
+            raise ValueError(msg)
+        return self
 
 
 class EvaluationSection(BaseModel):
@@ -100,7 +115,16 @@ class EvaluationSection(BaseModel):
 
     evaluate_splits: list[SplitName]
     primary_split: SplitName
-    metrics: list[Literal["poisson_nll", "bits_per_spike"]]
+    metrics: list[
+        Literal[
+            "poisson_nll",
+            "bits_per_spike",
+            "total_loss",
+            "heldin_reconstruction_loss",
+            "heldout_prediction_loss",
+            "kl_loss",
+        ]
+    ]
 
     @model_validator(mode="after")
     def primary_split_is_evaluated(self) -> EvaluationSection:
@@ -215,9 +239,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         seed=config.training.seed,
     )
     input_dim = int(neuron_mask.heldin.sum())
+    total_neurons = int(dataset.spikes.shape[2])
+    if config.model.output_dim == "all":
+        output_dim = total_neurons
+        training_mode = (
+            "cosmoothing" if config.training.heldout_loss_weight > 0.0 else "heldin_reconstruction"
+        )
+    elif config.model.output_dim == "heldin" or config.model.output_dim is None:
+        output_dim = input_dim
+        training_mode = "heldin_reconstruction"
+    else:
+        output_dim = int(config.model.output_dim)
+        training_mode = (
+            "cosmoothing" if config.training.heldout_loss_weight > 0.0 else "heldin_reconstruction"
+        )
     model_config = LFADSGRUConfig(
         input_dim=config.model.input_dim or input_dim,
-        output_dim=config.model.output_dim or input_dim,
+        output_dim=output_dim,
         encoder_hidden_dim=config.model.encoder_hidden_dim,
         generator_hidden_dim=config.model.generator_hidden_dim,
         latent_dim=config.model.latent_dim,
@@ -230,6 +268,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     device = resolve_device(config.training.device)
     config_dict = config.model_dump(mode="python")
     config_dict["dataset"]["bin_size_ms"] = dataset.bin_size_ms
+    config_dict["model"]["input_dim"] = model_config.input_dim
+    config_dict["model"]["resolved_output_dim"] = model_config.output_dim
+    config_dict["training"]["training_mode"] = training_mode
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "config_snapshot.yaml").write_text(
         yaml.safe_dump(config_dict, sort_keys=False), encoding="utf-8"
@@ -247,27 +288,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         "generator_hidden_dim": model_config.generator_hidden_dim,
         "factor_dim": model_config.factor_dim,
         "latent_dim": model_config.latent_dim,
+        "training_mode": training_mode,
+        "output_dim_policy": config.model.output_dim or "heldin",
+        "heldin_loss_weight": config.training.heldin_loss_weight,
+        "heldout_loss_weight": config.training.heldout_loss_weight,
         "epochs": config.training.epochs,
         "kl_warmup_epochs": config.training.kl_warmup_epochs,
         "best_validation_loss": state.best_metric,
+        "best_validation_total_loss": state.best_metric,
         "final_validation_loss": final.get("validation_loss"),
+        "final_validation_total_loss": final.get("validation_total_loss"),
+        "final_validation_heldout_prediction_loss": final.get("validation_heldout_prediction_loss"),
         "latest_checkpoint": _relative(output_dir / "checkpoints" / "latest.pt", repo_root),
         "best_validation_checkpoint": _relative(
             output_dir / "checkpoints" / "best_validation.pt", repo_root
         ),
     }
-    write_lfads_gru_training_report(output_dir / "lfads_gru_report.md", summary)
+    report_name = (
+        "lfads_gru_training_report.md" if training_mode == "cosmoothing" else "lfads_gru_report.md"
+    )
+    write_lfads_gru_training_report(output_dir / report_name, summary)
 
     console.print(f"dataset: {config.dataset.name}")
     console.print(f"shape: {list(dataset.spikes.shape)}")
     console.print(f"device: {device}")
     console.print(f"epochs: {config.training.epochs}")
+    console.print(f"training_mode: {training_mode}")
     console.print(f"model_input_dim: {model_config.input_dim}")
     console.print(f"model_output_dim: {model_config.output_dim}")
+    console.print(f"heldin_loss_weight: {config.training.heldin_loss_weight}")
+    console.print(f"heldout_loss_weight: {config.training.heldout_loss_weight}")
     console.print(f"latent_dim: {model_config.latent_dim}")
-    console.print(f"best_validation_loss: {state.best_metric}")
+    console.print(f"best_validation_total_loss: {state.best_metric}")
     console.print(f"final_validation_loss: {final.get('validation_loss')}")
     console.print(f"final_reconstruction_loss: {final.get('validation_reconstruction_loss')}")
+    console.print(
+        f"final_heldout_prediction_loss: {final.get('validation_heldout_prediction_loss')}"
+    )
     console.print(f"final_kl_loss: {final.get('validation_kl_loss')}")
     console.print(f"output_dir: {_relative(output_dir, repo_root)}")
     return 0

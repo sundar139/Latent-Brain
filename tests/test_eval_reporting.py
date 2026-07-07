@@ -233,6 +233,13 @@ def test_lfads_evaluation_report_includes_disclaimers_and_references(tmp_path: P
             "primary_bits_per_spike": 0.2,
             "primary_poisson_nll": 4.0,
             "primary_behavior_mean_r2": 0.1,
+            "primary_prediction_source": "direct_model",
+            "direct_model_available": True,
+            "factor_decoder_evaluated": True,
+            "direct_model_validation_bits_per_spike": 0.2,
+            "factor_decoder_validation_bits_per_spike": 0.15,
+            "previous_lfads_eval_validation_bits_per_spike": -0.01,
+            "beats_previous_lfads_eval": True,
             "mean_rate_validation_bits_per_spike": 0.5,
             "factor_latent_best_validation_bits_per_spike": 0.125,
         },
@@ -242,5 +249,9 @@ def test_lfads_evaluation_report_includes_disclaimers_and_references(tmp_path: P
     assert "LFADS-style sequential VAE foundation, not a full LFADS implementation" in report
     assert "local held-out evaluation, not an official NLB leaderboard result" in report
     assert "No new neural network model was trained by this evaluation script" in report
+    assert "Primary prediction source: direct_model" in report
+    assert "Direct model validation bits/spike: 0.2" in report
+    assert "Factor decoder validation bits/spike: 0.15" in report
     assert "Mean-rate validation bits/spike: 0.5" in report
     assert "Factor latent best validation bits/spike: 0.125" in report
+    assert "Previous LFADS-style held-out bits/spike: -0.01" in report
