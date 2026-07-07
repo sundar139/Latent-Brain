@@ -11,7 +11,11 @@ from latentbrain.eval.decoding import (
     predict_ridge_decoder,
     standardize_train_apply,
 )
-from latentbrain.eval.metrics import safe_clip_rates, summarize_poisson_metrics
+from latentbrain.eval.metrics import (
+    poisson_log_likelihood,
+    safe_clip_rates,
+    summarize_poisson_metrics,
+)
 from latentbrain.eval.smoothing import smooth_spike_counts, spike_counts_to_rates_hz
 from latentbrain.eval.sweeps import expand_grid, rank_sweep_results, select_best_config
 
@@ -179,11 +183,28 @@ def _neuron_rows(
     bin_size_ms: int,
 ) -> list[dict[str, float | int | str]]:
     rows: list[dict[str, float | int | str]] = []
+    target_rates = _rates_from_counts(target_counts, bin_size_ms)
     for rank, neuron_index in enumerate(target_indices):
         counts = target_counts[:, :, rank : rank + 1]
         predicted = predicted_rates[:, :, rank : rank + 1]
         reference = reference_rates[:, :, rank : rank + 1]
-        metrics = evaluate_cosmoothing_predictions(counts, predicted, reference, bin_size_ms)
+        target_rate = target_rates[:, :, rank : rank + 1]
+        spike_count = float(np.sum(counts))
+        if spike_count > 0.0:
+            metrics = evaluate_cosmoothing_predictions(counts, predicted, reference, bin_size_ms)
+        else:
+            model_ll = poisson_log_likelihood(counts, predicted, bin_size_ms)
+            reference_ll = poisson_log_likelihood(counts, reference, bin_size_ms)
+            metrics = {
+                "spike_count": spike_count,
+                "poisson_nll": -model_ll,
+                "poisson_log_likelihood": model_ll,
+                "reference_log_likelihood": reference_ll,
+                "bits_per_spike": float("nan"),
+                "mse_rate_hz": float(np.mean((predicted - target_rate) ** 2)),
+                "mae_rate_hz": float(np.mean(np.abs(predicted - target_rate))),
+                "mean_reference_rate_hz": float(np.mean(reference)),
+            }
         rows.append(
             {
                 "split": split_name,

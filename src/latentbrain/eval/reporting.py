@@ -632,3 +632,79 @@ def write_lfads_gru_evaluation_outputs(
     ).to_csv(paths["behavior_decoder_coefficients"], index=False)
     write_lfads_gru_evaluation_report(paths["report"], metrics_summary)
     return paths
+
+
+def write_window_matched_comparison_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    validation_leaderboard: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for the local window-matched comparison."""
+    dataset_name = summary.get("dataset_name")
+    lines = [
+        f"# {dataset_name} window-matched comparison report",
+        "",
+        "This is a local window-matched comparison, not an official NLB leaderboard result.",
+        "Neural methods are LFADS-style only, not full LFADS.",
+        "No new neural network model was trained by this comparison script.",
+        "",
+        "## Dataset and window",
+        f"- Dataset name: {dataset_name}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Original time bins: {summary.get('original_time_bins')}",
+        f"- Cropped time bins: {summary.get('cropped_time_bins')}",
+        f"- Window duration: {summary.get('window_seconds')} seconds",
+        "",
+        "## Why window matching is required",
+        "Full-window baselines and cropped-window neural evaluations are not directly comparable "
+        "because they can use different time bins, spike totals, and reference likelihoods. This "
+        "comparison recomputes local methods on the same split, held-out mask, 256-bin crop, "
+        "Poisson likelihood convention, and bits/spike convention before ranking methods.",
+        "",
+        "## Validation leaderboard",
+        *_format_table(validation_leaderboard),
+        "",
+        "## Best validation method",
+        f"- Method: {summary.get('best_method_name')}",
+        f"- Prediction source: {summary.get('best_prediction_source')}",
+        f"- Validation bits/spike: {summary.get('best_validation_bits_per_spike')}",
+        f"- Validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        f"- Behavior mean R2: {summary.get('best_behavior_mean_r2')}",
+        "",
+        "## Full-window references",
+        "Warning: full-window numbers are not directly comparable to these cropped-window metrics.",
+        "- Full-window mean-rate bits/spike: "
+        f"{summary.get('full_window_mean_rate_bits_per_spike')}",
+        "- Full-window factor latent best bits/spike: "
+        f"{summary.get('full_window_factor_latent_best_bits_per_spike')}",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_window_matched_comparison_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    comparison_metrics: pd.DataFrame,
+    validation_leaderboard: pd.DataFrame,
+    behavior_comparison: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write local window-matched comparison outputs."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "comparison_summary.json",
+        "comparison_metrics": output_dir / "comparison_metrics.csv",
+        "validation_leaderboard": output_dir / "validation_leaderboard.csv",
+        "behavior_comparison": output_dir / "behavior_comparison.csv",
+        "report": output_dir / "comparison_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    comparison_metrics.to_csv(paths["comparison_metrics"], index=False)
+    validation_leaderboard.to_csv(paths["validation_leaderboard"], index=False)
+    behavior_comparison.to_csv(paths["behavior_comparison"], index=False)
+    write_window_matched_comparison_report(paths["report"], summary, validation_leaderboard)
+    return paths

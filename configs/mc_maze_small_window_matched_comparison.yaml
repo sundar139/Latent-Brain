@@ -1,0 +1,43 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  max_time_bins: 256
+  crop_policy: from_start
+
+references:
+  full_window_mean_rate_bits_per_spike: 0.5465273967210786
+  full_window_factor_latent_best_bits_per_spike: 0.12511028113946446
+  lfads_heldin_checkpoint_path: results/mc_maze_small/lfads_gru/checkpoints/best_validation.pt
+  lfads_cosmoothing_checkpoint_path: results/mc_maze_small/lfads_gru_cosmoothing/checkpoints/best_validation.pt
+
+methods:
+  include:
+    - mean_rate_windowed
+    - ridge_cosmoothing_windowed
+    - factor_latent_windowed
+    - lfads_gru_factor_decoder
+    - lfads_gru_cosmoothing_direct
+    - lfads_gru_cosmoothing_factor_decoder
+
+evaluation:
+  primary_split: validation
+  primary_metric: bits_per_spike
+  behavior_metric: mean_r2
+  evaluate_splits:
+    - train
+    - validation
+    - test
+
+reporting:
+  output_dir: results/mc_maze_small/window_matched_comparison

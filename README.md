@@ -213,6 +213,16 @@ The evaluation script loads the existing checkpoint and does not train a new neu
 
 Evaluation JSON, CSV, and Markdown outputs are local artifacts under ignored `results/mc_maze_small/lfads_gru_eval/` paths. This is a local held-out evaluation, not an official NLB leaderboard result, and it is not a full LFADS claim.
 
+## Window-matched local comparison
+
+Full-window baseline metrics and short-window LFADS-style metrics should not be read as direct comparisons. The LFADS-style MC_Maze runs use a 256-bin crop for fast local iteration, while earlier mean-rate and factor-latent numbers were produced on the full processed trial window. Recompute local methods on the same dataset hash, train/validation/test split, held-in/held-out mask, time crop, Poisson likelihood convention, bits/spike convention, and behavior target convention with:
+
+```powershell
+python scripts/run_window_matched_comparison.py --config configs/mc_maze_small_window_matched_comparison.yaml
+```
+
+The comparison script evaluates windowed mean-rate, ridge co-smoothing, factor-latent, and existing LFADS-style checkpoints without training a new neural network. It writes `comparison_summary.json`, `comparison_metrics.csv`, `validation_leaderboard.csv`, `behavior_comparison.csv`, and `comparison_report.md` under ignored `results/mc_maze_small/window_matched_comparison/` paths. These are local comparison artifacts only, not official benchmark outputs, and neural methods remain LFADS-style only rather than full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

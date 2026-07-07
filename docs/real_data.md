@@ -226,6 +226,18 @@ The evaluation reports direct model held-out rates when the checkpoint output co
 This MC_Maze Small masked co-smoothing run is local validation only. It is not full LFADS, not official NLB leaderboard performance, and all generated checkpoints and result files must remain out of Git.
 The real MC_Maze masked co-smoothing configs also request CUDA explicitly and are intended for a CUDA-enabled PyTorch environment.
 
+## Local window-matched comparison
+
+The current MC_Maze Small neural runs use a 256-bin time window for fast local iteration. Earlier transparent baselines were originally run on the full processed trial window, so their headline numbers should not be treated as direct comparisons to cropped LFADS-style evaluations. Full-window neural evaluation is future work.
+
+Run the local comparison pipeline with:
+
+```powershell
+python scripts/run_window_matched_comparison.py --config configs/mc_maze_small_window_matched_comparison.yaml
+```
+
+The pipeline reloads the processed dataset, verifies the configured dataset hash, applies the same 256-bin crop, recreates the deterministic split and neuron mask, recomputes mean-rate/ridge/factor-latent baselines on the cropped tensor, and evaluates existing LFADS-style checkpoints without training a new neural network. Generated tables and the Markdown report are written under ignored `results/mc_maze_small/window_matched_comparison/` paths. They are local reproducibility artifacts only, not official NLB leaderboard results.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

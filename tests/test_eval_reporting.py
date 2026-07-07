@@ -13,6 +13,7 @@ from latentbrain.eval.reporting import (
     write_factor_latent_markdown_report,
     write_factor_latent_sweep_markdown_report,
     write_lfads_gru_evaluation_report,
+    write_window_matched_comparison_report,
 )
 
 
@@ -255,3 +256,40 @@ def test_lfads_evaluation_report_includes_disclaimers_and_references(tmp_path: P
     assert "Mean-rate validation bits/spike: 0.5" in report
     assert "Factor latent best validation bits/spike: 0.125" in report
     assert "Previous LFADS-style held-out bits/spike: -0.01" in report
+
+
+def test_window_matched_report_includes_required_caveats(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "original_time_bins": 2051,
+        "cropped_time_bins": 256,
+        "window_seconds": 1.28,
+        "best_method_name": "mean_rate_windowed",
+        "best_prediction_source": "constant_rate",
+        "best_validation_bits_per_spike": 0.2,
+        "full_window_mean_rate_bits_per_spike": 0.5,
+        "full_window_factor_latent_best_bits_per_spike": 0.1,
+    }
+    leaderboard = pd.DataFrame(
+        {
+            "method_name": ["mean_rate_windowed"],
+            "prediction_source": ["constant_rate"],
+            "bits_per_spike": [0.2],
+            "poisson_nll": [4.0],
+            "behavior_mean_r2": [float("nan")],
+        }
+    )
+
+    report_path = write_window_matched_comparison_report(
+        tmp_path / "comparison_report.md",
+        summary,
+        leaderboard,
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Window duration: 1.28 seconds" in report
+    assert "full-window numbers are not directly comparable" in report
+    assert "not an official NLB leaderboard result" in report
+    assert "LFADS-style only, not full LFADS" in report
+    assert "No new neural network model was trained" in report

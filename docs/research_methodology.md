@@ -36,6 +36,12 @@ This is the natural next improvement after held-in reconstruction because it tes
 
 Real MC_Maze LFADS-style training and evaluation configs request CUDA explicitly so these local neural runs do not silently fall back to CPU. Synthetic smoke configs may remain CPU-compatible for ordinary tests.
 
+## Metric comparability
+
+Local method rankings are meaningful only when every method uses the same dataset hash, train/validation/test split, held-in and held-out neuron mask, time window, Poisson likelihood convention, bits/spike reference model, and behavior target convention. Earlier full-window baseline metrics are useful historical references, but they are not directly comparable to LFADS-style metrics produced on a 256-bin crop.
+
+The window-matched comparison pipeline recomputes the transparent baselines and evaluates existing LFADS-style checkpoints on the same cropped tensor before building a validation leaderboard. This matters before tuning neural models because apparent improvements can come from different spike totals, reference likelihoods, or time windows rather than a better latent representation. The comparison remains local: it is not an official NLB leaderboard result, and LFADS-style checkpoints are not full LFADS.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

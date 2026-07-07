@@ -142,6 +142,20 @@ def test_reference_rates_and_bits_per_spike_use_train_targets_only() -> None:
     assert split_metrics.loc[split_metrics["split"] == "validation", "bits_per_spike"].iloc[0] > 0
 
 
+def test_neuron_rows_allow_zero_spike_cropped_targets() -> None:
+    dataset = _easy_dataset()
+    dataset.spikes[3, :, 2] = 0
+    split = TrialSplit(train=np.array([0, 1, 2]), validation=np.array([3]), test=np.array([4]))
+
+    _, neuron_metrics, _ = run_cosmoothing_baseline(dataset, split, _mask(), _config())
+
+    zero_row = neuron_metrics[
+        (neuron_metrics["split"] == "validation") & (neuron_metrics["target_neuron_index"] == 2)
+    ].iloc[0]
+    assert zero_row["spike_count"] == 0.0
+    assert np.isnan(zero_row["bits_per_spike"])
+
+
 def test_sweep_uses_train_only_fit_and_evaluates_all_splits() -> None:
     dataset = _easy_dataset()
     split = TrialSplit(train=np.array([0, 1, 2]), validation=np.array([3]), test=np.array([4]))
