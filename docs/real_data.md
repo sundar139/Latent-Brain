@@ -262,6 +262,18 @@ The audit uses the same MC_Maze Small processed dataset hash, deterministic spli
 
 Generated audit tables, figures, reports, and optional checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_audit/` paths. The audit is not official NLB leaderboard performance and the model remains LFADS-style only, not full LFADS.
 
+## Local temporal rebinning diagnostic
+
+MC_Maze Small is stored at 5 ms resolution, which can make validation held-out targets nearly all zero inside the short local comparison window. Rebin the processed data for diagnostics with:
+
+```powershell
+python scripts/run_temporal_rebinning_diagnostic.py --config configs/mc_maze_small_temporal_rebinning.yaml
+```
+
+The diagnostic verifies the processed dataset hash, recreates the deterministic split and neuron mask, evaluates 5 ms, 10 ms, and 20 ms versions over the same 1.28-second window, recomputes same-bin mean-rate and factor-latent baselines, and trains small CUDA LFADS-style masked co-smoothing runs at 10 ms and 20 ms. Rebinned arrays, metrics, figures, checkpoints, and reports remain local under ignored `results/mc_maze_small/temporal_rebinning/` paths.
+
+These outputs are meant to decide whether coarser bins reduce sparsity enough to improve neural learning or merely alter metric scale. They are not official benchmark results, and bits/spike across different bin sizes should be read only as bin-specific diagnostics.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

@@ -15,6 +15,7 @@ from latentbrain.eval.reporting import (
     write_lfads_audit_report,
     write_lfads_gru_evaluation_report,
     write_lfads_tuning_report,
+    write_temporal_rebinning_report,
     write_window_matched_comparison_report,
 )
 
@@ -368,3 +369,26 @@ def test_lfads_audit_report_includes_required_statements(tmp_path: Path) -> None
     assert "Tiny subset overfit" in report
     assert "The model is LFADS-style only, not full LFADS." in report
     assert "This is a local diagnostic audit, not an official NLB leaderboard result." in report
+
+
+def test_temporal_rebinning_report_includes_required_statements(tmp_path: Path) -> None:
+    report_path = write_temporal_rebinning_report(
+        tmp_path / "temporal_rebinning_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "original_bin_size_ms": 5,
+            "target_bin_sizes_ms": [5, 10, 20],
+            "window_seconds": 1.28,
+            "coarser_bins_reduce_zero_fraction": True,
+            "lfads_improves_at_coarser_bins": True,
+            "lfads_beat_same_bin_mean_rate": False,
+        },
+        pd.DataFrame({"bin_size_ms": [5], "split": ["validation"], "zero_fraction": [0.9]}),
+        pd.DataFrame({"bin_size_ms": [5], "method_name": ["mean_rate"], "bits_per_spike": [0.1]}),
+        pd.DataFrame({"bin_size_ms": [10], "run_id": ["bin_10ms"], "bits_per_spike": [0.2]}),
+    )
+    report = report_path.read_text(encoding="utf-8")
+    assert "Bits/spike values across different bin sizes are diagnostic" in report
+    assert "not an official NLB leaderboard result" in report
+    assert "The model is LFADS-style only, not full LFADS." in report

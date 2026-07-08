@@ -864,3 +864,81 @@ def write_lfads_audit_outputs(
         tables.get(name, pd.DataFrame()).to_csv(path, index=False)
     write_lfads_audit_report(paths["report"], summary)
     return paths
+
+
+def write_temporal_rebinning_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    sparsity_by_bin_size: pd.DataFrame,
+    baseline_metrics_by_bin_size: pd.DataFrame,
+    lfads_metrics_by_bin_size: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local temporal-binning diagnostics."""
+    lines = [
+        f"# {summary.get('dataset_name')} temporal rebinning diagnostic report",
+        "",
+        "This is local temporal-binning diagnostic work, not an official NLB leaderboard result.",
+        "The model is LFADS-style only, not full LFADS.",
+        (
+            "Bits/spike values across different bin sizes are diagnostic and should not be "
+            "treated as direct benchmark comparisons."
+        ),
+        "",
+        "## Dataset and bins",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Original bin size: {summary.get('original_bin_size_ms')} ms",
+        f"- Target bin sizes: {summary.get('target_bin_sizes_ms')} ms",
+        f"- Fixed window duration: {summary.get('window_seconds')} seconds",
+        "",
+        "## Diagnostic conclusions",
+        "- Coarser binning reduces zero fraction: "
+        f"{summary.get('coarser_bins_reduce_zero_fraction')}",
+        f"- LFADS improves at 10 ms or 20 ms: {summary.get('lfads_improves_at_coarser_bins')}",
+        f"- Any LFADS run beats same-bin mean-rate: {summary.get('lfads_beat_same_bin_mean_rate')}",
+        "",
+        "## Sparsity table",
+        *_format_table(sparsity_by_bin_size),
+        "",
+        "## Baseline table by bin size",
+        *_format_table(baseline_metrics_by_bin_size),
+        "",
+        "## LFADS table by bin size",
+        *_format_table(lfads_metrics_by_bin_size),
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_temporal_rebinning_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    sparsity_by_bin_size: pd.DataFrame,
+    baseline_metrics_by_bin_size: pd.DataFrame,
+    lfads_metrics_by_bin_size: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write local temporal-binning diagnostic artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "rebinning_summary.json",
+        "sparsity": output_dir / "sparsity_by_bin_size.csv",
+        "baseline_metrics": output_dir / "baseline_metrics_by_bin_size.csv",
+        "lfads_metrics": output_dir / "lfads_metrics_by_bin_size.csv",
+        "report": output_dir / "temporal_rebinning_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    sparsity_by_bin_size.to_csv(paths["sparsity"], index=False)
+    baseline_metrics_by_bin_size.to_csv(paths["baseline_metrics"], index=False)
+    lfads_metrics_by_bin_size.to_csv(paths["lfads_metrics"], index=False)
+    write_temporal_rebinning_report(
+        paths["report"],
+        summary,
+        sparsity_by_bin_size,
+        baseline_metrics_by_bin_size,
+        lfads_metrics_by_bin_size,
+    )
+    return paths

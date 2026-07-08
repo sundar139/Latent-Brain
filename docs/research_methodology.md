@@ -56,6 +56,14 @@ The audit holds the dataset hash, deterministic split, held-in/held-out mask, 25
 
 Audit outputs are local reproducibility artifacts only. They are intended to identify likely issue flags and next debugging targets, not to report official NLB benchmark performance. The audited model remains LFADS-style only, not full LFADS.
 
+## Temporal binning diagnostics
+
+The first follow-up to the target-sparsity audit is temporal rebinning rather than a new architecture. Spike-count conservation is the primary preprocessing invariant: coarser bins are formed by summing adjacent 5 ms spike-count bins, while behavior samples are averaged over the same grouped bins so neural and behavioral arrays remain aligned. Any trailing incomplete groups are trimmed only when needed and recorded in metadata.
+
+All bin-size comparisons preserve a fixed 1.28-second window, so 5 ms, 10 ms, and 20 ms diagnostics differ in temporal resolution rather than trial duration. Mean-rate and factor-latent references are recomputed at each bin size, and LFADS-style runs are compared only against the same-bin references. Bits/spike values across different bin sizes are diagnostic and should not be treated as direct benchmark comparisons because the event count, reference likelihood, and time discretization change together.
+
+This check comes before neural SDEs, switching models, controller inputs, or larger tuning because it tests whether the current masked co-smoothing objective is starved by sparse 5 ms held-out targets. The generated tables, figures, and checkpoints are local artifacts only; they are not official NLB leaderboard results, and the neural model remains LFADS-style only.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.
