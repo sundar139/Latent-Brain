@@ -17,6 +17,7 @@ from latentbrain.eval.reporting import (
     write_lfads_gru_evaluation_report,
     write_lfads_rate_calibration_report,
     write_lfads_tuning_report,
+    write_metric_audit_report,
     write_temporal_rebinning_report,
     write_window_matched_comparison_report,
 )
@@ -452,6 +453,48 @@ def test_lfads_coordinated_dropout_report_includes_references_and_interpretation
     assert "If none help" in report
     assert "not an official NLB leaderboard result" in report
     assert "LFADS-style only, not full LFADS" in report
+
+
+def test_metric_audit_report_includes_formula_and_conclusions(tmp_path: Path) -> None:
+    report_path = write_metric_audit_report(
+        tmp_path / "metric_audit_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "bin_size_ms": 20,
+            "window_seconds": 1.28,
+            "reference_name": "train_heldout_mean_rate",
+            "train_mean_as_model_validation_bits_per_spike": 0.0,
+            "best_oracle_validation_bits_per_spike": 0.5,
+            "previous_mean_rate_directly_comparable": False,
+            "metric_reference_mismatch_found": True,
+            "mean_rate_inflation_found": True,
+            "neural_models_trail_under_unified_scoring": True,
+            "likely_conclusion": "reported mean-rate used a different reference convention",
+        },
+        pd.DataFrame(
+            {
+                "method_name": ["train_heldout_mean_rate"],
+                "split": ["validation"],
+                "bits_per_spike": [0.0],
+                "reference_log_likelihood": [-1.0],
+                "prediction_source": ["constant_rate"],
+            }
+        ),
+        pd.DataFrame(
+            {"control_name": ["oracle"], "split": ["validation"], "bits_per_spike": [0.5]}
+        ),
+        pd.DataFrame(
+            {"control_name": ["random"], "split": ["validation"], "bits_per_spike": [-0.1]}
+        ),
+        pd.DataFrame({"method_name": ["reported"], "directly_comparable": [False]}),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)" in report
+    assert "Metric/reference mismatch found: True" in report
+    assert "Oracle controls are not valid models" in report
+    assert "not an official NLB leaderboard result" in report
 
 
 def test_temporal_rebinning_report_includes_required_statements(tmp_path: Path) -> None:

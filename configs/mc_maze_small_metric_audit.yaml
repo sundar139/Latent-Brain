@@ -1,0 +1,49 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+audit:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  primary_split: validation
+  smoothing_sigma_ms:
+    - 40.0
+    - 80.0
+    - 160.0
+  shuffle_repeats: 5
+  shuffle_seed: 2027
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+references:
+  use_train_heldout_mean_rate_reference: true
+  include_global_mean_reference: true
+  include_split_mean_reference: true
+
+model_outputs:
+  include_existing_outputs: true
+  coordinated_dropout_eval_dir: results/mc_maze_small/lfads_coordinated_dropout/runs/dropout_0p25/evaluation
+  temporal_20ms_eval_dir: results/mc_maze_small/temporal_rebinning/runs/bin_20ms/evaluation
+  factor_latent_reference_bits_per_spike: 0.03164381944291991
+  mean_rate_reference_bits_per_spike: 0.7019005614036485
+
+reporting:
+  output_dir: results/mc_maze_small/metric_audit

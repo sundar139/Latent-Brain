@@ -80,6 +80,14 @@ The workflow keeps the 20 ms bin size, fixed 1.28-second window, deterministic s
 
 This diagnostic follows rate calibration because it addresses a different failure mode. If mild dropout helps, the model may benefit from robustness to partial observations. If high dropout hurts, the held-in input information may already be too limited. If none of the rates help, underfitting or objective mismatch may still dominate. Outputs are local artifacts only, not official NLB leaderboard results, and the model remains LFADS-style only.
 
+## Metric consistency and control baselines
+
+The metric audit fixes the scoring convention before any additional model work. For every audited method, the model log-likelihood is the summed Poisson log-likelihood of held-out spike counts under predicted rates. The reference log-likelihood is the summed Poisson log-likelihood of the same held-out spike counts under train-only held-out mean rates. Bits/spike is `(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)`, using the same held-out spike-count denominator for every method.
+
+This same-reference requirement matters because changing the reference can inflate or deflate bits/spike without changing model predictions. A train-only held-out mean-rate predictor scored against the train-only held-out mean-rate reference should score near zero. If an older mean-rate headline number is positive under a different reference, it is useful history but not directly comparable to LFADS-style or factor-latent values using the unified reference.
+
+Oracle and shuffled controls make the audit interpretable. Smoothed true held-out rates are an upper-bound diagnostic because they use evaluation targets directly; they are not valid models. Random-rate and trial-shuffled controls are negative controls for whether arbitrary rates or target-like activity can appear competitive. Together these checks test whether held-in activity adds predictive information beyond train-only held-out mean rates without creating an official NLB benchmark claim.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

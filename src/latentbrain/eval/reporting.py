@@ -1112,3 +1112,129 @@ def write_lfads_coordinated_dropout_outputs(
     dropout_diagnostics.to_csv(paths["dropout_diagnostics"], index=False)
     write_lfads_coordinated_dropout_report(paths["report"], summary, evaluation_metrics)
     return paths
+
+
+def write_metric_audit_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    unified_scores: pd.DataFrame,
+    oracle_controls: pd.DataFrame,
+    shuffled_controls: pd.DataFrame,
+    reference_diagnostics: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local metric/reference audit diagnostics."""
+    formula = "(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)"
+    lines = [
+        f"# {summary.get('dataset_name')} metric audit",
+        "",
+        "This is local metric-audit work, not an official NLB leaderboard result.",
+        "Oracle controls are not valid models.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- Unified bits/spike formula: {formula}",
+        f"- Reference model used in unified scoring: {summary.get('reference_name')}",
+        "",
+        "## Required checks",
+        "- Train-mean-as-model validation bits/spike: "
+        f"{summary.get('train_mean_as_model_validation_bits_per_spike')}",
+        "- Best oracle validation bits/spike: "
+        f"{summary.get('best_oracle_validation_bits_per_spike')}",
+        "- Previous mean-rate number directly comparable: "
+        f"{summary.get('previous_mean_rate_directly_comparable')}",
+        "",
+        "## Conclusions",
+        f"- Metric/reference mismatch found: {summary.get('metric_reference_mismatch_found')}",
+        f"- Mean-rate inflation found: {summary.get('mean_rate_inflation_found')}",
+        "- Neural models genuinely trail references under unified scoring: "
+        f"{summary.get('neural_models_trail_under_unified_scoring')}",
+        f"- Likely conclusion: {summary.get('likely_conclusion')}",
+        "",
+        "## Unified validation scores",
+        "| method | source | bits/spike | reference log-likelihood | comparable |",
+        "| --- | --- | ---: | ---: | --- |",
+    ]
+    validation = unified_scores[
+        unified_scores.get("split") == summary.get("primary_split", "validation")
+    ]
+    for _, row in validation.iterrows():
+        lines.append(
+            f"| {row.get('method_name')} | {row.get('prediction_source')} | "
+            f"{row.get('bits_per_spike')} | {row.get('reference_log_likelihood')} | "
+            f"{row.get('directly_comparable', True)} |"
+        )
+    lines.extend(["", "## Oracle-control scores"])
+    if not oracle_controls.empty:
+        lines.extend(
+            [
+                "| control | split | bits/spike | valid model |",
+                "| --- | --- | ---: | --- |",
+            ]
+        )
+        for _, row in oracle_controls.iterrows():
+            lines.append(
+                f"| {row.get('control_name')} | {row.get('split')} | "
+                f"{row.get('bits_per_spike')} | {row.get('valid_model')} |"
+            )
+    lines.extend(["", "## Shuffled/random control scores"])
+    if not shuffled_controls.empty:
+        lines.extend(["| control | split | bits/spike |", "| --- | --- | ---: |"])
+        for _, row in shuffled_controls.iterrows():
+            lines.append(
+                f"| {row.get('control_name')} | {row.get('split')} | {row.get('bits_per_spike')} |"
+            )
+    lines.extend(["", "## Existing reported scores"])
+    if not reference_diagnostics.empty:
+        lines.extend(
+            [
+                "| method | split | reported bits/spike | directly comparable |",
+                "| --- | --- | ---: | --- |",
+            ]
+        )
+        for _, row in reference_diagnostics.iterrows():
+            lines.append(
+                f"| {row.get('method_name')} | {row.get('split')} | "
+                f"{row.get('reported_bits_per_spike')} | {row.get('directly_comparable')} |"
+            )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_metric_audit_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    unified_scores: pd.DataFrame,
+    reference_diagnostics: pd.DataFrame,
+    oracle_controls: pd.DataFrame,
+    shuffled_controls: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "metric_audit_summary.json",
+        "unified_scores": output_dir / "unified_scores.csv",
+        "reference_diagnostics": output_dir / "reference_diagnostics.csv",
+        "oracle_controls": output_dir / "oracle_controls.csv",
+        "shuffled_controls": output_dir / "shuffled_controls.csv",
+        "report": output_dir / "metric_audit_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    unified_scores.to_csv(paths["unified_scores"], index=False)
+    reference_diagnostics.to_csv(paths["reference_diagnostics"], index=False)
+    oracle_controls.to_csv(paths["oracle_controls"], index=False)
+    shuffled_controls.to_csv(paths["shuffled_controls"], index=False)
+    write_metric_audit_report(
+        paths["report"],
+        summary,
+        unified_scores,
+        oracle_controls,
+        shuffled_controls,
+        reference_diagnostics,
+    )
+    return paths

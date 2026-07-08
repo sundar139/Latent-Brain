@@ -277,6 +277,18 @@ The workflow keeps the same 1.28-second 20 ms window, deterministic trial split,
 
 Generated metrics, dropout diagnostics, figures, reports, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_coordinated_dropout/` paths. The report compares dropout runs against same-bin mean-rate, same-bin factor-latent, previous raw 20 ms LFADS, and rate-calibration references. No official benchmark result is reported, and the model remains LFADS-style only, not full LFADS.
 
+## Metric/reference audit
+
+Before adding new model families, audit whether local MC_Maze Small scores share the same Poisson likelihood and bits/spike reference convention:
+
+```powershell
+python scripts/run_metric_audit.py --config configs/mc_maze_small_metric_audit.yaml
+```
+
+The audit uses 20 ms bins and the same 1.28-second window as the recent LFADS-style diagnostics. It scores the train-only held-out mean-rate predictor against that same train-only held-out mean-rate reference, so its validation bits/spike should be near zero. Global-mean, split-mean, oracle-smoothed, random, and trial-shuffled controls are written alongside any existing reported metrics that can be loaded safely.
+
+Unified bits/spike references are necessary because a model log-likelihood only becomes comparable after subtracting the same reference log-likelihood and dividing by the same held-out spike count. A mean-rate model scored against itself should not look like a strong positive baseline; if it does, the reference convention is different. Oracle controls use held-out targets directly and are not valid models. Outputs are local audit artifacts under ignored `results/mc_maze_small/metric_audit/` paths and are not official NLB leaderboard results.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

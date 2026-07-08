@@ -300,6 +300,18 @@ During training only, the workflow masks a random subset of held-in input neuron
 
 Outputs, figures, reports, and checkpoints are written under ignored `results/mc_maze_small/lfads_coordinated_dropout/` paths. They are local diagnostics only and are not official benchmark results.
 
+## Local metric/reference audit
+
+Run the MC_Maze Small metric audit with:
+
+```powershell
+python scripts/run_metric_audit.py --config configs/mc_maze_small_metric_audit.yaml
+```
+
+The audit rebins the processed 5 ms MC_Maze Small tensor to 20 ms bins and crops the same 1.28-second window used by the recent LFADS-style diagnostics. It recreates the deterministic trial split and held-in/held-out neuron mask, then scores mean-rate references, oracle controls, random controls, shuffled controls, and safely loadable existing reported metrics against a unified train-only held-out mean-rate reference.
+
+Existing reported scores may not be directly comparable unless their reference log-likelihood, held-out spike-count denominator, split, neuron mask, bin size, and time window match the unified audit convention. The audit report explicitly marks reported-only metrics and missing output directories instead of treating them as re-scored predictions. Oracle controls use held-out targets directly and are not valid models. Generated files are local artifacts under ignored `results/mc_maze_small/metric_audit/` paths, not official leaderboard results.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.
