@@ -274,6 +274,18 @@ The diagnostic verifies the processed dataset hash, recreates the deterministic 
 
 These outputs are meant to decide whether coarser bins reduce sparsity enough to improve neural learning or merely alter metric scale. They are not official benchmark results, and bits/spike across different bin sizes should be read only as bin-specific diagnostics.
 
+## Local LFADS-style rate calibration diagnostic
+
+The next MC_Maze Small diagnostic uses the 20 ms bin size because temporal rebinning gave the best local LFADS-style validation result at that bin width. It keeps the 1.28-second window fixed and requires same-bin 20 ms references, because mean-rate, factor-latent, and LFADS-style values should only be interpreted when they share the same bin size, split, held-in/held-out mask, and likelihood convention.
+
+Run the local diagnostic with:
+
+```powershell
+python scripts/run_lfads_rate_calibration.py --config configs/mc_maze_small_lfads_rate_calibration.yaml
+```
+
+The workflow calibrates existing direct held-out predictions using train trials only, tests mean-rate blending, and trains a small CUDA LFADS-style model with its output bias initialized from train-only firing rates. Validation and test targets are used only for evaluation. Outputs and checkpoints are written under ignored `results/mc_maze_small/lfads_rate_calibration/` paths and are not official benchmark results.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

@@ -942,3 +942,81 @@ def write_temporal_rebinning_outputs(
         lfads_metrics_by_bin_size,
     )
     return paths
+
+
+def write_lfads_rate_calibration_report(output_path: Path, summary: dict[str, Any]) -> Path:
+    """Write a Markdown report for local LFADS-style rate calibration diagnostics."""
+    lines = [
+        f"# {summary.get('dataset_name')} LFADS-style rate calibration diagnostic",
+        "",
+        "This is local rate-calibration diagnostic work, not an official NLB leaderboard result.",
+        "The model is LFADS-style only, not full LFADS.",
+        "",
+        "## Dataset and run",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Existing checkpoint path: {summary.get('existing_checkpoint_path')}",
+        "",
+        "## Validation bits/spike",
+        f"- Raw LFADS: {summary.get('raw_lfads_validation_bits_per_spike')}",
+        "- Multiplicative calibrated LFADS: "
+        f"{summary.get('multiplicative_calibrated_validation_bits_per_spike')}",
+        "- Log-bias calibrated LFADS: "
+        f"{summary.get('log_bias_calibrated_validation_bits_per_spike')}",
+        f"- Best blend alpha: {summary.get('best_blend_alpha')}",
+        f"- Best blend LFADS: {summary.get('best_blend_validation_bits_per_spike')}",
+        f"- Initialized LFADS: {summary.get('initialized_lfads_validation_bits_per_spike')}",
+        "- Initialized + calibrated LFADS: "
+        f"{summary.get('initialized_calibrated_validation_bits_per_spike')}",
+        "",
+        "## Same-bin references",
+        f"- Same-bin mean-rate reference: {summary.get('same_bin_mean_rate_reference')}",
+        f"- Same-bin factor-latent reference: {summary.get('same_bin_factor_latent_reference')}",
+        "",
+        "## Conclusions",
+        f"- Calibration improves LFADS: {summary.get('calibration_improves_lfads')}",
+        f"- Initialization improves LFADS: {summary.get('initialization_improves_lfads')}",
+        "- Any LFADS-family method beats same-bin factor-latent: "
+        f"{summary.get('beats_same_bin_factor_latent')}",
+        "- Any LFADS-family method beats same-bin mean-rate: "
+        f"{summary.get('beats_same_bin_mean_rate')}",
+        f"- Best LFADS-family method: {summary.get('best_lfads_family_method')}",
+        "",
+        "## Interpretation rules",
+        "- If alpha near 0 is best, model dynamics are not adding useful held-out information.",
+        "- If multiplicative/log-bias helps, rate scale calibration is an issue.",
+        "- If initialized readout helps, poor output anchoring is an issue.",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_lfads_rate_calibration_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    calibration_metrics: pd.DataFrame,
+    blend_metrics: pd.DataFrame,
+    initialized_lfads_metrics: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write local LFADS-style rate calibration JSON/CSV/Markdown artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "rate_calibration_summary.json",
+        "calibration_metrics": output_dir / "calibration_metrics.csv",
+        "blend_metrics": output_dir / "blend_metrics.csv",
+        "initialized_lfads_metrics": output_dir / "initialized_lfads_metrics.csv",
+        "report": output_dir / "calibration_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    calibration_metrics.to_csv(paths["calibration_metrics"], index=False)
+    blend_metrics.to_csv(paths["blend_metrics"], index=False)
+    initialized_lfads_metrics.to_csv(paths["initialized_lfads_metrics"], index=False)
+    write_lfads_rate_calibration_report(paths["report"], summary)
+    return paths

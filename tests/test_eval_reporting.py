@@ -14,6 +14,7 @@ from latentbrain.eval.reporting import (
     write_factor_latent_sweep_markdown_report,
     write_lfads_audit_report,
     write_lfads_gru_evaluation_report,
+    write_lfads_rate_calibration_report,
     write_lfads_tuning_report,
     write_temporal_rebinning_report,
     write_window_matched_comparison_report,
@@ -369,6 +370,44 @@ def test_lfads_audit_report_includes_required_statements(tmp_path: Path) -> None
     assert "Tiny subset overfit" in report
     assert "The model is LFADS-style only, not full LFADS." in report
     assert "This is a local diagnostic audit, not an official NLB leaderboard result." in report
+
+
+def test_lfads_rate_calibration_report_includes_references_and_interpretation(
+    tmp_path: Path,
+) -> None:
+    report_path = write_lfads_rate_calibration_report(
+        tmp_path / "calibration_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "bin_size_ms": 20,
+            "window_seconds": 1.28,
+            "cuda_device": "Unit GPU",
+            "existing_checkpoint_path": "checkpoint.pt",
+            "raw_lfads_validation_bits_per_spike": 0.01,
+            "multiplicative_calibrated_validation_bits_per_spike": 0.02,
+            "log_bias_calibrated_validation_bits_per_spike": 0.02,
+            "best_blend_alpha": 0.0,
+            "best_blend_validation_bits_per_spike": 0.0,
+            "initialized_lfads_validation_bits_per_spike": 0.03,
+            "same_bin_mean_rate_reference": 0.7,
+            "same_bin_factor_latent_reference": 0.03,
+            "calibration_improves_lfads": True,
+            "initialization_improves_lfads": True,
+            "beats_same_bin_factor_latent": False,
+            "beats_same_bin_mean_rate": False,
+            "best_lfads_family_method": "initialized_lfads",
+        },
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Same-bin mean-rate reference: 0.7" in report
+    assert "Same-bin factor-latent reference: 0.03" in report
+    assert "If alpha near 0 is best" in report
+    assert "rate scale calibration is an issue" in report
+    assert "poor output anchoring is an issue" in report
+    assert "not an official NLB leaderboard result" in report
+    assert "LFADS-style only, not full LFADS" in report
 
 
 def test_temporal_rebinning_report_includes_required_statements(tmp_path: Path) -> None:

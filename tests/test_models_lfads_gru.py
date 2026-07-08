@@ -55,6 +55,17 @@ def test_model_supports_output_dim_greater_than_input_dim() -> None:
     assert output["factors"].shape == (2, 6, 4)
 
 
+def test_output_bias_initialization_method_sets_all_output_rates() -> None:
+    model = LFADSGRU(LFADSGRUConfig(3, 5, 7, 11, 3, 4, 0.0, 1.0e-4, 500.0))
+    target = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    model.initialize_output_bias_from_rates(target)
+
+    assert torch.allclose(
+        torch.nn.functional.softplus(model.rate_readout.bias), target, rtol=1.0e-4
+    )
+
+
 def test_backward_pass_works_in_cosmoothing_mode() -> None:
     model = LFADSGRU(LFADSGRUConfig(3, 5, 7, 11, 3, 4, 0.0, 1.0e-4, 500.0))
     output = model(torch.ones(2, 6, 3))

@@ -1,0 +1,82 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+runtime:
+  device: cuda
+  fail_if_cuda_unavailable: true
+
+binning:
+  target_bin_size_ms: 20
+
+references:
+  same_bin_mean_rate_validation_bits_per_spike: 0.7019005614036485
+  same_bin_factor_latent_validation_bits_per_spike: 0.03164381944291991
+  previous_20ms_lfads_validation_bits_per_spike: 0.0094416136085523
+
+existing_lfads:
+  checkpoint_path: results/mc_maze_small/temporal_rebinning/runs/bin_20ms/checkpoints/best_validation.pt
+  prediction_source: direct_model
+
+posthoc_calibration:
+  enabled: true
+  methods:
+    - multiplicative_per_neuron
+    - log_bias_per_neuron
+    - mean_rate_blend
+  blend_alpha_grid:
+    - 0.0
+    - 0.05
+    - 0.1
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  fit_train_trials_only: true
+
+initialized_lfads:
+  enabled: true
+  output_dir_name: initialized_20ms
+  initialize_readout_bias_from_train_rates: true
+  encoder_hidden_dim: 64
+  generator_hidden_dim: 96
+  latent_dim: 16
+  factor_dim: 32
+  dropout: 0.0
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-5
+  epochs: 15
+  batch_size: 4
+  gradient_clip_norm: 5.0
+  heldin_loss_weight: 1.0
+  heldout_loss_weight: 2.0
+  kl_warmup_epochs: 5
+  loss_normalization: per_observed_spike_bin
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+evaluation:
+  primary_split: validation
+  primary_metric: bits_per_spike
+  evaluate_splits:
+    - train
+    - validation
+    - test
+
+reporting:
+  output_dir: results/mc_maze_small/lfads_rate_calibration

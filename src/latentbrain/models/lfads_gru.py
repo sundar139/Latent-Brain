@@ -6,6 +6,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from latentbrain.torch.rate_initialization import initialize_linear_readout_bias_from_rates
+
 
 @dataclass(slots=True)
 class LFADSGRUConfig:
@@ -66,6 +68,12 @@ class LFADSGRU(nn.Module):
         )
         self.factor_readout = nn.Linear(config.generator_hidden_dim, config.factor_dim)
         self.rate_readout = nn.Linear(config.factor_dim, config.output_dim)
+
+    def initialize_output_bias_from_rates(self, mean_rates_hz: torch.Tensor) -> None:
+        """Initialize output-rate readout bias from train-only mean firing rates."""
+        initialize_linear_readout_bias_from_rates(
+            self.rate_readout, mean_rates_hz, self.config.min_rate_hz
+        )
 
     def _sample_z0(self, mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         if not self.training:

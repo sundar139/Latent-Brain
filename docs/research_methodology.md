@@ -64,6 +64,14 @@ All bin-size comparisons preserve a fixed 1.28-second window, so 5 ms, 10 ms, an
 
 This check comes before neural SDEs, switching models, controller inputs, or larger tuning because it tests whether the current masked co-smoothing objective is starved by sparse 5 ms held-out targets. The generated tables, figures, and checkpoints are local artifacts only; they are not official NLB leaderboard results, and the neural model remains LFADS-style only.
 
+## LFADS-style rate calibration and readout anchoring
+
+After temporal rebinning, the next diagnostic keeps the 20 ms bin size fixed and asks whether the LFADS-style direct-rate output is poorly anchored rather than immediately adding model capacity. The workflow fits post-hoc calibrators on train trials only: per-neuron multiplicative Poisson rate scaling, the equivalent log-rate bias, and convex blending between direct model rates and train-only mean held-out rates.
+
+The blend parameter diagnoses whether factors add held-out information beyond a mean-rate anchor. If the best train-selected alpha is near 0, the mean-rate component explains the held-out targets better than the model dynamics. If multiplicative or log-bias calibration helps, output scale is a likely issue. If readout bias initialization from train-only all-neuron firing rates helps the newly trained 20 ms model, poor output anchoring is a likely issue.
+
+All validation and test metrics remain evaluation-only. Same-bin mean-rate and factor-latent references are required for interpretation because the 20 ms likelihood scale, spike totals, and target sparsity differ from 5 ms diagnostics. The generated results and checkpoints are local diagnostic artifacts only, not official NLB leaderboard results, and the model remains LFADS-style only.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

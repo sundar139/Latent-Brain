@@ -253,6 +253,18 @@ python scripts/run_temporal_rebinning_diagnostic.py --config configs/mc_maze_sma
 
 The diagnostic rebins the 5 ms spike counts to 10 ms and 20 ms by summing grouped spike bins, averages behavior over the same groups, keeps the comparison window fixed at 1.28 seconds, recomputes same-bin mean-rate and factor-latent references, and runs small CUDA LFADS-style masked co-smoothing jobs at 10 ms and 20 ms. Outputs, checkpoints, plots, and reports are local artifacts under ignored `results/mc_maze_small/temporal_rebinning/` paths. Bits/spike values across bin sizes are diagnostic and should not be treated as direct benchmark comparisons; no official NLB result is reported.
 
+## LFADS-style rate calibration diagnostic
+
+The temporal rebinning diagnostic identified 20 ms as the best local LFADS-style bin size so far, but the 20 ms model still trails same-bin references. Test whether the direct-rate output is poorly anchored with:
+
+```powershell
+python scripts/run_lfads_rate_calibration.py --config configs/mc_maze_small_lfads_rate_calibration.yaml
+```
+
+The diagnostic reloads the existing 20 ms LFADS-style checkpoint, fits train-only post-hoc rate calibration on direct held-out predictions, evaluates per-neuron multiplicative scaling, log-rate bias, and mean-rate blending, then trains a small CUDA LFADS-style masked co-smoothing model whose output readout bias is initialized from train-only firing rates. It compares all LFADS-family results only against same-bin 20 ms mean-rate and factor-latent references.
+
+Generated metrics, figures, reports, checkpoints, and config snapshots are local artifacts under ignored `results/mc_maze_small/lfads_rate_calibration/` paths. This is local diagnostic work for output scale and mean-rate anchoring, not an official NLB leaderboard result, and the model remains LFADS-style only, not full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

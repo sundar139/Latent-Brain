@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
 from latentbrain.models.lfads_gru import LFADSGRU
 from latentbrain.torch.checkpoints import save_checkpoint
 from latentbrain.torch.losses import lfads_cosmoothing_loss, lfads_elbo_loss
+from latentbrain.torch.rate_initialization import compute_train_mean_rates_hz
 from latentbrain.torch.schedules import linear_warmup
 
 TrainingMode = Literal["heldin_reconstruction", "cosmoothing"]
@@ -160,6 +162,29 @@ def _is_better(value: float, best: float | None, mode: str) -> bool:
     raise ValueError(msg)
 
 
+def _initialize_output_bias_from_train_loader(
+    model: LFADSGRU,
+    train_loader: DataLoader[dict[str, torch.Tensor]],
+    bin_size_ms: int,
+) -> None:
+    chunks: list[np.ndarray] = []
+    for batch in train_loader:
+        key = (
+            "all_spikes"
+            if model.config.output_dim == batch["all_spikes"].shape[-1]
+            else "heldin_spikes"
+        )
+        chunks.append(batch[key].detach().cpu().numpy())
+    train_spikes = np.concatenate(chunks, axis=0)
+    rates = compute_train_mean_rates_hz(
+        train_spikes,
+        bin_size_ms,
+        model.config.min_rate_hz,
+        model.config.max_rate_hz,
+    )
+    model.initialize_output_bias_from_rates(torch.as_tensor(rates, dtype=torch.float32))
+
+
 def train_lfads_gru(
     model: LFADSGRU,
     dataloaders: dict[str, DataLoader[dict[str, torch.Tensor]]],
@@ -194,6 +219,8 @@ def train_lfads_gru(
     history: list[dict[str, float]] = []
     best_metric: float | None = None
 
+    if bool(training_config.get("initialize_readout_bias_from_train_rates", False)):
+        _initialize_output_bias_from_train_loader(model, train_loader, bin_size_ms)
     model.to(device)
     for epoch in range(epochs):
         model.train()
