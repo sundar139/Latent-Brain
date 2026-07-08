@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from latentbrain.train.rebinned_lfads import (
+    build_coordinated_dropout_lfads_train_config,
     build_rebinned_lfads_eval_config,
     build_rebinned_lfads_train_config,
+    coordinated_dropout_run_id,
 )
 
 
@@ -15,7 +17,22 @@ def _config() -> dict[str, Any]:
         "dataset": {"name": "unit", "processed_path": "data.npz", "expected_hash": "abc"},
         "splits": {"seed": 7, "heldout_neuron_fraction": 0.25},
         "runtime": {"device": "cuda"},
+        "binning": {"target_bin_size_ms": 20},
+        "dropout": {
+            "enabled": True,
+            "mode": "neuron",
+            "rates": [0.1, 0.25],
+            "apply_to": ["train"],
+            "resample_each_batch": True,
+            "keep_at_least_one_neuron": True,
+            "seed": 7,
+        },
         "evaluation": {"evaluate_splits": ["train", "validation", "test"]},
+        "references": {
+            "same_bin_mean_rate_validation_bits_per_spike": 0.7,
+            "same_bin_factor_latent_validation_bits_per_spike": 0.03,
+            "previous_20ms_lfads_validation_bits_per_spike": 0.01,
+        },
         "lfads_settings": {
             "encoder_hidden_dim": 64,
             "generator_hidden_dim": 96,
@@ -56,3 +73,21 @@ def test_eval_config_builder_points_to_checkpoint(tmp_path: Path) -> None:
     assert cfg["model"]["checkpoint_path"].endswith("best.pt")
     assert cfg["data"]["max_time_bins"] == 64
     assert cfg["evaluation_mode"]["use_direct_model_rates_for_heldout"] is True
+
+
+def test_coordinated_dropout_config_builder_inserts_training_dropout(tmp_path: Path) -> None:
+    base = _config()
+    before = deepcopy(base)
+    cfg = build_coordinated_dropout_lfads_train_config(base, 0.25, 64, tmp_path / "dropout_0p25")
+
+    assert cfg["run_id"] == "dropout_0p25"
+    assert cfg["training"]["input_dropout"]["rate"] == 0.25
+    assert cfg["training"]["input_dropout"]["apply_to"] == ["train"]
+    assert cfg["reporting"]["output_dir"].endswith("dropout_0p25")
+    assert base == before
+
+
+def test_coordinated_dropout_run_ids_are_deterministic() -> None:
+    assert coordinated_dropout_run_id(0.10) == "dropout_0p10"
+    assert coordinated_dropout_run_id(0.25) == "dropout_0p25"
+    assert coordinated_dropout_run_id(0.50) == "dropout_0p50"

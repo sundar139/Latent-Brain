@@ -265,6 +265,18 @@ The diagnostic reloads the existing 20 ms LFADS-style checkpoint, fits train-onl
 
 Generated metrics, figures, reports, checkpoints, and config snapshots are local artifacts under ignored `results/mc_maze_small/lfads_rate_calibration/` paths. This is local diagnostic work for output scale and mean-rate anchoring, not an official NLB leaderboard result, and the model remains LFADS-style only, not full LFADS.
 
+## LFADS-style coordinated dropout diagnostic
+
+After rate calibration and readout bias initialization failed to close the held-out prediction gap, test whether the 20 ms LFADS-style masked co-smoothing model benefits from input robustness and shared-population prediction:
+
+```powershell
+python scripts/run_lfads_coordinated_dropout.py --config configs/mc_maze_small_lfads_coordinated_dropout.yaml
+```
+
+The workflow keeps the same 1.28-second 20 ms window, deterministic trial split, and held-in/held-out neuron mask. During training only, it randomly masks a configured fraction of held-in input neurons before the LFADS-style forward pass. Held-in and held-out targets remain unmasked for loss computation, so the model is forced to infer neural activity from partial population observations without corrupting the supervised targets. Validation and test evaluation use the original unmasked held-in inputs by default.
+
+Generated metrics, dropout diagnostics, figures, reports, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_coordinated_dropout/` paths. The report compares dropout runs against same-bin mean-rate, same-bin factor-latent, previous raw 20 ms LFADS, and rate-calibration references. No official benchmark result is reported, and the model remains LFADS-style only, not full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

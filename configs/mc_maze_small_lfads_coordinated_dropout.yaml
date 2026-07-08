@@ -1,0 +1,75 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+runtime:
+  device: cuda
+  fail_if_cuda_unavailable: true
+
+binning:
+  target_bin_size_ms: 20
+
+dropout:
+  enabled: true
+  mode: neuron
+  rates:
+    - 0.10
+    - 0.25
+    - 0.50
+  apply_to:
+    - train
+  resample_each_batch: true
+  keep_at_least_one_neuron: true
+  seed: 2027
+
+lfads_settings:
+  encoder_hidden_dim: 64
+  generator_hidden_dim: 96
+  latent_dim: 16
+  factor_dim: 32
+  dropout: 0.0
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-5
+  epochs: 15
+  batch_size: 4
+  gradient_clip_norm: 5.0
+  heldin_loss_weight: 1.0
+  heldout_loss_weight: 2.0
+  kl_warmup_epochs: 5
+  loss_normalization: per_observed_spike_bin
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+evaluation:
+  primary_split: validation
+  primary_metric: bits_per_spike
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  direct_model_primary: true
+  also_evaluate_factor_decoder: true
+  behavior_decoder_enabled: true
+
+references:
+  same_bin_mean_rate_validation_bits_per_spike: 0.7019005614036485
+  same_bin_factor_latent_validation_bits_per_spike: 0.03164381944291991
+  previous_20ms_lfads_validation_bits_per_spike: 0.009441612091451529
+  multiplicative_calibrated_validation_bits_per_spike: 0.007709626810947612
+  initialized_lfads_validation_bits_per_spike: -0.0054585953595156
+
+reporting:
+  output_dir: results/mc_maze_small/lfads_coordinated_dropout

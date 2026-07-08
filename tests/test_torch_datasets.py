@@ -73,3 +73,14 @@ def test_dataloaders_are_deterministic() -> None:
     second_ids = [int(batch["trial_id"][0]) for batch in second["train"]]
     assert first_ids == [12, 10]
     assert first_ids == second_ids
+
+
+def test_dataset_keeps_unmasked_original_tensors_available() -> None:
+    datasets = create_torch_datasets(_dataset(), _split(), _mask(), max_time_bins=4)
+
+    first = datasets["train"][0]
+    second = datasets["train"][0]
+
+    torch.testing.assert_close(first["heldin_spikes"], second["heldin_spikes"])
+    torch.testing.assert_close(first["heldout_spikes"], second["heldout_spikes"])
+    torch.testing.assert_close(first["all_spikes"], second["all_spikes"])

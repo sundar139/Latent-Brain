@@ -286,6 +286,20 @@ python scripts/run_lfads_rate_calibration.py --config configs/mc_maze_small_lfad
 
 The workflow calibrates existing direct held-out predictions using train trials only, tests mean-rate blending, and trains a small CUDA LFADS-style model with its output bias initialized from train-only firing rates. Validation and test targets are used only for evaluation. Outputs and checkpoints are written under ignored `results/mc_maze_small/lfads_rate_calibration/` paths and are not official benchmark results.
 
+## Local LFADS-style coordinated dropout diagnostic
+
+The coordinated dropout diagnostic also uses 20 ms binning because that bin size gave the best LFADS-style diagnostic result so far. The 1.28-second window, deterministic split, and held-in/held-out neuron mask are held fixed, and same-bin references are required for every comparison.
+
+Run the local diagnostic with:
+
+```powershell
+python scripts/run_lfads_coordinated_dropout.py --config configs/mc_maze_small_lfads_coordinated_dropout.yaml
+```
+
+During training only, the workflow masks a random subset of held-in input neurons and feeds the masked held-in activity to the LFADS-style model. The original unmasked held-in and held-out spike counts remain the loss targets. Evaluation uses unmasked held-in inputs and compares direct held-out predictions and factor-decoder predictions against same-bin mean-rate, same-bin factor-latent, previous raw 20 ms LFADS, and rate-calibration references.
+
+Outputs, figures, reports, and checkpoints are written under ignored `results/mc_maze_small/lfads_coordinated_dropout/` paths. They are local diagnostics only and are not official benchmark results.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

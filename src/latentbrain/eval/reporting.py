@@ -1020,3 +1020,95 @@ def write_lfads_rate_calibration_outputs(
     initialized_lfads_metrics.to_csv(paths["initialized_lfads_metrics"], index=False)
     write_lfads_rate_calibration_report(paths["report"], summary)
     return paths
+
+
+def write_lfads_coordinated_dropout_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    evaluation_metrics: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local LFADS-style input dropout diagnostics."""
+    leaderboard = evaluation_metrics.sort_values(
+        "validation_bits_per_spike", ascending=False, kind="mergesort"
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} LFADS-style coordinated dropout diagnostic",
+        "",
+        "This is local coordinated-dropout diagnostic training, not an official NLB "
+        "leaderboard result.",
+        "The model is LFADS-style only, not full LFADS.",
+        "",
+        "## Dataset and run",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Dropout rates tested: {summary.get('dropout_rates_tested')}",
+        "",
+        "## Best run",
+        f"- Best dropout rate: {summary.get('best_dropout_rate')}",
+        f"- Best validation bits/spike: {summary.get('best_validation_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        "- Best factor-decoder validation bits/spike: "
+        f"{summary.get('best_validation_factor_decoder_bits_per_spike')}",
+        "",
+        "## Same-bin references",
+        f"- Same-bin mean-rate reference: {summary.get('same_bin_mean_rate_reference')}",
+        f"- Same-bin factor-latent reference: {summary.get('same_bin_factor_latent_reference')}",
+        f"- Previous raw 20 ms LFADS reference: {summary.get('previous_20ms_lfads_reference')}",
+        "",
+        "## Conclusions",
+        "- Coordinated dropout improves LFADS: "
+        f"{summary.get('coordinated_dropout_improves_lfads')}",
+        f"- Any run beats same-bin factor-latent: {summary.get('beats_same_bin_factor_latent')}",
+        f"- Any run beats same-bin mean-rate: {summary.get('beats_same_bin_mean_rate')}",
+        "",
+        "## Validation leaderboard",
+        "| run_id | dropout_rate | validation_bits_per_spike | validation_poisson_nll |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for _, row in leaderboard.iterrows():
+        lines.append(
+            f"| {row['run_id']} | {row['dropout_rate']} | "
+            f"{row['validation_bits_per_spike']} | {row['validation_poisson_nll']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Interpretation rules",
+            "- If low dropout helps, model benefits from mild robustness.",
+            "- If high dropout hurts, input information is already limited.",
+            "- If none help, underfitting/objective may still dominate.",
+        ]
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_lfads_coordinated_dropout_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    training_metrics: pd.DataFrame,
+    evaluation_metrics: pd.DataFrame,
+    dropout_diagnostics: pd.DataFrame,
+) -> dict[str, Path]:
+    """Write local LFADS-style coordinated dropout JSON/CSV/Markdown artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "coordinated_dropout_summary.json",
+        "training_metrics": output_dir / "training_metrics.csv",
+        "evaluation_metrics": output_dir / "evaluation_metrics.csv",
+        "dropout_diagnostics": output_dir / "dropout_diagnostics.csv",
+        "report": output_dir / "coordinated_dropout_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    training_metrics.to_csv(paths["training_metrics"], index=False)
+    evaluation_metrics.to_csv(paths["evaluation_metrics"], index=False)
+    dropout_diagnostics.to_csv(paths["dropout_diagnostics"], index=False)
+    write_lfads_coordinated_dropout_report(paths["report"], summary, evaluation_metrics)
+    return paths

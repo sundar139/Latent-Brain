@@ -72,6 +72,14 @@ The blend parameter diagnoses whether factors add held-out information beyond a 
 
 All validation and test metrics remain evaluation-only. Same-bin mean-rate and factor-latent references are required for interpretation because the 20 ms likelihood scale, spike totals, and target sparsity differ from 5 ms diagnostics. The generated results and checkpoints are local diagnostic artifacts only, not official NLB leaderboard results, and the model remains LFADS-style only.
 
+## LFADS-style coordinated input masking
+
+Because post-hoc calibration and readout bias initialization did not improve the 20 ms LFADS-style held-out prediction, the next diagnostic changes the training signal rather than the rate scale. Coordinated input masking randomly drops held-in input neurons during training while preserving the original held-in and held-out spike-count targets for loss computation. This probes whether the model can learn shared latent structure that predicts missing population activity from partial observations.
+
+The workflow keeps the 20 ms bin size, fixed 1.28-second window, deterministic split, and neuron mask from the previous diagnostics. Dropout is applied to training inputs only; validation and test inputs stay unmasked unless explicitly configured for a diagnostic experiment. Same-bin mean-rate, factor-latent, previous raw LFADS-style, and calibration references are required so any apparent improvement is interpreted relative to the current local baseline family.
+
+This diagnostic follows rate calibration because it addresses a different failure mode. If mild dropout helps, the model may benefit from robustness to partial observations. If high dropout hurts, the held-in input information may already be too limited. If none of the rates help, underfitting or objective mismatch may still dominate. Outputs are local artifacts only, not official NLB leaderboard results, and the model remains LFADS-style only.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

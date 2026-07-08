@@ -13,6 +13,7 @@ from latentbrain.eval.reporting import (
     write_factor_latent_markdown_report,
     write_factor_latent_sweep_markdown_report,
     write_lfads_audit_report,
+    write_lfads_coordinated_dropout_report,
     write_lfads_gru_evaluation_report,
     write_lfads_rate_calibration_report,
     write_lfads_tuning_report,
@@ -406,6 +407,49 @@ def test_lfads_rate_calibration_report_includes_references_and_interpretation(
     assert "If alpha near 0 is best" in report
     assert "rate scale calibration is an issue" in report
     assert "poor output anchoring is an issue" in report
+    assert "not an official NLB leaderboard result" in report
+    assert "LFADS-style only, not full LFADS" in report
+
+
+def test_lfads_coordinated_dropout_report_includes_references_and_interpretation(
+    tmp_path: Path,
+) -> None:
+    report_path = write_lfads_coordinated_dropout_report(
+        tmp_path / "coordinated_dropout_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "bin_size_ms": 20,
+            "window_seconds": 1.28,
+            "cuda_device": "Unit GPU",
+            "dropout_rates_tested": [0.1, 0.25],
+            "best_dropout_rate": 0.1,
+            "best_validation_bits_per_spike": 0.02,
+            "best_validation_poisson_nll": 1.2,
+            "best_validation_factor_decoder_bits_per_spike": 0.01,
+            "same_bin_mean_rate_reference": 0.7,
+            "same_bin_factor_latent_reference": 0.03,
+            "previous_20ms_lfads_reference": 0.01,
+            "coordinated_dropout_improves_lfads": True,
+            "beats_same_bin_factor_latent": False,
+            "beats_same_bin_mean_rate": False,
+        },
+        pd.DataFrame(
+            {
+                "run_id": ["dropout_0p10"],
+                "dropout_rate": [0.1],
+                "validation_bits_per_spike": [0.02],
+                "validation_poisson_nll": [1.2],
+            }
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Same-bin mean-rate reference: 0.7" in report
+    assert "Same-bin factor-latent reference: 0.03" in report
+    assert "If low dropout helps" in report
+    assert "If high dropout hurts" in report
+    assert "If none help" in report
     assert "not an official NLB leaderboard result" in report
     assert "LFADS-style only, not full LFADS" in report
 

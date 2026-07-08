@@ -13,6 +13,11 @@ from torch.utils.data import DataLoader
 from latentbrain.models.lfads_gru import LFADSGRU
 from latentbrain.torch.checkpoints import save_checkpoint
 from latentbrain.torch.losses import lfads_cosmoothing_loss, lfads_elbo_loss
+from latentbrain.torch.masking import (
+    apply_input_neuron_dropout,
+    sample_neuron_dropout_mask,
+    summarize_dropout_mask,
+)
 from latentbrain.torch.rate_initialization import compute_train_mean_rates_hz
 from latentbrain.torch.schedules import linear_warmup
 
@@ -74,9 +79,10 @@ def _loss_for_batch(
     kl_beta: float,
     training_config: dict[str, Any],
     mode: TrainingMode,
+    input_heldin_spikes: torch.Tensor | None = None,
 ) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
     heldin = batch["heldin_spikes"].to(device)
-    output = model(heldin)
+    output = model(heldin if input_heldin_spikes is None else input_heldin_spikes)
     if mode == "cosmoothing":
         loss = lfads_cosmoothing_loss(
             heldin_counts=heldin,
@@ -110,6 +116,45 @@ def _loss_for_batch(
             "kl_beta": elbo["kl_beta"],
         }
     return loss, output["rates_hz"]
+
+
+def _input_dropout_settings(training_config: dict[str, Any]) -> dict[str, Any]:
+    settings = dict(training_config.get("input_dropout", {}))
+    if not bool(settings.get("enabled", False)):
+        return {"enabled": False, "rate": 0.0, "keep_at_least_one_neuron": True}
+    rate = float(settings.get("rate", 0.0))
+    if rate < 0.0 or rate >= 1.0:
+        msg = "input_dropout.rate must be in [0, 1)"
+        raise ValueError(msg)
+    apply_to = {str(value) for value in settings.get("apply_to", ["train"])}
+    return {
+        "enabled": "train" in apply_to and rate > 0.0,
+        "rate": rate,
+        "keep_at_least_one_neuron": bool(settings.get("keep_at_least_one_neuron", True)),
+        "seed": int(settings.get("seed", training_config.get("seed", 0))),
+    }
+
+
+def _make_dropout_generator(device: torch.device, seed: int) -> torch.Generator:
+    generator = torch.Generator(device=device.type if device.type == "cuda" else "cpu")
+    generator.manual_seed(seed)
+    return generator
+
+
+def _masked_training_input(
+    heldin: torch.Tensor,
+    settings: dict[str, Any],
+    generator: torch.Generator,
+) -> tuple[torch.Tensor, dict[str, float]]:
+    mask = sample_neuron_dropout_mask(
+        heldin.shape[0],
+        heldin.shape[2],
+        float(settings["rate"]),
+        heldin.device,
+        generator=generator,
+        keep_at_least_one=bool(settings["keep_at_least_one_neuron"]),
+    )
+    return apply_input_neuron_dropout(heldin, mask), summarize_dropout_mask(mask)
 
 
 def _split_metrics(
@@ -214,6 +259,8 @@ def train_lfads_gru(
     if checkpoint_metric == "validation_loss":
         checkpoint_metric = "validation_total_loss"
     checkpoint_mode = str(training_config.get("checkpoint_mode", "min"))
+    input_dropout = _input_dropout_settings(training_config)
+    dropout_generator = _make_dropout_generator(device, int(input_dropout.get("seed", 0)))
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = output_dir / "checkpoints"
     history: list[dict[str, float]] = []
@@ -227,10 +274,25 @@ def train_lfads_gru(
         kl_beta = linear_warmup(epoch, warmup_epochs)
         train_losses: list[float] = []
         gradient_norms: list[float] = []
+        realized_dropout: list[float] = []
         for batch in train_loader:
             optimizer.zero_grad(set_to_none=True)
+            model_input = None
+            if bool(input_dropout["enabled"]):
+                heldin = batch["heldin_spikes"].to(device)
+                model_input, stats = _masked_training_input(
+                    heldin, input_dropout, dropout_generator
+                )
+                realized_dropout.append(float(stats["dropout_fraction"]))
             loss, _ = _loss_for_batch(
-                model, batch, device, bin_size_ms, kl_beta, training_config, mode
+                model,
+                batch,
+                device,
+                bin_size_ms,
+                kl_beta,
+                training_config,
+                mode,
+                input_heldin_spikes=model_input,
             )
             _ensure_finite("training loss", loss["loss"])
             torch.autograd.backward(loss["loss"])
@@ -246,6 +308,8 @@ def train_lfads_gru(
             "gradient_norm": _mean(gradient_norms),
             "training_batch_loss": _mean(train_losses),
             "training_mode_cosmoothing": 1.0 if mode == "cosmoothing" else 0.0,
+            "configured_input_dropout_rate": float(input_dropout["rate"]),
+            "realized_input_dropout_fraction": _mean(realized_dropout) if realized_dropout else 0.0,
         }
         for split_name in evaluate_splits:
             metrics = _split_metrics(
@@ -271,6 +335,7 @@ def train_lfads_gru(
             row["reconstruction_loss"] = row["validation_heldin_reconstruction_loss"]
             row["kl_loss"] = row["validation_kl_loss"]
             row["mean_predicted_rate_hz"] = row["validation_mean_rate_hz"]
+            row["mean_predicted_rate"] = row["validation_mean_rate_hz"]
             row["min_predicted_rate_hz"] = row["validation_min_rate_hz"]
             row["max_predicted_rate_hz"] = row["validation_max_rate_hz"]
         history.append(row)
