@@ -476,3 +476,33 @@ It is an invalid diagnostic — it reads evaluation targets — and it exists so
 split-level rate effect, which is large. It can never be reported as model performance and never
 competes for best valid model. Generated outputs and figures remain ignored under
 `results/mc_maze_small/cv_rate_audit/` and are not official NLB leaderboard results.
+
+## MC_Maze Small diagnostic status
+
+Build the consolidated diagnostic report with:
+
+```powershell
+python scripts/build_mc_maze_diagnostic_report.py --config configs/mc_maze_small_diagnostic_report.yaml
+```
+
+The accepted status for MC_Maze Small at 20 ms bins and a 1.28-second window is as follows.
+
+Repeated-split reporting is required. The 15-trial validation and test splits are unstable, and a
+single 70/15/15 split carries little evidence in either direction. Report the repeated-split
+factor-latent baseline with its spread, never a single-split number.
+
+Factor-latent is the carried-forward valid baseline. No neural method beats it by mean or by
+confidence-interval lower bound. The LFADS-family models, neural-SDE, deterministic neural-ODE
+refinement, its objective variants, and switching latent dynamics are all negative or historical
+diagnostics; the deterministic neural-ODE near-win was seed-specific and did not survive multi-seed
+evaluation.
+
+The `split_mean_rate_invalid` control is invalid. It predicts each evaluation split from that
+split's own held-out mean rate, and its large advantage is per-neuron evaluation-target leakage
+rather than a global rate offset a valid model could learn — oracle rescaling recovers almost none
+of it, and a train-only rate calibration gains essentially nothing. It is a leakage diagnostic and
+is never model performance.
+
+The recommended next work is larger or additional datasets, or cross-validated reporting on this
+one. Generated report bundles remain ignored under `reports/mc_maze_small_diagnostic/` and are not
+official NLB leaderboard results.

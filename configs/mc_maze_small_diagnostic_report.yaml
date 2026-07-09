@@ -1,0 +1,42 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+analysis:
+  bin_size_ms: 20
+  window_seconds: 1.28
+  canonical_reference_model: train_heldout_mean_rate
+  canonical_metric: unified_bits_per_spike
+  official_leaderboard_claim: false
+
+inputs:
+  data_quality_summary_path: reports/mc_maze_small/data_quality_summary.json
+  unified_scoreboard_summary_path: results/mc_maze_small/unified_scoreboard/unified_scoreboard_summary.json
+  seed_robustness_summary_path: results/mc_maze_small/seed_robustness/seed_robustness_summary.json
+  seed_robustness_results_path: results/mc_maze_small/seed_robustness/seed_robustness_results.csv
+  split_audit_summary_path: results/mc_maze_small/split_audit/split_audit_summary.json
+  cv_rate_audit_summary_path: results/mc_maze_small/cv_rate_audit/cv_rate_audit_summary.json
+  repeated_split_scores_path: results/mc_maze_small/cv_rate_audit/repeated_split_scores.csv
+  rate_control_scores_path: results/mc_maze_small/cv_rate_audit/rate_control_scores.csv
+  rate_offset_decomposition_path: results/mc_maze_small/cv_rate_audit/rate_offset_decomposition.csv
+  method_summary_path: results/mc_maze_small/cv_rate_audit/method_summary.csv
+
+accepted_findings:
+  carried_forward_valid_method: factor_latent
+  single_split_results_reportable: false
+  recommended_reporting_mode: repeated_split
+  invalid_rate_controls_present: true
+  neural_ode_near_win_seed_specific: true
+  split_mean_advantage_is_rate_offset: false
+  split_mean_advantage_is_target_leakage: true
+  no_official_benchmark_claim: true
+
+reporting:
+  output_dir: reports/mc_maze_small_diagnostic
+  fail_if_required_inputs_missing: true
+  include_claim_safety_checklist: true
+  include_invalid_control_warning: true
+  include_negative_results: true
+  include_next_steps: true

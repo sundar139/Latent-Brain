@@ -271,3 +271,38 @@ recommended reporting mode is repeated split. Factor-latent, not any neural mode
 forward as the reporting baseline. Evaluation stays canonical and unweighted, and old incompatible
 mean-rate values are never tuning targets. All outputs are local artifacts, not official NLB
 leaderboard results.
+
+## Diagnostic reporting and claim safety
+
+The final artifact for a dataset is not the best score it produced; it is a report stating what the
+evidence supports and what it forbids. The MC_Maze Small diagnostic report freezes the accepted
+findings and is regenerated deterministically from the stored audit summaries, with no timestamps
+and no randomness, so that two runs on the same inputs produce byte-identical output.
+
+The accepted evidence hierarchy is explicit. A repeated-split result with its spread outranks a
+single-split number. A result that survives multi-seed evaluation outranks one that does not. A
+paired comparison outranks an unpaired one. A single-seed leaderboard entry is a diagnostic, never
+a performance figure — the objective workflow's earlier `seed + run_index` scheme confounded the
+method under test with its initialization, and every grid workflow that still seeds that way
+inherits the same caveat.
+
+Valid models and invalid controls are separated structurally, not by convention. The method registry
+records, per method, whether it is a valid model, whether it is reportable as model performance, and
+if invalid, why. Invalid controls carry an `invalid_reason`, are excluded from best-valid-model
+selection at every layer, and cannot be marked carried forward. Validation refuses to emit a report
+in which an invalid control is reportable, the carried-forward method is invalid, single-split
+reporting is recommended, an official leaderboard claim is set, or the split-mean advantage is
+attributed to a global rate offset rather than to target leakage.
+
+Three disclosures are mandatory in the report text and are checked mechanically. The seed-confound
+disclosure states that the neural-ODE near-win was seed-specific. The split-instability disclosure
+states that the 15-trial evaluation splits are unstable and that single-split numbers are not final
+performance. The rate-leakage disclosure states that invalid controls use evaluation split target
+information and cannot be reported as model performance. A fourth check keeps old incompatible
+mean-rate values labelled historical-only.
+
+The claim safety checklist accompanies every report: no official leaderboard claim, no invalid
+control reported as model performance, no single-split result reported as final performance,
+canonical unified metric used, old mean-rate values excluded from current targets, generated outputs
+not committed, negative neural results included, seed confound disclosed, split instability
+disclosed. The report builder exits non-zero if any item fails.

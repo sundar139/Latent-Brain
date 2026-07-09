@@ -67,6 +67,29 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## MC_Maze Small diagnostic report
+
+After the seed-robustness benchmark, the split generalization audit, and the cross-validated rate
+audit, the correct next artifact is not another model — it is a report that freezes what was
+actually established and what must not be claimed:
+
+```powershell
+python scripts/build_mc_maze_diagnostic_report.py --config configs/mc_maze_small_diagnostic_report.yaml
+```
+
+The builder consolidates the accepted summaries into a deterministic report, a method registry, and
+a claim safety checklist. It refuses to write anything if claim-safety validation fails — for
+example if an invalid control were marked reportable, if the carried-forward method were invalid,
+or if single-split reporting were recommended.
+
+`factor_latent` is the carried-forward valid baseline, and it is reportable only as a
+**repeated-split** result with its spread. Single-split numbers are not final performance: the
+15-trial validation and test splits are unstable, and the neural-ODE near-win was seed-specific.
+The `split_mean_rate_invalid` and `oracle_split_scaled_factor_latent_invalid` controls read
+evaluation-split targets; they are **leakage diagnostics** and can never be reported as model
+performance. No official benchmark claim is made anywhere in this repository. The generated bundle
+under `reports/mc_maze_small_diagnostic/` is a local ignored artifact.
+
 ## Cross-validated rate audit
 
 The split generalization audit showed two things that make single-split numbers unreportable: the
