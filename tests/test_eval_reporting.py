@@ -22,6 +22,7 @@ from latentbrain.eval.reporting import (
     write_metric_audit_report,
     write_neural_ode_tuning_report,
     write_neural_sde_tuning_report,
+    write_switching_ode_tuning_outputs,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
     write_window_matched_comparison_report,
@@ -767,3 +768,72 @@ def test_neural_ode_tuning_report_includes_required_statements(tmp_path: Path) -
     assert "Deterministic latent dynamics are tested" in report
     assert "Old incompatible mean-rate values are not used as tuning targets" in report
     assert "not an official NLB leaderboard result" in report
+
+
+def test_switching_tuning_report_includes_references_and_disclaimers(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "window_seconds": 1.28,
+        "cuda_device": "Unit GPU",
+        "reference_model": "train_heldout_mean_rate",
+        "train_mean_validation_bits_per_spike": 0.0,
+        "runs_attempted": 1,
+        "successful_runs": 1,
+        "best_run_id": "run_000",
+        "best_run_params": {"n_regimes": 2},
+        "best_validation_unified_bits_per_spike": 0.02,
+        "best_validation_poisson_nll": 2.0,
+        "best_factor_decoder_unified_bits_per_spike": 0.01,
+        "best_checkpoint_source": "latest",
+        "factor_latent_unified_reference": 0.03,
+        "previous_neural_ode_reference": 0.028,
+        "previous_neural_sde_reference": 0.026,
+        "beats_factor_latent_unified": False,
+        "beats_previous_neural_ode": False,
+        "best_active_regime_count": 2,
+        "best_mean_regime_entropy": 0.5,
+        "best_max_regime_occupancy": 0.6,
+    }
+    leaderboard = pd.DataFrame(
+        [
+            {
+                "rank": 1,
+                "run_id": "run_000",
+                "validation_unified_bits_per_spike": 0.02,
+                "validation_poisson_nll": 2.0,
+                "active_regime_count": 2,
+                "mean_regime_entropy": 0.5,
+                "best_checkpoint_source": "latest",
+                "beats_factor_latent_unified": False,
+                "beats_previous_neural_ode": False,
+                "notes": "",
+            }
+        ]
+    )
+    regime = pd.DataFrame(
+        [
+            {
+                "split": "validation",
+                "regime_index": 0,
+                "mean_occupancy": 0.6,
+                "std_occupancy": 0.1,
+                "min_probability": 0.1,
+                "max_probability": 0.9,
+                "entropy": 0.5,
+                "active": True,
+            }
+        ]
+    )
+
+    paths = write_switching_ode_tuning_outputs(
+        tmp_path, summary, pd.DataFrame(), leaderboard, pd.DataFrame(), regime
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert "Canonical reference model: train_heldout_mean_rate" in text
+    assert "Factor-latent unified reference: 0.03" in text
+    assert "If one regime dominates" in text
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+    assert "not an official NLB leaderboard result" in text

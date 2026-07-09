@@ -190,6 +190,14 @@ def load_lfads_family_candidates(config: dict[str, Any]) -> list[dict[str, Any]]
     loaded_methods: set[str] = set()
     direct_summaries = [
         (
+            "switching_ode_tuning",
+            "switching_ode_tuning_direct_model",
+            "switching neural-ODE-style tuning",
+            inputs.get("switching_ode_tuning_summary_path"),
+            "best_validation_unified_bits_per_spike",
+            "best_validation_poisson_nll",
+        ),
+        (
             "lfads_unified_tuning",
             "canonical_tuning_direct_model",
             "canonical LFADS tuning",
@@ -356,7 +364,10 @@ def summarize_unified_scoreboard(
     )
     best_valid = valid.iloc[0] if not valid.empty else None
     family_mask = (
-        valid["method_name"].astype(str).str.lower().str.contains("lfads|neural_sde|neural_ode")
+        valid["method_name"]
+        .astype(str)
+        .str.lower()
+        .str.contains("lfads|neural_sde|neural_ode|switching_ode")
     )
     lfads = valid[family_mask] if not valid.empty else valid
     best_lfads = (

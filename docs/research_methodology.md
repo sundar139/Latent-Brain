@@ -135,3 +135,11 @@ The previous neural-SDE-style local tuning selected a zero-diffusion run, so the
 Checkpoint selection is aligned with the scorer by evaluating saved validation-loss and latest checkpoints after training, copying the best validation unified bits/spike checkpoint to `best_unified.pt`, and writing `checkpoint_selection.csv`. Validation loss remains a training diagnostic, not the cross-run selection target.
 
 Decision rule before rSLDS switching: deterministic latent dynamics should first beat the current factor-latent unified reference under this same-bin scorer. If it does, run multiple-seed robustness checks before adding switching dynamics. If it does not, treat the gap as evidence that the factor-latent baseline remains the local valid target. Old incompatible mean-rate values remain historical-only and are not tuning targets.
+
+## rSLDS-style switching dynamics
+
+The switching neural-ODE-style latent generator extends deterministic latent dynamics with soft discrete regimes, not full Bayesian rSLDS inference. A bidirectional encoder reads held-in spikes and infers the initial latent posterior. At each 20 ms bin, a regime network maps the current latent state and encoder context to regime probabilities. Regime-specific drift networks produce candidate latent updates, and the model evolves using the probability-weighted drift. Diffusion remains disabled.
+
+Regime occupancy and categorical entropy are diagnostics, not claims of discovered discrete brain states. A useful switching result should show multiple active regimes, non-degenerate occupancy, and improved validation unified bits/spike under the same canonical scorer. If one regime dominates, switching did not add meaningful dynamics. If switching beats factor-latent, the next step is multi-seed robustness before any scientific or benchmark-style claims.
+
+Selection remains validation unified bits/spike with train-heldout mean rate as the reference, fixed 20 ms bins, fixed 1.28-second window, deterministic split, and deterministic held-in/held-out mask. Old incompatible mean-rate values remain historical-only and are not tuning targets. Outputs are local artifacts only, not official NLB leaderboard results.

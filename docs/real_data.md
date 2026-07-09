@@ -79,6 +79,16 @@ If `nlb-tools` is not available from pip in your environment, install it manuall
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Switching deterministic latent dynamics
+
+MC_Maze Small switching tuning uses 20 ms bins and a fixed 1.28-second window:
+
+```powershell
+python scripts/tune_switching_ode.py --config configs/mc_maze_small_switching_ode_tuning.yaml
+```
+
+The current local goal is to beat the factor-latent unified validation score under canonical train-heldout mean-rate scoring. The model is a soft switching neural-ODE-style generator, not full Bayesian rSLDS inference. If it beats factor-latent, the next step should be multi-seed robustness before any claims. Generated outputs and checkpoints remain ignored under `results/mc_maze_small/switching_ode_tuning/`.
+
 ## Local preparation
 
 1. Open the official Neural Latents Benchmark datasets page.

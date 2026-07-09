@@ -23,7 +23,7 @@ Initialized foundation:
 Not implemented yet:
 
 - Automatic dataset download or final benchmark preprocessing pipelines
-- Full LFADS, neural SDE, or switching dynamical system logic
+- Full LFADS, full neural SDE, or full Bayesian rSLDS inference
 - Neural Latents Benchmark evaluation
 - Official benchmark scores, checkpoints, or model artifacts
 
@@ -66,6 +66,16 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 ```powershell
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
+
+## Switching deterministic latent dynamics
+
+Run local rSLDS-style switching neural-ODE-style tuning with:
+
+```powershell
+python scripts/tune_switching_ode.py --config configs/mc_maze_small_switching_ode_tuning.yaml
+```
+
+The model keeps diffusion disabled, infers soft regime probabilities over time, mixes a small number of learned drift fields, and reports regime occupancy/entropy diagnostics. Selection uses canonical unified validation bits/spike: 20 ms MC_Maze Small bins, a 1.28-second window, the deterministic split/mask, and train-heldout mean rate as the reference. The factor-latent unified score is the current valid local target to beat; old incompatible mean-rate values are historical-only and are not tuning targets. Results, figures, and checkpoints are local ignored artifacts under `results/mc_maze_small/switching_ode_tuning/`, not official NLB leaderboard results.
 
 ## Configuration and environment
 
