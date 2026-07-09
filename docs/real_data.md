@@ -336,6 +336,18 @@ The workflow uses 20 ms bins and the same 1.28-second window as the unified scor
 
 Generated tuning tables, reports, figures, config snapshots, and checkpoints live under ignored `results/mc_maze_small/lfads_unified_tuning/` paths. They are local artifacts only, not official NLB leaderboard results, and the model remains LFADS-style only.
 
+## Local controller-style LFADS-family tuning
+
+Run the controller-style MC_Maze Small workflow with:
+
+```powershell
+python scripts/tune_lfads_controller.py --config configs/mc_maze_small_lfads_controller_tuning.yaml
+```
+
+The workflow uses 20 ms bins and the same fixed 1.28-second window as the unified scoreboard. It trains a small CUDA grid with inferred inputs, evaluates every run with the train-heldout mean-rate reference, and selects by validation unified bits/spike. The current goal is to beat the factor-latent unified score before moving to neural SDE or rSLDS models.
+
+Generated controller tuning tables, reports, figures, config snapshots, and checkpoints live under ignored `results/mc_maze_small/lfads_controller_tuning/` paths. They are local artifacts only, not official NLB leaderboard results, and the model is LFADS-style with inferred inputs, not full LFADS.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

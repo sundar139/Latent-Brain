@@ -102,6 +102,14 @@ LFADS-family tuning uses the canonical scoreboard convention for model compariso
 
 Validation loss remains useful for checkpointing inside a run, but it is not the primary cross-run model-comparison metric. Cross-run ranking uses unified validation bits/spike first, then deterministic tie-breakers. Factor-latent remains the current valid local target to beat; oracle scores are diagnostic upper bounds only, and old incompatible mean-rate values are not tuning targets. The unified scoreboard can read `inputs.lfads_unified_tuning_summary` and include the latest canonical LFADS-style tuning winner when that ignored local artifact exists; otherwise it remains based on the static known LFADS-family references in the config.
 
+## Controller-style inferred inputs
+
+The controller-style LFADS-family model adds time-varying inferred inputs because a single initial latent condition can be too weak for trial-to-trial perturbations and within-trial dynamics that are visible in held-in spiking. A bidirectional encoder summarizes held-in activity, a controller GRU infers per-bin input posteriors, and the generator uses those inferred inputs to produce factors and all-neuron rates.
+
+Inferred-input KL is read as a usage diagnostic. Near-zero KL may indicate posterior underuse; very large KL may indicate overfitting or weak prior regularization. This comes before neural SDE or rSLDS work because it is the smallest LFADS-family architecture change that directly tests whether time-varying latent drive helps held-out prediction under the existing canonical scorer.
+
+Selection remains validation unified bits/spike with the train-heldout mean-rate reference, fixed 20 ms bins, fixed 1.28-second window, deterministic split, and deterministic held-in/held-out mask. Validation loss still checkpoints runs only; it is not the tuning target.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

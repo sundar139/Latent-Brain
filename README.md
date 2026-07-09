@@ -313,6 +313,18 @@ This workflow uses the 20 ms MC_Maze Small tensor, the fixed 1.28-second window,
 
 Outputs, run reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_unified_tuning/` paths. This is local model selection only, not an official NLB leaderboard result, and the model remains LFADS-style only, not full LFADS.
 
+## Controller-style LFADS-family tuning
+
+Run the inferred-input controller workflow with:
+
+```powershell
+python scripts/tune_lfads_controller.py --config configs/mc_maze_small_lfads_controller_tuning.yaml
+```
+
+This model adds a controller GRU that reads held-in activity and generator state to infer time-varying latent inputs. Runs still use 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the selection metric. The current local target to beat is the factor-latent unified score; the previous best LFADS-family score is a secondary LFADS-family reference. Old incompatible mean-rate values are historical-only and are not tuning targets.
+
+Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_controller_tuning/` paths. This is local controller-style LFADS-family tuning, not an official NLB leaderboard result, and the model is LFADS-style with inferred inputs, not full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

@@ -1405,3 +1405,89 @@ def write_lfads_unified_tuning_outputs(
     leaderboard.to_csv(paths["leaderboard"], index=False)
     write_lfads_unified_tuning_report(paths["report"], summary, results, leaderboard)
     return paths
+
+
+def write_lfads_controller_tuning_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    results: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+) -> Path:
+    lines = [
+        f"# {summary.get('dataset_name')} controller-style LFADS-family tuning",
+        "",
+        (
+            "This is local controller-style LFADS-family tuning, "
+            "not an official NLB leaderboard result."
+        ),
+        "The model is LFADS-style with inferred inputs, not full LFADS.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        "- Train-mean-as-model equals 0.0 bits/spike.",
+        "- Train-mean validation bits/spike: "
+        f"{summary.get('train_mean_validation_bits_per_spike')}",
+        "",
+        "## Selection",
+        f"- Runs attempted: {summary.get('runs_attempted')}",
+        f"- Successful runs: {summary.get('successful_runs')}",
+        f"- Best run ID: {summary.get('best_run_id')}",
+        f"- Best run parameters: {summary.get('best_run_params')}",
+        "- Best validation unified bits/spike: "
+        f"{summary.get('best_validation_unified_bits_per_spike')}",
+        f"- Factor-latent unified reference: {summary.get('factor_latent_unified_reference')}",
+        f"- Previous LFADS-family reference: {summary.get('previous_best_lfads_family_reference')}",
+        f"- Beats factor-latent: {summary.get('beats_factor_latent_unified')}",
+        f"- Beats previous LFADS-family result: {summary.get('beats_previous_best_lfads_family')}",
+        "",
+        "## Inferred-input KL interpretation",
+        "- near-zero KL may indicate posterior underuse.",
+        "- very large KL may indicate overfitting or weak prior regularization.",
+        "",
+        "## Validation leaderboard",
+        "| rank | run | bits/spike | poisson NLL | beats factor-latent | "
+        "beats previous LFADS-family | notes |",
+        "| ---: | --- | ---: | ---: | --- | --- | --- |",
+    ]
+    for _, row in leaderboard.iterrows():
+        lines.append(
+            f"| {row.get('rank')} | {row.get('run_id')} | "
+            f"{row.get('validation_unified_bits_per_spike')} | "
+            f"{row.get('validation_poisson_nll')} | "
+            f"{row.get('beats_factor_latent_unified')} | "
+            f"{row.get('beats_previous_best_lfads_family')} | {row.get('notes')} |"
+        )
+    if results.empty:
+        lines.append("| | no successful runs | | | | | |")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_lfads_controller_tuning_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    results: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "controller_tuning_summary.json",
+        "results": output_dir / "controller_tuning_results.csv",
+        "leaderboard": output_dir / "controller_validation_leaderboard.csv",
+        "report": output_dir / "controller_tuning_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    results.to_csv(paths["results"], index=False)
+    leaderboard.to_csv(paths["leaderboard"], index=False)
+    write_lfads_controller_tuning_report(paths["report"], summary, results, leaderboard)
+    return paths
