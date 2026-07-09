@@ -1238,3 +1238,95 @@ def write_metric_audit_outputs(
         reference_diagnostics,
     )
     return paths
+
+
+def write_unified_scoreboard_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    validation_leaderboard: pd.DataFrame,
+    historical_metric_notes: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local unified scoring comparisons."""
+    formula = "(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)"
+    lines = [
+        f"# {summary.get('dataset_name')} unified scoreboard",
+        "",
+        "This is local unified scoring, not an official NLB leaderboard result.",
+        "Old mean-rate values are historical-only and must not be used as direct targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- Canonical bits/spike formula: {formula}",
+        f"- Reference model: {summary.get('reference_model')}",
+        "- Train-mean-as-model scores 0.0 bits/spike under canonical scoring.",
+        "",
+        "## Required checks",
+        "- Train-mean validation bits/spike: "
+        f"{summary.get('train_mean_validation_bits_per_spike')}",
+        f"- Best valid model: {summary.get('best_valid_model')}",
+        "- Best valid model validation bits/spike: "
+        f"{summary.get('best_valid_model_validation_bits_per_spike')}",
+        f"- Best LFADS-family method: {summary.get('best_lfads_family_method')}",
+        "- Best LFADS-family validation bits/spike: "
+        f"{summary.get('best_lfads_family_validation_bits_per_spike')}",
+        "- Oracle diagnostic score: "
+        f"{summary.get('oracle_validation_bits_per_spike')} (invalid model)",
+        "",
+        "## Unified validation leaderboard",
+        "| rank | method | source | valid model | bits/spike | reference | oracle control |",
+        "| ---: | --- | --- | --- | ---: | --- | --- |",
+    ]
+    for _, row in validation_leaderboard.iterrows():
+        lines.append(
+            f"| {row.get('rank')} | {row.get('method_name')} | "
+            f"{row.get('prediction_source')} | {row.get('valid_model')} | "
+            f"{row.get('validation_bits_per_spike')} | {row.get('reference_name')} | "
+            f"{row.get('is_oracle_control')} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Historical incompatible values",
+            "| metric | value | status | reason |",
+            "| --- | ---: | --- | --- |",
+        ]
+    )
+    for _, row in historical_metric_notes.iterrows():
+        lines.append(
+            f"| {row.get('metric_name')} | {row.get('value')} | "
+            f"{row.get('status')} | {row.get('reason')} |"
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_unified_scoreboard_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    validation_leaderboard: pd.DataFrame,
+    split_scores: pd.DataFrame,
+    historical_metric_notes: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "unified_scoreboard_summary.json",
+        "validation_leaderboard": output_dir / "unified_validation_leaderboard.csv",
+        "split_scores": output_dir / "unified_split_scores.csv",
+        "historical_metric_notes": output_dir / "historical_metric_notes.csv",
+        "report": output_dir / "unified_scoreboard_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    validation_leaderboard.to_csv(paths["validation_leaderboard"], index=False)
+    split_scores.to_csv(paths["split_scores"], index=False)
+    historical_metric_notes.to_csv(paths["historical_metric_notes"], index=False)
+    write_unified_scoreboard_report(
+        paths["report"], summary, validation_leaderboard, historical_metric_notes
+    )
+    return paths

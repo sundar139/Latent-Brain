@@ -1,0 +1,48 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_split: validation
+  primary_metric: bits_per_spike
+
+inputs:
+  metric_audit_dir: results/mc_maze_small/metric_audit
+  temporal_rebinning_dir: results/mc_maze_small/temporal_rebinning
+  coordinated_dropout_dir: results/mc_maze_small/lfads_coordinated_dropout
+  rate_calibration_dir: results/mc_maze_small/lfads_rate_calibration
+
+known_unified_values:
+  train_mean_as_model_validation_bits_per_spike: 0.0
+  split_mean_validation_bits_per_spike: 0.08477702283785095
+  factor_latent_unified_validation_bits_per_spike: 0.0316438194429199
+  lfads_unified_validation_bits_per_spike: 0.0094416136085523
+  coordinated_dropout_unified_validation_bits_per_spike: 0.0094749929355431
+  best_oracle_validation_bits_per_spike: 3.5417067067892387
+
+historical_incompatible_values:
+  old_window_matched_mean_rate_validation_bits_per_spike: 0.7019005614036485
+  old_full_window_mean_rate_validation_bits_per_spike: 0.5465273967210786
+
+reporting:
+  output_dir: results/mc_maze_small/unified_scoreboard

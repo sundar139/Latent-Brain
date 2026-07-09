@@ -289,6 +289,18 @@ The audit uses 20 ms bins and the same 1.28-second window as the recent LFADS-st
 
 Unified bits/spike references are necessary because a model log-likelihood only becomes comparable after subtracting the same reference log-likelihood and dividing by the same held-out spike count. A mean-rate model scored against itself should not look like a strong positive baseline; if it does, the reference convention is different. Oracle controls use held-out targets directly and are not valid models. Outputs are local audit artifacts under ignored `results/mc_maze_small/metric_audit/` paths and are not official NLB leaderboard results.
 
+## Unified local scoreboard
+
+After the metric audit, use the canonical train-reference scoreboard for future local MC_Maze Small comparisons:
+
+```powershell
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_scoreboard.yaml
+```
+
+The scoreboard uses 20 ms bins, the fixed 1.28-second window, deterministic train/validation/test split, and the train-only held-out mean-rate reference. Bits/spike is always `(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)`, so the train-heldout mean-rate predictor scores `0.0` against itself. Future tuning should optimize against the unified scoreboard: the `0.0` train-mean reference, the current factor-latent unified local reference, and the oracle diagnostic upper bound.
+
+Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.

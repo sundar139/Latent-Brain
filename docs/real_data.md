@@ -312,6 +312,18 @@ The audit rebins the processed 5 ms MC_Maze Small tensor to 20 ms bins and crops
 
 Existing reported scores may not be directly comparable unless their reference log-likelihood, held-out spike-count denominator, split, neuron mask, bin size, and time window match the unified audit convention. The audit report explicitly marks reported-only metrics and missing output directories instead of treating them as re-scored predictions. Oracle controls use held-out targets directly and are not valid models. Generated files are local artifacts under ignored `results/mc_maze_small/metric_audit/` paths, not official leaderboard results.
 
+## Local unified scoreboard
+
+Run the canonical MC_Maze Small local scoreboard with:
+
+```powershell
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_scoreboard.yaml
+```
+
+The scoreboard uses the same 20 ms bins and 1.28-second window as the metric audit. It fixes train-heldout mean rate as the default reference, so the train-mean-as-model validation score is `0.0` bits/spike. Factor-latent is the current best valid local model under unified scoring, while LFADS-style models trail but are now evaluated against the same reference convention.
+
+The old mean-rate values are historical-only because they used incompatible reference conventions. The oracle diagnostic remains an invalid-model upper bound. Generated files are local artifacts under ignored `results/mc_maze_small/unified_scoreboard/` paths, not official leaderboard results.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

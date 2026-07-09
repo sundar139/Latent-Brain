@@ -19,6 +19,7 @@ from latentbrain.eval.reporting import (
     write_lfads_tuning_report,
     write_metric_audit_report,
     write_temporal_rebinning_report,
+    write_unified_scoreboard_report,
     write_window_matched_comparison_report,
 )
 
@@ -494,6 +495,54 @@ def test_metric_audit_report_includes_formula_and_conclusions(tmp_path: Path) ->
     assert "(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)" in report
     assert "Metric/reference mismatch found: True" in report
     assert "Oracle controls are not valid models" in report
+    assert "not an official NLB leaderboard result" in report
+
+
+def test_unified_scoreboard_report_includes_formula_and_warnings(tmp_path: Path) -> None:
+    report_path = write_unified_scoreboard_report(
+        tmp_path / "unified_scoreboard_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "bin_size_ms": 20,
+            "window_seconds": 1.28,
+            "reference_model": "train_heldout_mean_rate",
+            "train_mean_validation_bits_per_spike": 0.0,
+            "best_valid_model": "factor_latent",
+            "best_valid_model_validation_bits_per_spike": 0.03,
+            "best_lfads_family_method": "coordinated_dropout_lfads",
+            "best_lfads_family_validation_bits_per_spike": 0.01,
+            "oracle_validation_bits_per_spike": 3.0,
+        },
+        pd.DataFrame(
+            {
+                "rank": [1, 2],
+                "method_name": ["factor_latent", "oracle_smoothed_heldout"],
+                "prediction_source": ["factor_decoder", "oracle"],
+                "valid_model": [True, False],
+                "validation_bits_per_spike": [0.03, 3.0],
+                "validation_poisson_nll": [1.0, None],
+                "reference_name": ["train_heldout_mean_rate", "train_heldout_mean_rate"],
+                "beats_train_mean_reference": [True, True],
+                "beats_factor_latent_reference": [False, True],
+                "is_oracle_control": [False, True],
+                "notes": ["", "Oracle diagnostic; invalid model"],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "metric_name": ["old_mean"],
+                "value": [0.7],
+                "status": ["historical_only_not_directly_comparable"],
+                "reason": ["not directly comparable"],
+            }
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)" in report
+    assert "Old mean-rate values are historical-only" in report
+    assert "Oracle diagnostic score: 3.0 (invalid model)" in report
     assert "not an official NLB leaderboard result" in report
 
 

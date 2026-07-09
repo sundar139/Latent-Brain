@@ -88,6 +88,14 @@ This same-reference requirement matters because changing the reference can infla
 
 Oracle and shuffled controls make the audit interpretable. Smoothed true held-out rates are an upper-bound diagnostic because they use evaluation targets directly; they are not valid models. Random-rate and trial-shuffled controls are negative controls for whether arbitrary rates or target-like activity can appear competitive. Together these checks test whether held-in activity adds predictive information beyond train-only held-out mean rates without creating an official NLB benchmark claim.
 
+## Canonical local scoring standard
+
+Future local MC_Maze Small comparisons use the unified train-reference convention by default. The reference model is the train-only held-out mean rate computed from training trials and broadcast to the evaluated split. Bits/spike is `(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)`, where both log-likelihoods use the same held-out counts, bin size, Poisson constant convention, and spike-count denominator.
+
+This convention makes the reference-as-model score exactly `0.0` bits/spike. Positive values beat train-heldout mean rate under the same convention; negative values trail it. The current local tuning targets are the `0.0` train-mean reference, the factor-latent unified validation value, and the oracle diagnostic upper bound. Oracle scores remain invalid as models because they use held-out targets directly.
+
+Historical positive mean-rate values from incompatible references are historical-only and must not be used as direct targets. A model comparison is valid only if the reference log-likelihood, held-out spike-count denominator, split, neuron mask, bin size, and time window all match the canonical scoreboard convention. These local scoreboards are not official NLB leaderboard results.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.
