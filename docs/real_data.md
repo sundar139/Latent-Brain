@@ -324,6 +324,18 @@ The scoreboard uses the same 20 ms bins and 1.28-second window as the metric aud
 
 The old mean-rate values are historical-only because they used incompatible reference conventions. The oracle diagnostic remains an invalid-model upper bound. Generated files are local artifacts under ignored `results/mc_maze_small/unified_scoreboard/` paths, not official leaderboard results.
 
+## Local canonical LFADS-style tuning
+
+Run the canonical MC_Maze Small LFADS-family tuning workflow with:
+
+```powershell
+python scripts/tune_lfads_unified.py --config configs/mc_maze_small_lfads_unified_tuning.yaml
+```
+
+The workflow uses 20 ms bins and the same 1.28-second window as the unified scoreboard. It trains a small deterministic CUDA grid, evaluates every run with the train-heldout mean-rate reference, and selects by validation unified bits/spike. The immediate local goal is to beat the factor-latent unified score before moving to neural SDE, rSLDS, controller-input, or larger tuning work.
+
+Generated tuning tables, reports, figures, config snapshots, and checkpoints live under ignored `results/mc_maze_small/lfads_unified_tuning/` paths. They are local artifacts only, not official NLB leaderboard results, and the model remains LFADS-style only.
+
 ## Storage and version control
 
 Do not commit real dataset files, processed arrays, metadata generated from real data, credentials, checkpoints, generated metrics, or experiment outputs. The repository tracks code, configs, tests, and documentation only.

@@ -17,6 +17,7 @@ from latentbrain.eval.reporting import (
     write_lfads_gru_evaluation_report,
     write_lfads_rate_calibration_report,
     write_lfads_tuning_report,
+    write_lfads_unified_tuning_report,
     write_metric_audit_report,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
@@ -544,6 +545,47 @@ def test_unified_scoreboard_report_includes_formula_and_warnings(tmp_path: Path)
     assert "Old mean-rate values are historical-only" in report
     assert "Oracle diagnostic score: 3.0 (invalid model)" in report
     assert "not an official NLB leaderboard result" in report
+
+
+def test_lfads_unified_tuning_report_includes_required_statements(tmp_path: Path) -> None:
+    report_path = write_lfads_unified_tuning_report(
+        tmp_path / "unified_tuning_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "bin_size_ms": 20,
+            "window_seconds": 1.28,
+            "cuda_device": "Unit GPU",
+            "reference_model": "train_heldout_mean_rate",
+            "runs_attempted": 1,
+            "successful_runs": 1,
+            "best_run_id": "run_000",
+            "best_run_params": {"latent_dim": 16},
+            "best_validation_unified_bits_per_spike": 0.02,
+            "factor_latent_unified_reference": 0.03,
+            "previous_best_lfads_family_reference": 0.01,
+            "beats_factor_latent_unified": False,
+            "beats_previous_best_lfads_family": True,
+        },
+        pd.DataFrame({"run_id": ["run_000"]}),
+        pd.DataFrame(
+            {
+                "rank": [1],
+                "run_id": ["run_000"],
+                "validation_unified_bits_per_spike": [0.02],
+                "validation_poisson_nll": [5.0],
+                "beats_factor_latent_unified": [False],
+                "notes": [""],
+            }
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Canonical reference model: train_heldout_mean_rate" in report
+    assert "Factor-latent unified reference: 0.03" in report
+    assert "Old incompatible mean-rate values are not used as tuning targets" in report
+    assert "not an official NLB leaderboard result" in report
+    assert "LFADS-style only, not full LFADS" in report
 
 
 def test_temporal_rebinning_report_includes_required_statements(tmp_path: Path) -> None:

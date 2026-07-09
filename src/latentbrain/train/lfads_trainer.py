@@ -271,7 +271,7 @@ def train_lfads_gru(
     model.to(device)
     for epoch in range(epochs):
         model.train()
-        kl_beta = linear_warmup(epoch, warmup_epochs)
+        kl_beta = linear_warmup(epoch, warmup_epochs) * float(training_config.get("kl_scale", 1.0))
         train_losses: list[float] = []
         gradient_norms: list[float] = []
         realized_dropout: list[float] = []

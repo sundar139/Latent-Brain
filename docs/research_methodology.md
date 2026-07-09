@@ -96,6 +96,12 @@ This convention makes the reference-as-model score exactly `0.0` bits/spike. Pos
 
 Historical positive mean-rate values from incompatible references are historical-only and must not be used as direct targets. A model comparison is valid only if the reference log-likelihood, held-out spike-count denominator, split, neuron mask, bin size, and time window all match the canonical scoreboard convention. These local scoreboards are not official NLB leaderboard results.
 
+## Canonical LFADS-style model selection
+
+LFADS-family tuning uses the canonical scoreboard convention for model comparison. Each candidate keeps the MC_Maze Small dataset hash, 20 ms bin size, 1.28-second window, deterministic train/validation/test split, deterministic held-in/held-out mask, train-heldout mean-rate reference, and Poisson likelihood convention fixed. The selected run is the best validation unified bits/spike run.
+
+Validation loss remains useful for checkpointing inside a run, but it is not the primary cross-run model-comparison metric. Cross-run ranking uses unified validation bits/spike first, then deterministic tie-breakers. Factor-latent remains the current valid local target to beat; oracle scores are diagnostic upper bounds only, and old incompatible mean-rate values are not tuning targets.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

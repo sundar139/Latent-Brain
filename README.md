@@ -301,6 +301,18 @@ The scoreboard uses 20 ms bins, the fixed 1.28-second window, deterministic trai
 
 Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
 
+## Canonical LFADS-style unified tuning
+
+Tune LFADS-family runs under the canonical train-reference scorer with:
+
+```powershell
+python scripts/tune_lfads_unified.py --config configs/mc_maze_small_lfads_unified_tuning.yaml
+```
+
+This workflow uses the 20 ms MC_Maze Small tensor, the fixed 1.28-second window, and train-heldout mean rate as the bits/spike reference. It selects runs by validation unified bits/spike, not validation loss. The current valid local target to beat is the factor-latent unified score; the previous coordinated-dropout LFADS-family score is the LFADS-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
+
+Outputs, run reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_unified_tuning/` paths. This is local model selection only, not an official NLB leaderboard result, and the model remains LFADS-style only, not full LFADS.
+
 ## Data policy
 
 Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.
