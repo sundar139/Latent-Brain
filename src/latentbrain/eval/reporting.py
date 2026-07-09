@@ -1253,6 +1253,18 @@ def write_unified_scoreboard_report(
         "",
         "This is local unified scoring, not an official NLB leaderboard result.",
         "Old mean-rate values are historical-only and must not be used as direct targets.",
+        *(
+            [
+                (
+                    "Split audit reports high generalization risk. Current results should be "
+                    "interpreted as validation-only diagnostics."
+                ),
+                "No model performance claim should be made until validation/test "
+                "instability is resolved.",
+            ]
+            if str(summary.get("generalization_risk")) == "high"
+            else []
+        ),
         ("Generated local tuning summaries are ignored by Git and may be absent on a fresh clone."),
         (
             "If local tuning summaries are absent, the scoreboard falls back to configured "
@@ -1280,6 +1292,9 @@ def write_unified_scoreboard_report(
         "- Best LFADS-family validation bits/spike: "
         f"{summary.get('best_lfads_family_validation_bits_per_spike')}",
         f"- LFADS-family beats factor-latent: {summary.get('lfads_family_beats_factor_latent')}",
+        f"- Generalization risk: {summary.get('generalization_risk')}",
+        "- Validation/test instability detected: "
+        f"{summary.get('validation_test_instability_detected')}",
         "- Best LFADS-family source summary path: "
         f"{summary.get('best_lfads_family_source_summary_path')}",
         "- Oracle diagnostic score: "
@@ -2256,5 +2271,156 @@ def write_seed_robustness_outputs(
     )
     write_seed_robustness_report(
         paths["report"], summary, method_summary, leaderboard, seed_effects
+    )
+    return paths
+
+
+def write_split_audit_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    split_statistics: pd.DataFrame,
+    behavior_split_statistics: pd.DataFrame,
+    gap_summary: pd.DataFrame,
+    repeated_split: pd.DataFrame,
+    split_comparison: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for the local validation/test generalization audit."""
+    risk = str(summary.get("generalization_risk"))
+    lines = [
+        f"# {summary.get('dataset_name')} split and generalization audit",
+        "",
+        "This is local split/generalization audit work, not an official NLB leaderboard result.",
+        "No model performance claim should be made until validation/test instability is resolved.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and splits",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- Accepted split seed: {summary.get('accepted_split_seed')}",
+        f"- Train trials: {summary.get('train_trial_count')}",
+        f"- Validation trials: {summary.get('validation_trial_count')}",
+        f"- Test trials: {summary.get('test_trial_count')}",
+        f"- Held-in neurons: {summary.get('heldin_neuron_count')}",
+        f"- Held-out neurons: {summary.get('heldout_neuron_count')}",
+        f"- Behavior available: {summary.get('behavior_available')}",
+        f"- Missing behavior variables: {summary.get('missing_behavior_variables')}",
+        "",
+        "## Split-level spike-rate statistics",
+        *_format_table(split_statistics),
+        "",
+        "## Validation vs test trial-statistic comparison",
+        *_format_table(split_comparison),
+        "",
+        "## Behavior distribution statistics",
+        *(
+            _format_table(behavior_split_statistics)
+            if not behavior_split_statistics.empty
+            else ["Behavior statistics are unavailable for this dataset."]
+        ),
+        "",
+        "## Validation/test gap summary",
+        *(
+            _format_table(gap_summary)
+            if not gap_summary.empty
+            else ["Model gap diagnostics are unavailable: seed robustness results were not found."]
+        ),
+        "",
+        f"- Validation heldout rate (Hz): {summary.get('validation_heldout_rate_hz')}",
+        f"- Test heldout rate (Hz): {summary.get('test_heldout_rate_hz')}",
+        f"- Factor-latent validation mean: {summary.get('factor_latent_validation_mean')}",
+        f"- Factor-latent test mean: {summary.get('factor_latent_test_mean')}",
+        f"- Factor-latent validation-test gap: {summary.get('factor_latent_validation_test_gap')}",
+        f"- Generalization risk: {risk}",
+        "- Validation/test instability detected: "
+        f"{summary.get('validation_test_instability_detected')}",
+        "",
+        "## Repeated split baselines",
+        *_format_table(repeated_split),
+        "",
+        f"- Repeated split validation mean: {summary.get('repeated_split_validation_mean')}",
+        f"- Repeated split test mean: {summary.get('repeated_split_test_mean')}",
+        "- Repeated split test-positive fraction: "
+        f"{summary.get('repeated_split_test_positive_fraction')}",
+        "- Validation-positive/test-negative pattern persists: "
+        f"{summary.get('validation_positive_test_negative_persists')}",
+        "",
+        "## Interpretation",
+        (
+            "- Validation-positive and test-negative scores across every method undercut "
+            "current performance claims."
+        ),
+        (
+            "- If repeated splits show high variance, MC_Maze Small is underpowered for "
+            "strong conclusions."
+        ),
+        (
+            "- If the test split has a lower held-out rate or a different behavior "
+            "distribution, treat this as distribution-shift risk."
+        ),
+        (
+            "- If repeated-split factor-latent is often test-negative, use cross-validation "
+            "or larger data before any claims."
+        ),
+    ]
+    if risk == "high":
+        lines.extend(
+            [
+                "",
+                "## Verdict",
+                (
+                    "Generalization risk is high. The current MC_Maze Small split should be "
+                    "reported as unstable rather than conclusive, and every score in this "
+                    "repository should be read as a validation-only diagnostic."
+                ),
+            ]
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_split_audit_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    trial_statistics: pd.DataFrame,
+    split_statistics: pd.DataFrame,
+    neuron_split_statistics: pd.DataFrame,
+    behavior_split_statistics: pd.DataFrame,
+    gap_table: pd.DataFrame,
+    gap_summary: pd.DataFrame,
+    repeated_split: pd.DataFrame,
+    split_comparison: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "split_audit_summary.json",
+        "split_statistics": output_dir / "split_statistics.csv",
+        "trial_statistics": output_dir / "trial_statistics.csv",
+        "neuron_split_statistics": output_dir / "neuron_split_statistics.csv",
+        "behavior_split_statistics": output_dir / "behavior_split_statistics.csv",
+        "validation_test_gap": output_dir / "validation_test_gap.csv",
+        "repeated_split_factor_latent": output_dir / "repeated_split_factor_latent.csv",
+        "report": output_dir / "split_audit_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    trial_statistics.to_csv(paths["trial_statistics"], index=False)
+    split_statistics.to_csv(paths["split_statistics"], index=False)
+    neuron_split_statistics.to_csv(paths["neuron_split_statistics"], index=False)
+    behavior_split_statistics.to_csv(paths["behavior_split_statistics"], index=False)
+    gap_table.to_csv(paths["validation_test_gap"], index=False)
+    repeated_split.to_csv(paths["repeated_split_factor_latent"], index=False)
+    write_split_audit_report(
+        paths["report"],
+        summary,
+        split_statistics,
+        behavior_split_statistics,
+        gap_summary,
+        repeated_split,
+        split_comparison,
     )
     return paths

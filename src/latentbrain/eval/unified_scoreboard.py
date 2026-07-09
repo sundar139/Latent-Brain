@@ -420,6 +420,42 @@ def build_historical_metric_notes(historical_values: dict[str, float]) -> pd.Dat
     return pd.DataFrame(rows, columns=HISTORICAL_NOTE_COLUMNS)
 
 
+HIGH_RISK_SCOREBOARD_NOTE = (
+    "Split audit reports high generalization risk. Current results should be interpreted as "
+    "validation-only diagnostics."
+)
+
+
+def load_split_audit_warning(config: dict[str, Any]) -> dict[str, Any]:
+    """Split-audit warning fields. Absent summary falls back cleanly; malformed fails."""
+    path = _summary_path(config["inputs"].get("split_audit_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "split_audit_available": False,
+            "generalization_risk": None,
+            "validation_test_instability_detected": False,
+            "split_audit_summary_path": None,
+        }
+    label = "split audit"
+    summary = _load_summary(path, label)
+    if "generalization_risk" not in summary:
+        msg = f"malformed split audit summary ({label}): missing generalization_risk at {path}"
+        raise ValueError(msg)
+    risk = summary["generalization_risk"]
+    if not isinstance(risk, str):
+        msg = f"malformed split audit summary ({label}): generalization_risk must be a string"
+        raise ValueError(msg)
+    return {
+        "split_audit_available": True,
+        "generalization_risk": risk,
+        "validation_test_instability_detected": bool(
+            summary.get("validation_test_instability_detected", risk in {"high", "moderate"})
+        ),
+        "validation_only_diagnostics": risk == "high",
+        "split_audit_summary_path": str(path),
+    }
+
+
 def _is_seed_robustness_aggregate(method_name: object) -> bool:
     return str(method_name).startswith("seed_robustness_")
 

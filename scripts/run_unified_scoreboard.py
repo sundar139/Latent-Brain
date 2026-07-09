@@ -32,6 +32,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_unified_score_row,
     load_lfads_family_candidates,
     load_seed_robustness_candidates,
+    load_split_audit_warning,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -129,6 +130,7 @@ class InputsSection(BaseModel):
     neural_ode_objective_summary_path: str | None = None
     switching_ode_tuning_summary_path: str | None = None
     seed_robustness_summary_path: str | None = None
+    split_audit_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):
@@ -427,6 +429,7 @@ def run_unified_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "reference_model": scoring_config.reference_name,
         "primary_split": primary_split,
         **summarize_unified_scoreboard(leaderboard, config["known_unified_values"]),
+        **load_split_audit_warning(config),
         "old_mean_rate_values_historical_only": True,
         "output_dir": config["reporting"]["output_dir"],
     }
@@ -470,6 +473,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     console.print(
         f"old_mean_rate_values_historical_only: {summary['old_mean_rate_values_historical_only']}"
+    )
+    console.print(f"generalization_risk: {summary['generalization_risk']}")
+    console.print(
+        f"validation_test_instability_detected: {summary['validation_test_instability_detected']}"
     )
     console.print(f"output_dir: {result['output_dir']}")
     return 0

@@ -187,3 +187,44 @@ Factor analysis fits with randomized SVD, so the initialization seed is passed t
 Comparisons are paired by seed. For each seed both methods see the identical split, mask, and data, so the per-seed difference removes the shared split effect and isolates the method contrast. Uncertainty on each method's mean is a percentile bootstrap confidence interval, deterministic given `bootstrap_seed`.
 
 Decision rule for carrying a method forward. If no neural method beats factor-latent across seeds, stop adding architecture on this dataset and window; invest instead in rigorous reporting, expanded baselines, or additional datasets. If a neural method beats the factor-latent mean but its own confidence-interval lower bound does not clear that mean, the result is suggestive but not established: run more seeds before making any claim. Only when a neural method clears the factor-latent mean at its CI lower bound should the work advance to held-out test reporting and additional datasets. Evaluation remains canonical and unweighted throughout, and old incompatible mean-rate values are never tuning targets. All outputs are local artifacts, not official NLB leaderboard results.
+
+## Validation/test generalization audit
+
+Multi-seed robustness produced a result that invalidates naive reporting: factor-latent,
+deterministic neural-ODE refinement, and the best objective variant all score positive on the
+validation split and negative on the test split. A method that beats the train-mean reference on
+one held-out split and loses to it on another has not demonstrated generalization, and its
+validation number is not a performance figure.
+
+The audit separates three candidate explanations. The first is distribution shift: trial-level
+spike counts, population and held-out firing rates, zero fractions, and behavior summaries
+(endpoint displacement, endpoint angle, path distance, mean speed) are computed per trial and
+aggregated per split, then compared between validation and test as a standardized mean difference
+using the pooled trial-level spread. A large standardized difference in held-out rate or reach
+geometry means the two splits are not exchangeable and the gap is partly a property of the data,
+not the model.
+
+The second is sampling noise. MC_Maze Small yields 15 validation and 15 test trials at a 70/15/15
+split. The validation-minus-test gap is bootstrapped over seeds, paired within seed so that the
+shared split effect cancels, and reported as a percentile confidence interval that is
+deterministic given the bootstrap seed.
+
+The third is split-specific luck. A factor-latent baseline is refit from scratch under ten
+independent trial splits and neuron masks, alongside a train-mean control (which must score
+exactly `0.0` bits/spike by construction, and serves as a scorer self-check) and a split-mean
+control (fit on the evaluation split itself, therefore an invalid model retained only as a
+diagnostic ceiling). If the test score is negative under most splits, the pattern is a property
+of the dataset and window rather than of the accepted split.
+
+Risk is labelled `high` whenever the validation mean is positive and the test mean is negative,
+`moderate` when the paired gap confidence interval excludes zero but the test mean remains
+positive, `low` otherwise, and `unresolved_missing_data` when the inputs needed to decide are
+absent. The unified scoreboard ingests this label; under high risk its report states that every
+ranking in it must be read as a validation-only diagnostic.
+
+Decision rule before any reporting. Under high risk, no performance claim may be made, and the
+current MC_Maze Small split must be described as unstable rather than conclusive. If repeated
+splits show high variance, the dataset is underpowered for strong conclusions and the correct
+response is cross-validation or more data, not more architecture and not a better-looking seed.
+Evaluation remains canonical and unweighted throughout, and old incompatible mean-rate values are
+never tuning targets. All outputs are local artifacts, not official NLB leaderboard results.

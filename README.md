@@ -67,6 +67,29 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Validation/test generalization audit
+
+Seed robustness established that no neural method beats factor-latent, but it also surfaced a
+more serious problem: every carried-forward method scores **positive on validation and negative
+on test**. Before any result is reported, that has to be explained. This audit does it:
+
+```powershell
+python scripts/run_split_audit.py --config configs/mc_maze_small_split_audit.yaml
+```
+
+The audit is CPU-only and trains no neural networks. It compares trial spike rates, held-out
+neuron activity, and behavior distributions across splits; bootstraps the validation/test gap;
+and re-runs a factor-latent baseline plus train-mean and split-mean controls under ten
+independent trial splits to see whether the test-negative pattern is specific to the accepted
+split or persists everywhere.
+
+MC_Maze Small has only 15 validation and 15 test trials, so a single split is weak evidence
+either way. **No model performance claim should be made until the validation/test instability is
+resolved.** If the audit reports high generalization risk, every score in this repository must be
+read as a validation-only diagnostic. Old mean-rate values remain historical-only. Outputs and
+figures are local ignored artifacts under `results/mc_maze_small/split_audit/`, not official NLB
+leaderboard results.
+
 ## Multi-seed robustness
 
 Objective diagnostics uncovered a seed confound: the earlier workflow seeded with `seed + run_index`, so each method effectively trained from a different initialization, and re-running one identical objective under two seed offsets moved validation unified bits/spike by roughly 0.032 — more than any effect being measured. Single-seed leaderboards are therefore not sufficient for claims. This workflow re-compares the strongest methods under an explicit seed policy:

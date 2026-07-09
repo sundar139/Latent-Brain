@@ -1,0 +1,70 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_metric: unified_bits_per_spike
+
+audit:
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+  confidence_interval: 0.95
+  repeated_split_seeds:
+    - 2027
+    - 2028
+    - 2029
+    - 2030
+    - 2031
+    - 2032
+    - 2033
+    - 2034
+    - 2035
+    - 2036
+  repeated_split_methods:
+    - factor_latent
+    - train_mean_rate
+    - split_mean_rate
+  behavior_variables:
+    - hand_pos_x
+    - hand_pos_y
+    - cursor_pos_x
+    - cursor_pos_y
+  derive_behavior_summaries: true
+  derive_endpoint_direction: true
+  trial_level_bootstrap: true
+
+inputs:
+  seed_robustness_results_path: results/mc_maze_small/seed_robustness/seed_robustness_results.csv
+  seed_robustness_summary_path: results/mc_maze_small/seed_robustness/seed_robustness_summary.json
+
+references:
+  factor_latent_validation_mean: 0.029024681086082083
+  factor_latent_test_mean: -0.008310
+  neural_ode_refinement_validation_mean: 0.005775017519419399
+  neural_ode_refinement_test_mean: -0.000010
+  neural_ode_objective_validation_mean: 0.004668
+  neural_ode_objective_test_mean: -0.003899
+  train_mean_validation_bits_per_spike: 0.0
+
+reporting:
+  output_dir: results/mc_maze_small/split_audit

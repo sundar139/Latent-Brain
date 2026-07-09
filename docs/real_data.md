@@ -425,3 +425,30 @@ This benchmark uses 20 ms rebinned MC_Maze Small data and the fixed 1.28-second 
 Each method reports mean, standard deviation, a bootstrap 95% confidence interval, and paired per-seed differences against factor-latent. A single-seed near-win is not evidence: the earlier deterministic neural-ODE result sat within the seed noise band measured here.
 
 If neural ODE does not beat factor-latent across seeds, the next step should be rigorous reporting or additional datasets, not more architecture. If neural ODE beats factor-latent by the mean but not the confidence-interval lower bound, run more seeds before any claim. If neural ODE beats factor-latent robustly at the CI lower bound, the next step is held-out test reporting and additional datasets. Generated outputs, figures, and checkpoints remain ignored under `results/mc_maze_small/seed_robustness/` and are not official NLB leaderboard results.
+
+## MC_Maze Small split and generalization audit
+
+Run the CPU-only split audit with:
+
+```powershell
+python scripts/run_split_audit.py --config configs/mc_maze_small_split_audit.yaml
+```
+
+MC_Maze Small is small where it matters most. At the accepted 70/15/15 split there are 70 train
+trials but only 15 validation and 15 test trials, so each evaluation split is a thin sample and a
+single split's score carries little evidence on its own.
+
+Multi-seed robustness found that every carried-forward method — factor-latent, deterministic
+neural-ODE refinement, and the best controlled objective variant — is validation-positive and
+test-negative under the canonical train-heldout mean-rate reference. Nothing measured so far
+generalizes from the validation split to the test split.
+
+This audit decides whether reporting is valid at all. It checks whether the validation and test
+splits differ in trial spike rates, held-out neuron activity, or reach behavior; bootstraps the
+paired validation/test gap; and refits factor-latent under ten independent splits with train-mean
+and split-mean controls. If the test-negative pattern persists across splits, the conclusion is
+that the dataset and window are underpowered, and the next step is cross-validation, additional
+datasets, or more data — not more architecture. Under high generalization risk no performance
+claim may be made, and results here are validation-only diagnostics. Generated outputs and figures
+remain ignored under `results/mc_maze_small/split_audit/` and are not official NLB leaderboard
+results.

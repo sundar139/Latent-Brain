@@ -25,6 +25,7 @@ from latentbrain.eval.reporting import (
     write_neural_ode_tuning_report,
     write_neural_sde_tuning_report,
     write_seed_robustness_outputs,
+    write_split_audit_outputs,
     write_switching_ode_tuning_outputs,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
@@ -1142,3 +1143,149 @@ def test_seed_robustness_report_documents_policy_statistics_and_recommendation(
     assert "Old incompatible mean-rate values are not used as tuning targets" in text
     assert "not an official NLB leaderboard result" in text
     assert "Single-seed model leaderboards are not sufficient for claims." in text
+
+
+def _split_audit_summary(risk: str = "high") -> dict:
+    return {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "window_seconds": 1.28,
+        "accepted_split_seed": 2027,
+        "train_trial_count": 70,
+        "validation_trial_count": 15,
+        "test_trial_count": 15,
+        "heldin_neuron_count": 106,
+        "heldout_neuron_count": 36,
+        "behavior_available": True,
+        "missing_behavior_variables": [],
+        "validation_heldout_rate_hz": 0.61,
+        "test_heldout_rate_hz": 0.55,
+        "factor_latent_validation_mean": 0.029,
+        "factor_latent_test_mean": -0.0083,
+        "factor_latent_validation_test_gap": 0.0373,
+        "generalization_risk": risk,
+        "validation_test_instability_detected": True,
+        "repeated_split_validation_mean": 0.028,
+        "repeated_split_test_mean": -0.006,
+        "repeated_split_test_positive_fraction": 0.1,
+        "validation_positive_test_negative_persists": True,
+    }
+
+
+def test_split_audit_report_includes_gap_repeated_splits_and_risk(tmp_path: Path) -> None:
+    split_statistics = pd.DataFrame(
+        [{"split": "validation", "n_trials": 15, "mean_heldout_rate_hz": 0.61}]
+    )
+    behavior = pd.DataFrame([{"split": "test", "behavior_name": "hand_pos_x", "mean": 1.0}])
+    gap_summary = pd.DataFrame(
+        [
+            {
+                "method_name": "factor_latent",
+                "mean_validation": 0.029,
+                "mean_test": -0.0083,
+                "mean_gap": 0.0373,
+                "gap_ci95_low": 0.031,
+                "gap_ci95_high": 0.043,
+                "test_positive_fraction": 0.0,
+                "generalization_risk": "high",
+            }
+        ]
+    )
+    repeated = pd.DataFrame(
+        [
+            {
+                "split_seed": 2027,
+                "method_name": "factor_latent",
+                "validation_unified_bits_per_spike": 0.031,
+                "test_unified_bits_per_spike": -0.008,
+                "notes": "Train-only fit.",
+            }
+        ]
+    )
+    comparison = pd.DataFrame(
+        [
+            {
+                "metric": "heldout_rate_hz",
+                "split_a": "validation",
+                "split_b": "test",
+                "difference": 0.06,
+                "standardized_difference": 0.8,
+            }
+        ]
+    )
+
+    paths = write_split_audit_outputs(
+        tmp_path,
+        _split_audit_summary(),
+        pd.DataFrame([{"trial_index": 0}]),
+        split_statistics,
+        pd.DataFrame([{"split": "test", "neuron_index": 0}]),
+        behavior,
+        pd.DataFrame([{"method_name": "factor_latent", "seed": 2027}]),
+        gap_summary,
+        repeated,
+        comparison,
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert paths["repeated_split_factor_latent"].exists()
+    assert paths["validation_test_gap"].exists()
+
+    assert "Validation/test gap summary" in text
+    assert "Factor-latent validation-test gap: 0.0373" in text
+    assert "Repeated split baselines" in text
+    assert "Repeated split test-positive fraction: 0.1" in text
+    assert "Generalization risk: high" in text
+    assert "Accepted split seed: 2027" in text
+    assert "Validation trials: 15" in text
+    assert "Test trials: 15" in text
+
+    assert (
+        "No model performance claim should be made until validation/test instability is resolved."
+        in text
+    )
+    assert "not an official NLB leaderboard result" in text
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+    assert "reported as unstable rather than conclusive" in text
+
+
+def test_split_audit_report_notes_unavailable_gap_diagnostics(tmp_path: Path) -> None:
+    paths = write_split_audit_outputs(
+        tmp_path,
+        _split_audit_summary("unresolved_missing_data"),
+        pd.DataFrame(),
+        pd.DataFrame([{"split": "test", "n_trials": 15}]),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame([{"split_seed": 2027, "method_name": "factor_latent"}]),
+        pd.DataFrame([{"metric": "heldout_rate_hz"}]),
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert "Model gap diagnostics are unavailable" in text
+    assert "Behavior statistics are unavailable" in text
+    assert "reported as unstable rather than conclusive" not in text
+
+
+def test_unified_scoreboard_report_warns_on_high_generalization_risk(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "reference_model": "train_heldout_mean_rate",
+        "generalization_risk": "high",
+        "validation_test_instability_detected": True,
+    }
+
+    path = write_unified_scoreboard_report(
+        tmp_path / "report.md", summary, pd.DataFrame(), pd.DataFrame()
+    )
+    text = path.read_text(encoding="utf-8")
+
+    assert "interpreted as validation-only diagnostics" in text
+    assert (
+        "No model performance claim should be made until validation/test instability is resolved."
+        in text
+    )
+    assert "Generalization risk: high" in text

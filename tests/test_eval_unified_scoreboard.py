@@ -15,6 +15,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_unified_score_row,
     load_lfads_family_candidates,
     load_seed_robustness_candidates,
+    load_split_audit_warning,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -34,6 +35,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "neural_ode_objective_summary_path": str(tmp_path / "neural_ode_objectives.json"),
             "switching_ode_tuning_summary_path": str(tmp_path / "switching_ode.json"),
             "seed_robustness_summary_path": str(tmp_path / "seed_robustness.json"),
+            "split_audit_summary_path": str(tmp_path / "split_audit.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -520,3 +522,75 @@ def test_scoreboard_reports_no_seed_robustness_when_absent() -> None:
 
     assert summary["seed_robustness_ingested"] is False
     assert summary["seed_robustness_aggregate_methods"] == []
+
+
+def _write_split_audit(path: Path, risk: str, instability: bool = True) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "generalization_risk": risk,
+                "validation_test_instability_detected": instability,
+                "factor_latent_test_mean": -0.0083,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_split_audit_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_split_audit(tmp_path / "split_audit.json", "high")
+
+    warning = load_split_audit_warning(config)
+
+    assert warning["split_audit_available"] is True
+    assert warning["generalization_risk"] == "high"
+    assert warning["validation_test_instability_detected"] is True
+    assert warning["validation_only_diagnostics"] is True
+    assert warning["split_audit_summary_path"] == str((tmp_path / "split_audit.json").resolve())
+
+
+def test_low_risk_split_audit_does_not_flag_validation_only_diagnostics(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_split_audit(tmp_path / "split_audit.json", "low", instability=False)
+
+    warning = load_split_audit_warning(config)
+
+    assert warning["generalization_risk"] == "low"
+    assert warning["validation_test_instability_detected"] is False
+    assert warning["validation_only_diagnostics"] is False
+
+
+def test_missing_split_audit_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    warning = load_split_audit_warning(_lfads_candidate_config(tmp_path))
+
+    assert warning["split_audit_available"] is False
+    assert warning["generalization_risk"] is None
+    assert warning["validation_test_instability_detected"] is False
+
+
+def test_malformed_split_audit_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "split_audit.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        load_split_audit_warning(config)
+
+
+def test_split_audit_summary_missing_risk_key_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "split_audit.json").write_text(json.dumps({"other": 1}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing generalization_risk"):
+        load_split_audit_warning(config)
+
+
+def test_non_string_generalization_risk_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "split_audit.json").write_text(
+        json.dumps({"generalization_risk": 3}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="must be a string"):
+        load_split_audit_warning(config)
