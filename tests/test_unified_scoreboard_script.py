@@ -102,13 +102,13 @@ def test_missing_processed_data_fails_clearly(tmp_path: Path) -> None:
         module.run_unified_scoreboard(_config(tmp_path))
 
 
-def test_toy_script_run_writes_expected_outputs(
+def test_toy_script_run_with_both_summaries_reports_controller(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _script_module()
     config = _config(tmp_path)
-    tuning_summary = tmp_path / "tuning_summary.json"
-    tuning_summary.write_text(
+    unified_summary = tmp_path / "unified_tuning_summary.json"
+    unified_summary.write_text(
         json.dumps(
             {
                 "best_run_id": "run_006",
@@ -118,7 +118,19 @@ def test_toy_script_run_writes_expected_outputs(
         ),
         encoding="utf-8",
     )
-    config["inputs"]["lfads_unified_tuning_summary"] = str(tuning_summary)
+    controller_summary = tmp_path / "controller_tuning_summary.json"
+    controller_summary.write_text(
+        json.dumps(
+            {
+                "best_run_id": "run_007",
+                "best_validation_unified_bits_per_spike": 0.013624327996805,
+                "best_validation_poisson_nll": 2009.9775935231744,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config["inputs"]["lfads_unified_tuning_summary_path"] = str(unified_summary)
+    config["inputs"]["lfads_controller_tuning_summary_path"] = str(controller_summary)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     monkeypatch.setattr(module, "_prepare_dataset", lambda _config: (_toy_dataset(), "abc", 2))
@@ -137,8 +149,46 @@ def test_toy_script_run_writes_expected_outputs(
         (scores["method_name"] == "train_heldout_mean_rate") & (scores["split"] == "validation")
     ].iloc[0]
     assert abs(float(train_mean["bits_per_spike"])) < 1e-12
-    assert summary["best_lfads_family_method"] == "lfads_unified_tuning"
-    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.0102066110689813
-    assert "lfads_unified_tuning" in set(leaderboard["method_name"])
+    assert summary["best_lfads_family_method"] == "lfads_controller_tuning"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.013624327996805
+    assert summary["best_lfads_family_source_summary_path"] == str(controller_summary.resolve())
+    assert summary["lfads_family_beats_factor_latent"] is False
+    assert "lfads_controller_tuning" in set(leaderboard["method_name"])
+    assert str(controller_summary.resolve()) in report
     assert "Old mean-rate values are historical-only" in report
     assert "not an official NLB leaderboard result" in report
+
+
+def test_toy_script_run_with_missing_summaries_falls_back_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    monkeypatch.setattr(module, "_prepare_dataset", lambda _config: (_toy_dataset(), "abc", 2))
+
+    assert module.main(["--config", str(config_path)]) == 0
+
+    output_dir = Path(config["reporting"]["output_dir"])
+    summary = json.loads(
+        (output_dir / "unified_scoreboard_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary["best_lfads_family_method"] == "coordinated_dropout_lfads"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.0094749929355431
+
+
+def test_toy_script_run_with_malformed_summary_fails_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    malformed = tmp_path / "controller_tuning_summary.json"
+    malformed.write_text("{", encoding="utf-8")
+    config["inputs"]["lfads_controller_tuning_summary_path"] = str(malformed)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    monkeypatch.setattr(module, "_prepare_dataset", lambda _config: (_toy_dataset(), "abc", 2))
+
+    with pytest.raises(ValueError, match="malformed LFADS-family summary"):
+        module.main(["--config", str(config_path)])

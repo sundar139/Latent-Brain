@@ -322,7 +322,7 @@ python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_
 
 The scoreboard uses the same 20 ms bins and 1.28-second window as the metric audit. It fixes train-heldout mean rate as the default reference, so the train-mean-as-model validation score is `0.0` bits/spike. Factor-latent is the current best valid local model under unified scoring, while LFADS-style models trail but are now evaluated against the same reference convention.
 
-The old mean-rate values are historical-only because they used incompatible reference conventions. The oracle diagnostic remains an invalid-model upper bound. Generated files are local artifacts under ignored `results/mc_maze_small/unified_scoreboard/` paths, not official leaderboard results.
+The old mean-rate values are historical-only because they used incompatible reference conventions. The oracle diagnostic remains an invalid-model upper bound. The scoreboard includes local LFADS-family summaries when available, including canonical tuning, controller tuning, coordinated dropout, and raw LFADS rate-calibration summaries; if ignored summaries are absent on a fresh clone, configured known LFADS-family values are used as fallback. Generated files are local artifacts under ignored `results/mc_maze_small/unified_scoreboard/` paths, not official leaderboard results.
 
 ## Local canonical LFADS-style tuning
 

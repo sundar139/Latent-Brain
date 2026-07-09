@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -30,8 +29,8 @@ from latentbrain.eval.scoring import (
 )
 from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
-    build_lfads_tuning_score_row,
     build_unified_score_row,
+    load_lfads_family_candidates,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -121,7 +120,8 @@ class InputsSection(BaseModel):
     temporal_rebinning_dir: str = Field(min_length=1)
     coordinated_dropout_dir: str = Field(min_length=1)
     rate_calibration_dir: str = Field(min_length=1)
-    lfads_unified_tuning_summary: str | None = None
+    lfads_unified_tuning_summary_path: str | None = None
+    lfads_controller_tuning_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):
@@ -310,26 +310,6 @@ def _known_rows(config: dict[str, Any], reference_name: str) -> list[dict[str, A
             "Known unified local value from metric audit.",
         ),
         build_unified_score_row(
-            "lfads_style_raw",
-            "reported_unified_direct_model",
-            "validation",
-            float(values["lfads_unified_validation_bits_per_spike"]),
-            None,
-            True,
-            reference_name,
-            "LFADS-style only, not full LFADS; known unified local value.",
-        ),
-        build_unified_score_row(
-            "coordinated_dropout_lfads",
-            "reported_unified_direct_model",
-            "validation",
-            float(values["coordinated_dropout_unified_validation_bits_per_spike"]),
-            None,
-            True,
-            reference_name,
-            "LFADS-style coordinated dropout; known unified local value.",
-        ),
-        build_unified_score_row(
             "oracle_smoothed_heldout",
             "oracle_control",
             "validation",
@@ -340,17 +320,6 @@ def _known_rows(config: dict[str, Any], reference_name: str) -> list[dict[str, A
             "Oracle diagnostic uses held-out targets directly; invalid model.",
         ),
     ]
-
-
-def _lfads_tuning_rows(config: dict[str, Any], reference_name: str) -> list[dict[str, Any]]:
-    path_value = config["inputs"].get("lfads_unified_tuning_summary")
-    if not path_value:
-        return []
-    path = resolve_configured_path(str(path_value), get_repo_root())
-    if not path.exists():
-        return []
-    summary = json.loads(path.read_text(encoding="utf-8"))
-    return [build_lfads_tuning_score_row(summary, reference_name)]
 
 
 def _write_figures(output_dir: Path, leaderboard: pd.DataFrame, summary: dict[str, Any]) -> None:
@@ -437,7 +406,7 @@ def run_unified_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         msg = "known train-mean unified value does not match canonical scoring"
         raise RuntimeError(msg)
     rows.extend(_known_rows(config, scoring_config.reference_name))
-    rows.extend(_lfads_tuning_rows(config, scoring_config.reference_name))
+    rows.extend(load_lfads_family_candidates(config))
     split_scores = pd.DataFrame(rows)
     leaderboard = rank_unified_validation_scores(split_scores, primary_split)
     historical = build_historical_metric_notes(config["historical_incompatible_values"])
@@ -484,6 +453,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     console.print(
         "best_lfads_family_validation_bits_per_spike: "
         f"{summary['best_lfads_family_validation_bits_per_spike']}"
+    )
+    console.print(
+        f"lfads_family_beats_factor_latent: {summary['lfads_family_beats_factor_latent']}"
     )
     console.print(
         f"oracle_validation_bits_per_spike: {summary['oracle_validation_bits_per_spike']}"

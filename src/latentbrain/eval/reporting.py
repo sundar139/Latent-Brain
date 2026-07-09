@@ -1253,6 +1253,12 @@ def write_unified_scoreboard_report(
         "",
         "This is local unified scoring, not an official NLB leaderboard result.",
         "Old mean-rate values are historical-only and must not be used as direct targets.",
+        ("Generated local tuning summaries are ignored by Git and may be absent on a fresh clone."),
+        (
+            "If local tuning summaries are absent, the scoreboard falls back to configured "
+            "known values. Fresh clones may need to rerun local tuning workflows to "
+            "reproduce the latest LFADS-family entries."
+        ),
         "",
         "## Dataset and scoring",
         f"- Dataset name: {summary.get('dataset_name')}",
@@ -1272,6 +1278,9 @@ def write_unified_scoreboard_report(
         f"- Best LFADS-family method: {summary.get('best_lfads_family_method')}",
         "- Best LFADS-family validation bits/spike: "
         f"{summary.get('best_lfads_family_validation_bits_per_spike')}",
+        f"- LFADS-family beats factor-latent: {summary.get('lfads_family_beats_factor_latent')}",
+        "- Best LFADS-family source summary path: "
+        f"{summary.get('best_lfads_family_source_summary_path')}",
         "- Oracle diagnostic score: "
         f"{summary.get('oracle_validation_bits_per_spike')} (invalid model)",
         "",

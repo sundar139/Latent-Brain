@@ -514,6 +514,8 @@ def test_unified_scoreboard_report_includes_formula_and_warnings(tmp_path: Path)
             "best_valid_model_validation_bits_per_spike": 0.03,
             "best_lfads_family_method": "coordinated_dropout_lfads",
             "best_lfads_family_validation_bits_per_spike": 0.01,
+            "best_lfads_family_source_summary_path": "results/lfads/summary.json",
+            "lfads_family_beats_factor_latent": False,
             "oracle_validation_bits_per_spike": 3.0,
         },
         pd.DataFrame(
@@ -544,6 +546,10 @@ def test_unified_scoreboard_report_includes_formula_and_warnings(tmp_path: Path)
     report = report_path.read_text(encoding="utf-8")
     assert "(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)" in report
     assert "Old mean-rate values are historical-only" in report
+    assert "Best LFADS-family method: coordinated_dropout_lfads" in report
+    assert "LFADS-family beats factor-latent: False" in report
+    assert "fresh clone" in report
+    assert "results/lfads/summary.json" in report
     assert "Oracle diagnostic score: 3.0 (invalid model)" in report
     assert "not an official NLB leaderboard result" in report
 

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pandas as pd  # type: ignore[import-untyped]
+import pytest
 
 from latentbrain.eval.unified_scoreboard import (
     HISTORICAL_STATUS,
@@ -8,9 +12,40 @@ from latentbrain.eval.unified_scoreboard import (
     SPLIT_SCORE_COLUMNS,
     build_historical_metric_notes,
     build_unified_score_row,
+    load_lfads_family_candidates,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
+
+
+def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
+    return {
+        "scoring": {"reference_model": "train_heldout_mean_rate"},
+        "inputs": {
+            "coordinated_dropout_dir": str(tmp_path / "dropout"),
+            "rate_calibration_dir": str(tmp_path / "calibration"),
+            "lfads_unified_tuning_summary_path": str(tmp_path / "unified.json"),
+            "lfads_controller_tuning_summary_path": str(tmp_path / "controller.json"),
+        },
+        "known_unified_values": {
+            "lfads_unified_validation_bits_per_spike": 0.009,
+            "coordinated_dropout_unified_validation_bits_per_spike": 0.01,
+        },
+    }
+
+
+def _write_summary(path: Path, bits: float, nll: float = 2.0) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "best_run_id": path.stem,
+                "best_validation_unified_bits_per_spike": bits,
+                "best_validation_poisson_nll": nll,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_score_row_contains_required_fields() -> None:
@@ -26,6 +61,72 @@ def test_score_row_contains_required_fields() -> None:
     )
 
     assert set(SPLIT_SCORE_COLUMNS).issubset(row)
+
+
+def test_loads_lfads_unified_tuning_candidate_from_summary_file(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "unified.json", 0.012, 1.5)
+
+    rows = load_lfads_family_candidates(config)
+    row = next(row for row in rows if row["method_name"] == "lfads_unified_tuning")
+
+    assert row["bits_per_spike"] == 0.012
+    assert row["poisson_nll"] == 1.5
+    assert row["source_summary_path"] == str((tmp_path / "unified.json").resolve())
+
+
+def test_loads_controller_tuning_candidate_from_summary_file(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "controller.json", 0.014, 1.4)
+
+    rows = load_lfads_family_candidates(config)
+    row = next(row for row in rows if row["method_name"] == "lfads_controller_tuning")
+
+    assert row["bits_per_spike"] == 0.014
+    assert row["source_summary_path"] == str((tmp_path / "controller.json").resolve())
+
+
+def test_controller_tuning_wins_over_older_lfads_summary(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "unified.json", 0.010)
+    _write_summary(tmp_path / "controller.json", 0.014)
+    rows = [
+        build_unified_score_row(
+            "factor_latent", "decoder", "validation", 0.03, 1.0, True, "ref", ""
+        ),
+        *load_lfads_family_candidates(config),
+    ]
+
+    leaderboard = rank_unified_validation_scores(pd.DataFrame(rows))
+    summary = summarize_unified_scoreboard(
+        leaderboard,
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.03,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_valid_model"] == "factor_latent"
+    assert summary["best_lfads_family_method"] == "lfads_controller_tuning"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.014
+    assert summary["lfads_family_beats_factor_latent"] is False
+
+
+def test_missing_lfads_summaries_fall_back_to_static_known_values(tmp_path: Path) -> None:
+    rows = load_lfads_family_candidates(_lfads_candidate_config(tmp_path))
+
+    by_method = {row["method_name"]: row for row in rows}
+    assert by_method["raw_lfads"]["bits_per_spike"] == 0.009
+    assert by_method["coordinated_dropout_lfads"]["bits_per_spike"] == 0.01
+    assert by_method["raw_lfads"]["source_summary_path"] is None
+
+
+def test_malformed_lfads_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "controller.json").write_text("{", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed LFADS-family summary"):
+        load_lfads_family_candidates(config)
 
 
 def test_validation_ranking_puts_valid_models_in_descending_bits() -> None:
@@ -82,4 +183,5 @@ def test_summary_identifies_best_valid_and_lfads_family_methods() -> None:
 
     assert summary["best_valid_model"] == "factor_latent"
     assert summary["best_lfads_family_method"] == "coordinated_dropout_lfads"
+    assert summary["lfads_family_beats_factor_latent"] is False
     assert summary["old_mean_rate_values_historical_only"] is True
