@@ -1,0 +1,134 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  base_seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+  split_seed_mode: fixed
+  split_seed: 2027
+  initialization_seed_mode: varied
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+runtime:
+  device: cuda
+  fail_if_cuda_unavailable: true
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_split: validation
+  primary_metric: unified_bits_per_spike
+
+seeds:
+  - 2027
+  - 2028
+  - 2029
+  - 2030
+  - 2031
+
+methods:
+  - name: factor_latent
+    type: factor_latent
+    valid_model: true
+    fallback_config:
+      latent_dim: 8
+      smoothing_sigma_ms: 200.0
+      heldout_decoder_alpha: 10000.0
+      standardize_features: true
+      max_iter: 1000
+      tol: 1.0e-4
+      min_rate_hz: 1.0e-4
+      max_rate_hz: 500.0
+    notes: "Current best non-neural local baseline under canonical scoring."
+
+  - name: neural_ode_refinement
+    type: neural_ode
+    valid_model: true
+    config_source: results/mc_maze_small/neural_ode_refinement/best_config.yaml
+    fallback_config:
+      encoder_hidden_dim: 64
+      drift_hidden_dim: 64
+      diffusion_hidden_dim: 32
+      latent_dim: 32
+      factor_dim: 32
+      input_dropout_rate: 0.10
+      heldout_loss_weight: 6.0
+      heldin_loss_weight: 1.0
+      kl_warmup_epochs: 10
+      kl_scale: 0.01
+      drift_regularization: 1.0e-4
+      learning_rate: 7.5e-4
+      scheduler: cosine
+      weight_decay: 1.0e-5
+      gradient_clip_norm: 5.0
+      batch_size: 4
+      epochs: 50
+      diffusion_scale: 0.0
+    notes: "Best current dynamics-family model; config_source preferred if available."
+
+  - name: neural_ode_objective_low_dropout_high_heldout
+    type: neural_ode_objective
+    valid_model: true
+    config_source: results/mc_maze_small/neural_ode_objectives/best_config.yaml
+    fallback_config:
+      encoder_hidden_dim: 64
+      drift_hidden_dim: 64
+      diffusion_hidden_dim: 32
+      latent_dim: 32
+      factor_dim: 32
+      input_dropout_rate: 0.0
+      heldout_loss_weight: 10.0
+      heldin_loss_weight: 0.5
+      kl_warmup_epochs: 10
+      kl_scale: 0.01
+      drift_regularization: 1.0e-5
+      learning_rate: 7.5e-4
+      scheduler: cosine
+      weight_decay: 1.0e-5
+      gradient_clip_norm: 5.0
+      batch_size: 4
+      epochs: 50
+      diffusion_scale: 0.0
+      zero_count_weight: 1.0
+      positive_count_weight: 1.0
+      rate_calibration_loss_weight: 0.0
+    notes: "Best controlled objective variant; included to test whether objective result was seed-specific."
+
+references:
+  train_mean_validation_bits_per_spike: 0.0
+  factor_latent_single_seed_reference: 0.0316438194429199
+  neural_ode_refinement_single_seed_reference: 0.0283514699322505
+  neural_ode_objective_single_seed_reference: 0.0115424630139204
+  oracle_validation_bits_per_spike: 3.5417067067892387
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+  paired_by_seed: true
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  direct_model_primary: true
+  also_evaluate_factor_decoder: true
+  behavior_decoder_enabled: true
+
+reporting:
+  output_dir: results/mc_maze_small/seed_robustness

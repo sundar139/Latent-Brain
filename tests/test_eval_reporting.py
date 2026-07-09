@@ -24,6 +24,7 @@ from latentbrain.eval.reporting import (
     write_neural_ode_refinement_outputs,
     write_neural_ode_tuning_report,
     write_neural_sde_tuning_report,
+    write_seed_robustness_outputs,
     write_switching_ode_tuning_outputs,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
@@ -1010,3 +1011,134 @@ def test_neural_ode_objective_report_documents_objective_diagnostics(tmp_path: P
     )
     assert "Old incompatible mean-rate values are not used as tuning targets" in text
     assert "not an official NLB leaderboard result" in text
+
+
+def _seed_robustness_summary() -> dict:
+    return {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "window_seconds": 1.28,
+        "cuda_device": "Unit GPU",
+        "reference_model": "train_heldout_mean_rate",
+        "train_mean_validation_bits_per_spike": 0.0,
+        "split_seed_mode": "fixed",
+        "split_seed": 2027,
+        "initialization_seed_mode": "varied",
+        "seed_list_shared_across_methods": True,
+        "methods_evaluated": ["factor_latent", "neural_ode_refinement"],
+        "seeds_evaluated": [2027, 2028, 2029],
+        "total_jobs": 6,
+        "successful_jobs": 6,
+        "method_config_hashes": {"factor_latent": "aaa", "neural_ode_refinement": "bbb"},
+        "confidence_interval": 0.95,
+        "bootstrap_repeats": 100,
+        "bootstrap_seed": 1337,
+        "best_mean_method": "factor_latent",
+        "best_mean_validation_unified_bits_per_spike": 0.031,
+        "best_lower_ci_method": "factor_latent",
+        "best_lower_ci_validation_unified_bits_per_spike": 0.0303,
+        "factor_latent_mean_validation_unified_bits_per_spike": 0.031,
+        "best_neural_method": "neural_ode_refinement",
+        "best_neural_method_mean_validation_unified_bits_per_spike": 0.011,
+        "paired_mean_difference_best_neural_minus_factor_latent": -0.02,
+        "any_neural_beats_factor_latent_mean": False,
+        "any_neural_beats_factor_latent_lower_ci": False,
+        "carried_forward_method": "factor_latent",
+        "carried_forward_reason": "No neural method beats factor-latent across seeds.",
+    }
+
+
+def test_seed_robustness_report_documents_policy_statistics_and_recommendation(
+    tmp_path: Path,
+) -> None:
+    method_summary = pd.DataFrame(
+        [
+            {
+                "method_name": "factor_latent",
+                "method_type": "factor_latent",
+                "valid_model": True,
+                "n_seeds": 3,
+                "mean_validation_unified_bits_per_spike": 0.031,
+                "std_validation_unified_bits_per_spike": 0.001,
+                "median_validation_unified_bits_per_spike": 0.031,
+                "min_validation_unified_bits_per_spike": 0.030,
+                "max_validation_unified_bits_per_spike": 0.032,
+                "ci95_low": 0.0303,
+                "ci95_high": 0.0317,
+                "mean_validation_poisson_nll": 1900.0,
+                "mean_test_unified_bits_per_spike": 0.030,
+                "beats_factor_latent_mean": False,
+                "beats_factor_latent_lower_ci": False,
+                "notes": "baseline",
+            }
+        ]
+    )
+    leaderboard = pd.DataFrame(
+        [
+            {
+                "rank": 1,
+                "method_name": "factor_latent",
+                "method_type": "factor_latent",
+                "mean_validation_unified_bits_per_spike": 0.031,
+                "std_validation_unified_bits_per_spike": 0.001,
+                "ci95_low": 0.0303,
+                "ci95_high": 0.0317,
+                "mean_test_unified_bits_per_spike": 0.030,
+                "beats_factor_latent_mean": False,
+                "beats_factor_latent_lower_ci": False,
+                "valid_model": True,
+                "notes": "baseline",
+            }
+        ]
+    )
+    seed_effects = pd.DataFrame(
+        [
+            {
+                "seed": 2027,
+                "method_a": "neural_ode_refinement",
+                "method_b": "factor_latent",
+                "metric": "validation_unified_bits_per_spike",
+                "method_a_value": 0.011,
+                "method_b_value": 0.031,
+                "difference": -0.02,
+            }
+        ]
+    )
+    carried_forward = {"carried_forward_method": "factor_latent"}
+
+    paths = write_seed_robustness_outputs(
+        tmp_path,
+        _seed_robustness_summary(),
+        pd.DataFrame(),
+        method_summary,
+        leaderboard,
+        seed_effects,
+        carried_forward,
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert paths["method_summary"].exists()
+    assert paths["seed_effects"].exists()
+    assert paths["carried_forward_config"].exists()
+
+    assert "## Seed policy" in text
+    assert "Split seed mode: fixed" in text
+    assert "Initialization seed mode: varied" in text
+    assert "Same seed list across methods: True" in text
+    assert "seed + run_index" in text
+
+    assert "Canonical reference model: train_heldout_mean_rate" in text
+    assert "Train-mean-as-model equals 0.0 bits/spike." in text
+    assert "ci95_low" in text
+    assert "std_validation_unified_bits_per_spike" in text
+    assert "Paired seed differences against factor-latent" in text
+    assert "Paired mean difference (best neural minus factor-latent): -0.02" in text
+
+    assert "Carried-forward method: factor_latent" in text
+    assert "Any neural method beats factor-latent by mean: False" in text
+    assert "Any neural method beats factor-latent by lower CI: False" in text
+
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+    assert "not an official NLB leaderboard result" in text
+    assert "Single-seed model leaderboards are not sufficient for claims." in text

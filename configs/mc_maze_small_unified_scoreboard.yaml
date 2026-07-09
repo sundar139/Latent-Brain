@@ -38,6 +38,7 @@ inputs:
   neural_ode_refinement_summary_path: results/mc_maze_small/neural_ode_refinement/neural_ode_refinement_summary.json
   neural_ode_objective_summary_path: results/mc_maze_small/neural_ode_objectives/neural_ode_objective_summary.json
   switching_ode_tuning_summary_path: results/mc_maze_small/switching_ode_tuning/switching_ode_tuning_summary.json
+  seed_robustness_summary_path: results/mc_maze_small/seed_robustness/seed_robustness_summary.json
 
 known_unified_values:
   train_mean_as_model_validation_bits_per_spike: 0.0

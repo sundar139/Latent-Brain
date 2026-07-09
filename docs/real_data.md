@@ -411,3 +411,17 @@ Switching latent dynamics collapsed to one dominant regime locally and did not i
 Training losses may be weighted; evaluation always uses the canonical unweighted unified bits/spike metric. If no objective variant beats factor-latent, the next step should not be more architecture. It should be multi-seed robustness of the best dynamics model plus expanded baselines and datasets. Generated outputs, figures, and checkpoints remain ignored under `results/mc_maze_small/neural_ode_objectives/` and are not official NLB leaderboard results.
 
 Objective variants all train under one shared seed so that score differences reflect the objective rather than initialization. The stored refinement reference was produced at a different seed, so compare objective variants against the same-seed `refined_baseline` row; the cross-seed reference comparison is uncontrolled and is retained only for scoreboard continuity.
+
+## MC_Maze Small multi-seed robustness
+
+Run the seed-controlled local comparison with:
+
+```powershell
+python scripts/run_seed_robustness.py --config configs/mc_maze_small_multiseed_robustness.yaml
+```
+
+This benchmark uses 20 ms rebinned MC_Maze Small data and the fixed 1.28-second window, with train-heldout mean rate as the canonical reference. The trial split and held-in/held-out neuron mask are fixed across all methods and seeds; only the initialization and training seed varies. Every method uses the same seed list, and factor-latent, deterministic neural-ODE refinement, and the best controlled objective variant are all evaluated on it.
+
+Each method reports mean, standard deviation, a bootstrap 95% confidence interval, and paired per-seed differences against factor-latent. A single-seed near-win is not evidence: the earlier deterministic neural-ODE result sat within the seed noise band measured here.
+
+If neural ODE does not beat factor-latent across seeds, the next step should be rigorous reporting or additional datasets, not more architecture. If neural ODE beats factor-latent by the mean but not the confidence-interval lower bound, run more seeds before any claim. If neural ODE beats factor-latent robustly at the CI lower bound, the next step is held-out test reporting and additional datasets. Generated outputs, figures, and checkpoints remain ignored under `results/mc_maze_small/seed_robustness/` and are not official NLB leaderboard results.

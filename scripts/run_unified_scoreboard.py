@@ -31,6 +31,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
     build_unified_score_row,
     load_lfads_family_candidates,
+    load_seed_robustness_candidates,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -127,6 +128,7 @@ class InputsSection(BaseModel):
     neural_ode_refinement_summary_path: str | None = None
     neural_ode_objective_summary_path: str | None = None
     switching_ode_tuning_summary_path: str | None = None
+    seed_robustness_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):
@@ -412,6 +414,7 @@ def run_unified_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(msg)
     rows.extend(_known_rows(config, scoring_config.reference_name))
     rows.extend(load_lfads_family_candidates(config))
+    rows.extend(load_seed_robustness_candidates(config))
     split_scores = pd.DataFrame(rows)
     leaderboard = rank_unified_validation_scores(split_scores, primary_split)
     historical = build_historical_metric_notes(config["historical_incompatible_values"])

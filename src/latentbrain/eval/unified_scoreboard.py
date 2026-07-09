@@ -304,6 +304,57 @@ def load_lfads_family_candidates(config: dict[str, Any]) -> list[dict[str, Any]]
     return candidates
 
 
+MULTI_SEED_NOTE = "Multi-seed local summary (aggregate row, not a single run)."
+
+
+def load_seed_robustness_candidates(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Aggregate multi-seed rows. Absent summary falls back to no rows; malformed fails."""
+    reference_name = str(
+        config.get("scoring", {}).get("reference_model", "train_heldout_mean_rate")
+    )
+    path = _summary_path(config["inputs"].get("seed_robustness_summary_path"))
+    if path is None or not path.exists():
+        return []
+    label = "seed robustness"
+    summary = _load_summary(path, label)
+    aggregates = [
+        (
+            "seed_robustness_best_mean",
+            "multi_seed_mean",
+            "best_mean_method",
+            "best_mean_validation_unified_bits_per_spike",
+        ),
+        (
+            "seed_robustness_best_lower_ci",
+            "multi_seed_ci95_low",
+            "best_lower_ci_method",
+            "best_lower_ci_validation_unified_bits_per_spike",
+        ),
+    ]
+    rows: list[dict[str, Any]] = []
+    for method_name, prediction_source, method_key, bits_key in aggregates:
+        bits = _required_float(summary, bits_key, path, label)
+        if bits is None:
+            continue
+        winner = summary.get(method_key)
+        seeds = summary.get("seeds_evaluated") or []
+        note = f"{MULTI_SEED_NOTE} Winner {winner} over {len(seeds)} seeds. Loaded from {path}"
+        rows.append(
+            build_unified_score_row(
+                method_name,
+                prediction_source,
+                "validation",
+                bits,
+                None,
+                True,
+                reference_name,
+                note,
+                str(path),
+            )
+        )
+    return rows
+
+
 def _is_oracle(row: pd.Series) -> bool:
     text = " ".join(
         [
@@ -369,6 +420,10 @@ def build_historical_metric_notes(historical_values: dict[str, float]) -> pd.Dat
     return pd.DataFrame(rows, columns=HISTORICAL_NOTE_COLUMNS)
 
 
+def _is_seed_robustness_aggregate(method_name: object) -> bool:
+    return str(method_name).startswith("seed_robustness_")
+
+
 def summarize_unified_scoreboard(
     leaderboard: pd.DataFrame,
     known_values: dict[str, float],
@@ -377,6 +432,16 @@ def summarize_unified_scoreboard(
         leaderboard[leaderboard["valid_model"].astype(bool)]
         if not leaderboard.empty
         else leaderboard
+    )
+    aggregates = (
+        valid[valid["method_name"].map(_is_seed_robustness_aggregate)] if not valid.empty else valid
+    )
+    # An aggregate over methods is not itself a method, so it never competes for
+    # best-valid-model or best-dynamics-family.
+    valid = (
+        valid[~valid["method_name"].map(_is_seed_robustness_aggregate)]
+        if not valid.empty
+        else valid
     )
     best_valid = valid.iloc[0] if not valid.empty else None
     family_mask = (
@@ -416,4 +481,8 @@ def summarize_unified_scoreboard(
         else float(best_lfads["validation_bits_per_spike"]) > factor_value,
         "oracle_validation_bits_per_spike": oracle_value,
         "old_mean_rate_values_historical_only": True,
+        "seed_robustness_aggregate_methods": []
+        if aggregates.empty
+        else [str(name) for name in aggregates["method_name"]],
+        "seed_robustness_ingested": not aggregates.empty,
     }

@@ -67,6 +67,18 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Multi-seed robustness
+
+Objective diagnostics uncovered a seed confound: the earlier workflow seeded with `seed + run_index`, so each method effectively trained from a different initialization, and re-running one identical objective under two seed offsets moved validation unified bits/spike by roughly 0.032 — more than any effect being measured. Single-seed leaderboards are therefore not sufficient for claims. This workflow re-compares the strongest methods under an explicit seed policy:
+
+```powershell
+python scripts/run_seed_robustness.py --config configs/mc_maze_small_multiseed_robustness.yaml
+```
+
+The trial split and held-in/held-out neuron mask are held **fixed** across every method and seed (`split_seed_mode: fixed`), while the **initialization/training seed varies** over the configured `seeds` list. Every method receives the identical seed list, and no seed is ever derived from a run index. Score spread across seeds therefore reflects initialization and training variance only.
+
+Selection uses canonical unified validation bits/spike over 20 ms MC_Maze Small bins, a 1.28-second window, and train-heldout mean rate as the reference; evaluation stays canonical and unweighted. Each method reports mean, standard deviation, a bootstrap 95% confidence interval, and paired per-seed differences against factor-latent. A method must beat factor-latent by mean *and* by CI lower bound before it is carried forward. Old mean-rate values remain historical-only. Results, figures, and checkpoints are local ignored artifacts under `results/mc_maze_small/seed_robustness/`, not official NLB leaderboard results.
+
 ## Deterministic neural-ODE objective diagnostics
 
 Switching dynamics collapsed to one dominant regime and deterministic refinement gained only marginally, so the next workflow interrogates the training objective rather than the architecture:

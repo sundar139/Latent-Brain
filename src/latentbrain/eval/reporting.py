@@ -2116,3 +2116,145 @@ def write_neural_ode_objective_outputs(
         paths["report"], summary, leaderboard, objective_diagnostics, checkpoint_scores
     )
     return paths
+
+
+def write_seed_robustness_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    method_summary: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+    seed_effects: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local multi-seed robustness analysis."""
+    lines = [
+        f"# {summary.get('dataset_name')} multi-seed robustness",
+        "",
+        "This is local multi-seed robustness analysis, not an official NLB leaderboard result.",
+        "Single-seed model leaderboards are not sufficient for claims.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        "- Train-mean-as-model equals 0.0 bits/spike.",
+        "- Train-mean validation bits/spike: "
+        f"{summary.get('train_mean_validation_bits_per_spike')}",
+        "- Evaluation uses canonical unweighted unified bits/spike.",
+        "",
+        "## Seed policy",
+        f"- Split seed mode: {summary.get('split_seed_mode')}",
+        f"- Fixed split seed: {summary.get('split_seed')}",
+        f"- Initialization seed mode: {summary.get('initialization_seed_mode')}",
+        f"- Same seed list across methods: {summary.get('seed_list_shared_across_methods')}",
+        (
+            "- The trial split and held-in/held-out neuron mask are held fixed across all "
+            "methods and seeds, so score spread reflects initialization and training "
+            "variance only."
+        ),
+        (
+            "- No seed is derived from a run index. Objective diagnostics previously used "
+            "`seed + run_index`, which confounded the method with its initialization."
+        ),
+        "",
+        "## Methods and seeds",
+        f"- Methods evaluated: {summary.get('methods_evaluated')}",
+        f"- Seeds evaluated: {summary.get('seeds_evaluated')}",
+        f"- Total jobs: {summary.get('total_jobs')}",
+        f"- Successful jobs: {summary.get('successful_jobs')}",
+        f"- Method config hashes: {summary.get('method_config_hashes')}",
+        f"- Confidence interval: {summary.get('confidence_interval')}",
+        f"- Bootstrap repeats: {summary.get('bootstrap_repeats')}",
+        f"- Bootstrap seed: {summary.get('bootstrap_seed')}",
+        "",
+        "## Method summary (mean, standard deviation, bootstrap CI)",
+        *_format_table(method_summary),
+        "",
+        "## Validation leaderboard",
+        *_format_table(leaderboard),
+        "",
+        "## Paired seed differences against factor-latent",
+        *_format_table(seed_effects),
+        "",
+        "## Outcome",
+        f"- Best mean method: {summary.get('best_mean_method')}",
+        "- Best mean validation unified bits/spike: "
+        f"{summary.get('best_mean_validation_unified_bits_per_spike')}",
+        f"- Best lower-CI method: {summary.get('best_lower_ci_method')}",
+        "- Best lower-CI validation unified bits/spike: "
+        f"{summary.get('best_lower_ci_validation_unified_bits_per_spike')}",
+        "- Factor-latent mean validation unified bits/spike: "
+        f"{summary.get('factor_latent_mean_validation_unified_bits_per_spike')}",
+        f"- Best neural method: {summary.get('best_neural_method')}",
+        "- Best neural method mean validation unified bits/spike: "
+        f"{summary.get('best_neural_method_mean_validation_unified_bits_per_spike')}",
+        "- Paired mean difference (best neural minus factor-latent): "
+        f"{summary.get('paired_mean_difference_best_neural_minus_factor_latent')}",
+        "- Any neural method beats factor-latent by mean: "
+        f"{summary.get('any_neural_beats_factor_latent_mean')}",
+        "- Any neural method beats factor-latent by lower CI: "
+        f"{summary.get('any_neural_beats_factor_latent_lower_ci')}",
+        "",
+        "## Carried-forward recommendation",
+        f"- Carried-forward method: {summary.get('carried_forward_method')}",
+        f"- Reason: {summary.get('carried_forward_reason')}",
+        "",
+        "## Interpretation",
+        (
+            "- If neural ODE does not beat factor-latent across seeds, stop adding "
+            "architecture on this dataset/window."
+        ),
+        (
+            "- If neural ODE beats factor-latent by mean but not lower CI, run more seeds "
+            "before claims."
+        ),
+        (
+            "- If neural ODE beats factor-latent by lower CI, move to held-out test "
+            "reporting and additional datasets."
+        ),
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_seed_robustness_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    results: pd.DataFrame,
+    method_summary: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+    seed_effects: pd.DataFrame,
+    carried_forward_config: dict[str, Any],
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "seed_robustness_summary.json",
+        "results": output_dir / "seed_robustness_results.csv",
+        "leaderboard": output_dir / "seed_robustness_leaderboard.csv",
+        "seed_effects": output_dir / "seed_effects.csv",
+        "method_summary": output_dir / "method_summary.csv",
+        "carried_forward_config": output_dir / "carried_forward_config.yaml",
+        "report": output_dir / "seed_robustness_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    results.to_csv(paths["results"], index=False)
+    leaderboard.to_csv(paths["leaderboard"], index=False)
+    seed_effects.to_csv(paths["seed_effects"], index=False)
+    method_summary.to_csv(paths["method_summary"], index=False)
+    paths["carried_forward_config"].write_text(
+        yaml.safe_dump(
+            json.loads(json.dumps(carried_forward_config, default=_json_default)), sort_keys=False
+        ),
+        encoding="utf-8",
+    )
+    write_seed_robustness_report(
+        paths["report"], summary, method_summary, leaderboard, seed_effects
+    )
+    return paths

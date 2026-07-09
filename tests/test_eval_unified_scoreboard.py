@@ -9,10 +9,12 @@ import pytest
 from latentbrain.eval.unified_scoreboard import (
     HISTORICAL_STATUS,
     LEADERBOARD_COLUMNS,
+    MULTI_SEED_NOTE,
     SPLIT_SCORE_COLUMNS,
     build_historical_metric_notes,
     build_unified_score_row,
     load_lfads_family_candidates,
+    load_seed_robustness_candidates,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -31,6 +33,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "neural_ode_refinement_summary_path": str(tmp_path / "neural_ode_refinement.json"),
             "neural_ode_objective_summary_path": str(tmp_path / "neural_ode_objectives.json"),
             "switching_ode_tuning_summary_path": str(tmp_path / "switching_ode.json"),
+            "seed_robustness_summary_path": str(tmp_path / "seed_robustness.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -400,3 +403,120 @@ def test_summary_identifies_best_valid_and_lfads_family_methods() -> None:
     assert summary["best_lfads_family_method"] == "coordinated_dropout_lfads"
     assert summary["lfads_family_beats_factor_latent"] is False
     assert summary["old_mean_rate_values_historical_only"] is True
+
+
+def _write_seed_robustness_summary(path: Path, best_mean: float, best_lower_ci: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "best_mean_method": "factor_latent",
+                "best_mean_validation_unified_bits_per_spike": best_mean,
+                "best_lower_ci_method": "factor_latent",
+                "best_lower_ci_validation_unified_bits_per_spike": best_lower_ci,
+                "seeds_evaluated": [2027, 2028, 2029, 2030, 2031],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_seed_robustness_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_seed_robustness_summary(tmp_path / "seed_robustness.json", 0.0312, 0.0301)
+
+    rows = load_seed_robustness_candidates(config)
+    by_method = {row["method_name"]: row for row in rows}
+
+    assert by_method["seed_robustness_best_mean"]["bits_per_spike"] == 0.0312
+    assert by_method["seed_robustness_best_lower_ci"]["bits_per_spike"] == 0.0301
+
+
+def test_seed_robustness_rows_are_marked_as_multi_seed_aggregates(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_seed_robustness_summary(tmp_path / "seed_robustness.json", 0.0312, 0.0301)
+
+    rows = load_seed_robustness_candidates(config)
+
+    assert rows
+    for row in rows:
+        assert MULTI_SEED_NOTE in row["notes"]
+        assert "5 seeds" in row["notes"]
+        assert row["source_summary_path"] == str((tmp_path / "seed_robustness.json").resolve())
+
+
+def test_missing_seed_robustness_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    assert load_seed_robustness_candidates(_lfads_candidate_config(tmp_path)) == []
+
+
+def test_malformed_seed_robustness_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "seed_robustness.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        load_seed_robustness_candidates(config)
+
+
+def test_seed_robustness_summary_missing_key_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "seed_robustness.json").write_text(json.dumps({"seeds_evaluated": []}), "utf-8")
+
+    with pytest.raises(ValueError, match="missing best_mean_validation_unified_bits_per_spike"):
+        load_seed_robustness_candidates(config)
+
+
+def test_seed_robustness_aggregates_do_not_win_best_valid_model() -> None:
+    scores = pd.DataFrame(
+        [
+            build_unified_score_row(
+                "factor_latent", "decoder", "validation", 0.0316, 1.0, True, "ref", ""
+            ),
+            build_unified_score_row(
+                "neural_ode_refinement", "direct", "validation", 0.0283, 2.0, True, "ref", ""
+            ),
+            build_unified_score_row(
+                "seed_robustness_best_mean",
+                "multi_seed_mean",
+                "validation",
+                0.0320,
+                None,
+                True,
+                "ref",
+                MULTI_SEED_NOTE,
+            ),
+        ]
+    )
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(scores),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_valid_model"] == "factor_latent"
+    assert summary["best_lfads_family_method"] == "neural_ode_refinement"
+    assert summary["seed_robustness_ingested"] is True
+    assert summary["seed_robustness_aggregate_methods"] == ["seed_robustness_best_mean"]
+
+
+def test_scoreboard_reports_no_seed_robustness_when_absent() -> None:
+    scores = pd.DataFrame(
+        [
+            build_unified_score_row(
+                "factor_latent", "decoder", "validation", 0.0316, 1.0, True, "ref", ""
+            )
+        ]
+    )
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(scores),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["seed_robustness_ingested"] is False
+    assert summary["seed_robustness_aggregate_methods"] == []
