@@ -299,7 +299,7 @@ python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_
 
 The scoreboard uses 20 ms bins, the fixed 1.28-second window, deterministic train/validation/test split, and the train-only held-out mean-rate reference. Bits/spike is always `(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)`, so the train-heldout mean-rate predictor scores `0.0` against itself. Future tuning should optimize against the unified scoreboard: the `0.0` train-mean reference, the current factor-latent unified local reference, and the oracle diagnostic upper bound.
 
-Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. The scoreboard reads local LFADS/dynamics-family summaries when present, including `inputs.lfads_unified_tuning_summary_path`, `inputs.lfads_controller_tuning_summary_path`, `inputs.neural_sde_tuning_summary_path`, the coordinated-dropout summary, and the raw LFADS rate-calibration summary. If those ignored local summaries are absent on a fresh clone, it falls back to configured known LFADS-family values. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
+Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. The scoreboard reads local LFADS/dynamics-family summaries when present, including `inputs.lfads_unified_tuning_summary_path`, `inputs.lfads_controller_tuning_summary_path`, `inputs.neural_sde_tuning_summary_path`, `inputs.neural_ode_tuning_summary_path`, the coordinated-dropout summary, and the raw LFADS rate-calibration summary. If those ignored local summaries are absent on a fresh clone, it falls back to configured known LFADS-family values. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
 
 ## Canonical LFADS-style unified tuning
 
@@ -338,6 +338,18 @@ The model replaces the discrete GRU generator with continuous-time latent dynami
 This workflow uses 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the model-selection metric. The current valid local target to beat is the factor-latent unified score; the previous controller-style LFADS-family score is the dynamics-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
 
 Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/neural_sde_tuning/` paths. This is local neural-SDE-style tuning, not an official NLB leaderboard result, and it is a compact Euler/Euler-Maruyama latent generator rather than a full benchmarked neural SDE system.
+
+## Deterministic neural-ODE-style latent dynamics tuning
+
+Focus the best neural-SDE-style setting, where diffusion scale zero won, with:
+
+```powershell
+python scripts/tune_neural_ode.py --config configs/mc_maze_small_neural_ode_tuning.yaml
+```
+
+This reuses the compact Euler latent generator with `diffusion_scale: 0.0` forced for every run. It uses 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the selection metric. The current valid local target to beat is the factor-latent unified score; the previous neural-SDE-style score is the dynamics-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
+
+The workflow saves `best_validation.pt`, `latest.pt`, and `best_unified.pt`, then records checkpoint re-ranking in `checkpoint_selection.csv`. Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/neural_ode_tuning/` paths and are not committed. This is local deterministic neural-ODE-style tuning, not an official NLB leaderboard result, and not a full benchmarked neural ODE/SDE system.
 
 ## Data policy
 

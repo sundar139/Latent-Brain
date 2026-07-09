@@ -213,6 +213,14 @@ def load_lfads_family_candidates(config: dict[str, Any]) -> list[dict[str, Any]]
             "best_validation_unified_bits_per_spike",
             "best_validation_poisson_nll",
         ),
+        (
+            "neural_ode_tuning",
+            "neural_ode_tuning_direct_model",
+            "deterministic neural-ODE-style tuning",
+            inputs.get("neural_ode_tuning_summary_path"),
+            "best_validation_unified_bits_per_spike",
+            "best_validation_poisson_nll",
+        ),
     ]
     for method, source, label, path_value, bits_key, nll_key in direct_summaries:
         path = _summary_path(None if path_value is None else str(path_value))
@@ -347,7 +355,9 @@ def summarize_unified_scoreboard(
         else leaderboard
     )
     best_valid = valid.iloc[0] if not valid.empty else None
-    family_mask = valid["method_name"].astype(str).str.lower().str.contains("lfads|neural_sde")
+    family_mask = (
+        valid["method_name"].astype(str).str.lower().str.contains("lfads|neural_sde|neural_ode")
+    )
     lfads = valid[family_mask] if not valid.empty else valid
     best_lfads = (
         lfads.sort_values("validation_bits_per_spike", ascending=False).iloc[0]

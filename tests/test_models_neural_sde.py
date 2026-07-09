@@ -76,3 +76,20 @@ def test_training_outputs_finite_positive_rates_and_reproducible_noise() -> None
     assert torch.all(first["rates_hz"] > 0.0)
     assert torch.allclose(first["latents"], second["latents"])
     assert sum(parameter.numel() for parameter in model.parameters()) > 0
+
+
+def test_neural_ode_alias_uses_zero_diffusion_deterministic_path() -> None:
+    x = torch.ones(2, 9, 5)
+    model = _model(diffusion_scale=0.0)
+    model.eval()
+
+    first = model(x)
+    second = model(x)
+
+    assert torch.allclose(first["rates_hz"], second["rates_hz"])
+    assert torch.all(first["diffusion"] == 0.0)
+
+    model.train()
+    output = model(x)
+    assert torch.isfinite(output["rates_hz"]).all()
+    assert torch.all(output["diffusion"] == 0.0)

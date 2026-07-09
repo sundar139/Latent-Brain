@@ -367,3 +367,11 @@ Do not commit real dataset files, processed arrays, metadata generated from real
 ## Future local evaluation
 
 The first real-data run is validation only. The mean-rate baseline is the initial local metric sanity check and is not an official benchmark score. No EvalAI submission is planned. Future work should inspect alignment choices, behavior extraction, trial length distribution, and spike statistics before stronger local reproducible evaluation is added.
+
+## Deterministic neural-ODE-style MC_Maze Small tuning
+
+The deterministic neural-ODE-style workflow uses the real MC_Maze Small processed tensor rebinned from 5 ms to 20 ms and cropped to the fixed 1.28-second window. It forces `diffusion_scale: 0.0`, uses train-heldout mean-rate as the canonical reference, and selects runs by validation unified bits/spike.
+
+The current goal is to beat the factor-latent unified score before adding rSLDS switching or other architectural complexity. The previous neural-SDE-style score is a dynamics-family reference, while the oracle remains an invalid diagnostic because it uses held-out truth. Old incompatible mean-rate values are historical-only and are not tuning targets.
+
+If deterministic tuning beats the factor-latent reference, the next local milestone should be multi-seed robustness on the same dataset/bin/window/split before adding more architecture. Generated outputs, checkpoints, reports, and figures stay under ignored `results/mc_maze_small/neural_ode_tuning/` paths.

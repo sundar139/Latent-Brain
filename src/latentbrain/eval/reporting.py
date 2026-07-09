@@ -1595,3 +1595,137 @@ def write_neural_sde_tuning_outputs(
     leaderboard.to_csv(paths["leaderboard"], index=False)
     write_neural_sde_tuning_report(paths["report"], summary, leaderboard)
     return paths
+
+
+def write_neural_ode_tuning_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    leaderboard: pd.DataFrame,
+    checkpoint_scores: pd.DataFrame,
+) -> Path:
+    lines = [
+        f"# {summary.get('dataset_name')} deterministic neural-ODE-style latent dynamics tuning",
+        "",
+        (
+            "This is local deterministic neural-ODE-style tuning, "
+            "not an official NLB leaderboard result."
+        ),
+        ("This is a compact Euler latent generator, not a full benchmarked neural ODE/SDE system."),
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        "- Train-mean-as-model equals 0.0 bits/spike.",
+        "- Train-mean validation bits/spike: "
+        f"{summary.get('train_mean_validation_bits_per_spike')}",
+        "",
+        "## Selection",
+        f"- Runs attempted: {summary.get('runs_attempted')}",
+        f"- Successful runs: {summary.get('successful_runs')}",
+        f"- Best run ID: {summary.get('best_run_id')}",
+        f"- Best run parameters: {summary.get('best_run_params')}",
+        "- Best validation unified bits/spike: "
+        f"{summary.get('best_validation_unified_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        "- Best factor-decoder unified bits/spike: "
+        f"{summary.get('best_factor_decoder_unified_bits_per_spike')}",
+        f"- Best checkpoint source: {summary.get('best_checkpoint_source')}",
+        f"- Checkpoint selection: {summary.get('checkpoint_selection_method')}",
+        f"- Factor-latent unified reference: {summary.get('factor_latent_unified_reference')}",
+        f"- Previous neural-SDE reference: {summary.get('previous_neural_sde_reference')}",
+        "- Previous LFADS/controller reference: "
+        f"{summary.get('previous_best_lfads_family_reference')}",
+        f"- Beats factor-latent: {summary.get('beats_factor_latent_unified')}",
+        f"- Beats previous neural-SDE: {summary.get('beats_previous_neural_sde')}",
+        "",
+        "## Drift diagnostics",
+        f"- Best drift norm: {summary.get('best_drift_norm')}",
+        f"- Best diffusion mean: {summary.get('best_diffusion_mean')}",
+        "- Diffusion scale is forced to 0.0 for deterministic latent dynamics.",
+        "",
+        "## Interpretation",
+        (
+            "- Deterministic latent dynamics are tested because diffusion scale zero "
+            "won the previous neural-SDE-style tuning."
+        ),
+        (
+            "- If deterministic tuning beats neural-SDE, stochastic diffusion was "
+            "unnecessary for this dataset/window."
+        ),
+        (
+            "- If deterministic tuning beats factor-latent, move to robustness/"
+            "multiple-seed validation before rSLDS."
+        ),
+        "",
+        "## Validation leaderboard",
+        (
+            "| rank | run | bits/spike | poisson NLL | checkpoint | "
+            "beats factor-latent | beats previous neural-SDE | notes |"
+        ),
+        "| ---: | --- | ---: | ---: | --- | --- | --- | --- |",
+    ]
+    for _, row in leaderboard.iterrows():
+        lines.append(
+            f"| {row.get('rank')} | {row.get('run_id')} | "
+            f"{row.get('validation_unified_bits_per_spike')} | "
+            f"{row.get('validation_poisson_nll')} | "
+            f"{row.get('best_checkpoint_source')} | "
+            f"{row.get('beats_factor_latent_unified')} | "
+            f"{row.get('beats_previous_neural_sde')} | {row.get('notes')} |"
+        )
+    if leaderboard.empty:
+        lines.append("| | no successful runs | | | | | | |")
+    lines.extend(
+        [
+            "",
+            "## Checkpoint selection",
+            (
+                "| run | source | epoch | validation loss | validation bits/spike | "
+                "selected by loss | selected by unified |"
+            ),
+            "| --- | --- | ---: | ---: | ---: | --- | --- |",
+        ]
+    )
+    for _, row in checkpoint_scores.iterrows():
+        lines.append(
+            f"| {row.get('run_id', '')} | {row.get('checkpoint_source')} | "
+            f"{row.get('epoch')} | {row.get('validation_total_loss')} | "
+            f"{row.get('validation_unified_bits_per_spike')} | "
+            f"{row.get('selected_by_loss')} | {row.get('selected_by_unified')} |"
+        )
+    if checkpoint_scores.empty:
+        lines.append("| | no checkpoint scores | | | | | |")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_neural_ode_tuning_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    results: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+    checkpoint_scores: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "neural_ode_tuning_summary.json",
+        "results": output_dir / "neural_ode_tuning_results.csv",
+        "leaderboard": output_dir / "neural_ode_validation_leaderboard.csv",
+        "checkpoint_selection": output_dir / "checkpoint_selection.csv",
+        "report": output_dir / "neural_ode_tuning_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    results.to_csv(paths["results"], index=False)
+    leaderboard.to_csv(paths["leaderboard"], index=False)
+    checkpoint_scores.to_csv(paths["checkpoint_selection"], index=False)
+    write_neural_ode_tuning_report(paths["report"], summary, leaderboard, checkpoint_scores)
+    return paths

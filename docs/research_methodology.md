@@ -127,3 +127,11 @@ Poisson likelihood, log-likelihood, and bits/spike are computed against a train-
 ## Planned evaluation direction
 
 Evaluation is expected to include predictive quality, latent structure diagnostics, reproducibility checks, and benchmark compatibility when the project reaches that scope. No evaluation claims are made in the current repository state.
+
+## Deterministic latent dynamics tuning
+
+The previous neural-SDE-style local tuning selected a zero-diffusion run, so the next focused comparison uses deterministic neural-ODE-style latent dynamics. The workflow keeps the same MC_Maze Small dataset hash, 20 ms bins, 1.28-second window, train/validation/test split, held-in/held-out mask, and train-heldout mean-rate reference. Validation unified bits/spike remains the primary model-selection metric.
+
+Checkpoint selection is aligned with the scorer by evaluating saved validation-loss and latest checkpoints after training, copying the best validation unified bits/spike checkpoint to `best_unified.pt`, and writing `checkpoint_selection.csv`. Validation loss remains a training diagnostic, not the cross-run selection target.
+
+Decision rule before rSLDS switching: deterministic latent dynamics should first beat the current factor-latent unified reference under this same-bin scorer. If it does, run multiple-seed robustness checks before adding switching dynamics. If it does not, treat the gap as evidence that the factor-latent baseline remains the local valid target. Old incompatible mean-rate values remain historical-only and are not tuning targets.

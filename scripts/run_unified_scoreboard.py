@@ -123,6 +123,7 @@ class InputsSection(BaseModel):
     lfads_unified_tuning_summary_path: str | None = None
     lfads_controller_tuning_summary_path: str | None = None
     neural_sde_tuning_summary_path: str | None = None
+    neural_ode_tuning_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):
