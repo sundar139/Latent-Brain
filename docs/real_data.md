@@ -79,6 +79,16 @@ If `nlb-tools` is not available from pip in your environment, install it manuall
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Deterministic neural-ODE refinement
+
+MC_Maze Small deterministic neural-ODE refinement uses 20 ms bins and the fixed 1.28-second window:
+
+```powershell
+python scripts/refine_neural_ode.py --config configs/mc_maze_small_neural_ode_refinement.yaml
+```
+
+Switching dynamics collapsed to one dominant regime and did not improve local validation bits/spike, so this workflow refines deterministic objective/schedule choices instead of adding regimes. The current local goal remains beating the factor-latent unified score. If factor-latent is beaten, the next action should be multi-seed robustness before any claims.
+
 ## Switching deterministic latent dynamics
 
 MC_Maze Small switching tuning uses 20 ms bins and a fixed 1.28-second window:

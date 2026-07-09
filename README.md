@@ -67,6 +67,16 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Deterministic neural-ODE refinement
+
+Switching dynamics collapsed to one dominant regime locally, so the next local neural workflow refines deterministic latent dynamics instead of adding regimes:
+
+```powershell
+python scripts/refine_neural_ode.py --config configs/mc_maze_small_neural_ode_refinement.yaml
+```
+
+The refinement keeps diffusion disabled and tunes objective/schedule choices: held-out loss weight, KL scale/warmup, input dropout, drift regularization, cosine learning-rate scheduling, and unified-metric checkpoint selection. Selection uses canonical unified validation bits/spike: 20 ms MC_Maze Small bins, a 1.28-second window, deterministic split/mask, and train-heldout mean rate as the reference. Factor-latent remains the current valid local target to beat; old mean-rate values are historical-only. Outputs and checkpoints are local ignored artifacts under `results/mc_maze_small/neural_ode_refinement/`, not official NLB leaderboard results.
+
 ## Switching deterministic latent dynamics
 
 Run local rSLDS-style switching neural-ODE-style tuning with:

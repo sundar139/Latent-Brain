@@ -136,6 +136,14 @@ Checkpoint selection is aligned with the scorer by evaluating saved validation-l
 
 Decision rule before rSLDS switching: deterministic latent dynamics should first beat the current factor-latent unified reference under this same-bin scorer. If it does, run multiple-seed robustness checks before adding switching dynamics. If it does not, treat the gap as evidence that the factor-latent baseline remains the local valid target. Old incompatible mean-rate values remain historical-only and are not tuning targets.
 
+## Deterministic objective refinement
+
+After switching neural-ODE-style tuning collapsed to one dominant regime and underperformed, the lean next neural workflow returns to deterministic latent dynamics rather than adding architecture. The refinement tunes objective and schedule controls: held-out loss weight, KL scale/warmup, input dropout, drift regularization, cosine learning-rate scheduling, and post-training unified checkpoint selection.
+
+Drift regularization adds `drift_regularization * mean(drift ** 2)` to the training loss and reports both drift norm and the scaled regularization loss. Scheduler traces are logged per epoch. Validation unified bits/spike remains the cross-run selection metric; validation loss remains an internal checkpoint diagnostic and `best_unified.pt` is selected by reranking saved checkpoints under the canonical scorer.
+
+Decision rule before further architecture: if deterministic refinement beats factor-latent, run multi-seed robustness before any claims. If it does not, investigate objective redesign or multiple datasets before adding more model classes. Old incompatible mean-rate values remain historical-only and are not tuning targets.
+
 ## rSLDS-style switching dynamics
 
 The switching neural-ODE-style latent generator extends deterministic latent dynamics with soft discrete regimes, not full Bayesian rSLDS inference. A bidirectional encoder reads held-in spikes and infers the initial latent posterior. At each 20 ms bin, a regime network maps the current latent state and encoder context to regime probabilities. Regime-specific drift networks produce candidate latent updates, and the model evolves using the probability-weighted drift. Diffusion remains disabled.

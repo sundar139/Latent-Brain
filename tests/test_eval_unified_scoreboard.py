@@ -28,6 +28,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "lfads_controller_tuning_summary_path": str(tmp_path / "controller.json"),
             "neural_sde_tuning_summary_path": str(tmp_path / "neural_sde.json"),
             "neural_ode_tuning_summary_path": str(tmp_path / "neural_ode.json"),
+            "neural_ode_refinement_summary_path": str(tmp_path / "neural_ode_refinement.json"),
             "switching_ode_tuning_summary_path": str(tmp_path / "switching_ode.json"),
         },
         "known_unified_values": {
@@ -122,6 +123,40 @@ def test_switching_summary_is_loaded_when_present(tmp_path: Path) -> None:
 
     assert row["bits_per_spike"] == 0.027
     assert row["poisson_nll"] == 1.1
+
+
+def test_neural_ode_refinement_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_ode_refinement.json", 0.029, 1.0)
+
+    rows = load_lfads_family_candidates(config)
+    row = next(row for row in rows if row["method_name"] == "neural_ode_refinement")
+
+    assert row["bits_per_spike"] == 0.029
+    assert row["poisson_nll"] == 1.0
+
+
+def test_neural_ode_refinement_can_become_best_dynamics_family_method(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_ode.json", 0.026)
+    _write_summary(tmp_path / "neural_ode_refinement.json", 0.029)
+    rows = [
+        build_unified_score_row(
+            "factor_latent", "decoder", "validation", 0.03, 1.0, True, "ref", ""
+        ),
+        *load_lfads_family_candidates(config),
+    ]
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(pd.DataFrame(rows)),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.03,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_lfads_family_method"] == "neural_ode_refinement"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.029
 
 
 def test_switching_can_become_best_dynamics_family_method(tmp_path: Path) -> None:

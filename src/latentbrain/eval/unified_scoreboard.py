@@ -190,6 +190,14 @@ def load_lfads_family_candidates(config: dict[str, Any]) -> list[dict[str, Any]]
     loaded_methods: set[str] = set()
     direct_summaries = [
         (
+            "neural_ode_refinement",
+            "neural_ode_refinement_direct_model",
+            "deterministic neural-ODE refinement",
+            inputs.get("neural_ode_refinement_summary_path"),
+            "best_validation_unified_bits_per_spike",
+            "best_validation_poisson_nll",
+        ),
+        (
             "switching_ode_tuning",
             "switching_ode_tuning_direct_model",
             "switching neural-ODE-style tuning",
