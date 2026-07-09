@@ -33,6 +33,7 @@ inputs:
   rate_calibration_dir: results/mc_maze_small/lfads_rate_calibration
   lfads_unified_tuning_summary_path: results/mc_maze_small/lfads_unified_tuning/unified_tuning_summary.json
   lfads_controller_tuning_summary_path: results/mc_maze_small/lfads_controller_tuning/controller_tuning_summary.json
+  neural_sde_tuning_summary_path: results/mc_maze_small/neural_sde_tuning/neural_sde_tuning_summary.json
 
 known_unified_values:
   train_mean_as_model_validation_bits_per_spike: 0.0

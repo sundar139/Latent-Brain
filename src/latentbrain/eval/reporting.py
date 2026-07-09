@@ -1257,7 +1257,8 @@ def write_unified_scoreboard_report(
         (
             "If local tuning summaries are absent, the scoreboard falls back to configured "
             "known values. Fresh clones may need to rerun local tuning workflows to "
-            "reproduce the latest LFADS-family entries."
+            "reproduce the latest LFADS/dynamics-family entries, including "
+            "neural-SDE-style entries."
         ),
         "",
         "## Dataset and scoring",
@@ -1499,4 +1500,98 @@ def write_lfads_controller_tuning_outputs(
     results.to_csv(paths["results"], index=False)
     leaderboard.to_csv(paths["leaderboard"], index=False)
     write_lfads_controller_tuning_report(paths["report"], summary, results, leaderboard)
+    return paths
+
+
+def write_neural_sde_tuning_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    leaderboard: pd.DataFrame,
+) -> Path:
+    lines = [
+        f"# {summary.get('dataset_name')} neural-SDE-style latent generator tuning",
+        "",
+        "This is local neural-SDE-style tuning, not an official NLB leaderboard result.",
+        (
+            "This is a compact Euler/Euler-Maruyama latent generator, "
+            "not a full benchmarked neural SDE system."
+        ),
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        "- Train-mean-as-model equals 0.0 bits/spike.",
+        "- Train-mean validation bits/spike: "
+        f"{summary.get('train_mean_validation_bits_per_spike')}",
+        "",
+        "## Selection",
+        f"- Runs attempted: {summary.get('runs_attempted')}",
+        f"- Successful runs: {summary.get('successful_runs')}",
+        f"- Best run ID: {summary.get('best_run_id')}",
+        f"- Best run parameters: {summary.get('best_run_params')}",
+        "- Best validation unified bits/spike: "
+        f"{summary.get('best_validation_unified_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        "- Best factor-decoder unified bits/spike: "
+        f"{summary.get('best_factor_decoder_unified_bits_per_spike')}",
+        f"- Factor-latent unified reference: {summary.get('factor_latent_unified_reference')}",
+        "- Previous LFADS-family/controller reference: "
+        f"{summary.get('previous_best_lfads_family_reference')}",
+        f"- Beats factor-latent: {summary.get('beats_factor_latent_unified')}",
+        f"- Beats previous LFADS-family result: {summary.get('beats_previous_best_lfads_family')}",
+        "",
+        "## Drift/diffusion diagnostics",
+        f"- Best drift norm: {summary.get('best_drift_norm')}",
+        f"- Best diffusion mean: {summary.get('best_diffusion_mean')}",
+        "- diffusion scale 0 is deterministic neural ODE-style dynamics.",
+        "- nonzero diffusion tests stochastic latent dynamics.",
+        "- near-zero diffusion may indicate deterministic dynamics are enough.",
+        "- high diffusion with worse validation may indicate noisy latent paths.",
+        "",
+        "## Validation leaderboard",
+        "| rank | run | bits/spike | poisson NLL | diffusion scale | "
+        "beats factor-latent | beats previous LFADS-family | notes |",
+        "| ---: | --- | ---: | ---: | ---: | --- | --- | --- |",
+    ]
+    for _, row in leaderboard.iterrows():
+        lines.append(
+            f"| {row.get('rank')} | {row.get('run_id')} | "
+            f"{row.get('validation_unified_bits_per_spike')} | "
+            f"{row.get('validation_poisson_nll')} | "
+            f"{row.get('diffusion_scale')} | "
+            f"{row.get('beats_factor_latent_unified')} | "
+            f"{row.get('beats_previous_best_lfads_family')} | {row.get('notes')} |"
+        )
+    if leaderboard.empty:
+        lines.append("| | no successful runs | | | | | | |")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_neural_sde_tuning_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    results: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "neural_sde_tuning_summary.json",
+        "results": output_dir / "neural_sde_tuning_results.csv",
+        "leaderboard": output_dir / "neural_sde_validation_leaderboard.csv",
+        "report": output_dir / "neural_sde_tuning_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    results.to_csv(paths["results"], index=False)
+    leaderboard.to_csv(paths["leaderboard"], index=False)
+    write_neural_sde_tuning_report(paths["report"], summary, leaderboard)
     return paths

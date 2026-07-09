@@ -26,6 +26,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "rate_calibration_dir": str(tmp_path / "calibration"),
             "lfads_unified_tuning_summary_path": str(tmp_path / "unified.json"),
             "lfads_controller_tuning_summary_path": str(tmp_path / "controller.json"),
+            "neural_sde_tuning_summary_path": str(tmp_path / "neural_sde.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -86,6 +87,18 @@ def test_loads_controller_tuning_candidate_from_summary_file(tmp_path: Path) -> 
     assert row["source_summary_path"] == str((tmp_path / "controller.json").resolve())
 
 
+def test_loads_neural_sde_tuning_candidate_from_summary_file(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_sde.json", 0.016, 1.3)
+
+    rows = load_lfads_family_candidates(config)
+    row = next(row for row in rows if row["method_name"] == "neural_sde_tuning")
+
+    assert row["bits_per_spike"] == 0.016
+    assert row["poisson_nll"] == 1.3
+    assert row["source_summary_path"] == str((tmp_path / "neural_sde.json").resolve())
+
+
 def test_controller_tuning_wins_over_older_lfads_summary(tmp_path: Path) -> None:
     config = _lfads_candidate_config(tmp_path)
     _write_summary(tmp_path / "unified.json", 0.010)
@@ -110,6 +123,29 @@ def test_controller_tuning_wins_over_older_lfads_summary(tmp_path: Path) -> None
     assert summary["best_lfads_family_method"] == "lfads_controller_tuning"
     assert summary["best_lfads_family_validation_bits_per_spike"] == 0.014
     assert summary["lfads_family_beats_factor_latent"] is False
+
+
+def test_neural_sde_can_become_best_dynamics_family_method(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "controller.json", 0.014)
+    _write_summary(tmp_path / "neural_sde.json", 0.02)
+    rows = [
+        build_unified_score_row(
+            "factor_latent", "decoder", "validation", 0.03, 1.0, True, "ref", ""
+        ),
+        *load_lfads_family_candidates(config),
+    ]
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(pd.DataFrame(rows)),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.03,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_lfads_family_method"] == "neural_sde_tuning"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.02
 
 
 def test_missing_lfads_summaries_fall_back_to_static_known_values(tmp_path: Path) -> None:

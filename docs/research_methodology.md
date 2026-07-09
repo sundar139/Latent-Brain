@@ -110,6 +110,14 @@ Inferred-input KL is read as a usage diagnostic. Near-zero KL may indicate poste
 
 Selection remains validation unified bits/spike with the train-heldout mean-rate reference, fixed 20 ms bins, fixed 1.28-second window, deterministic split, and deterministic held-in/held-out mask. Validation loss still checkpoints runs only; it is not the tuning target.
 
+## Neural-SDE-style latent dynamics
+
+The neural-SDE-style latent generator tests continuous-time latent dynamics after controller-style LFADS-family tuning and before rSLDS switching. The encoder still reads held-in spikes only and infers an initial latent posterior. Instead of a discrete GRU generator, drift and diffusion networks evolve the latent state with an Euler/Euler-Maruyama update at the same 20 ms bin width used by the canonical scorer.
+
+`diffusion_scale: 0.0` is the deterministic neural ODE-style limit. Nonzero diffusion injects seedable Brownian noise during training, while evaluation uses the deterministic mean path by default. Near-zero learned diffusion can indicate that deterministic dynamics are enough for this local co-smoothing objective; high diffusion with worse validation bits/spike can indicate noisy latent paths rather than useful stochastic dynamics.
+
+Selection remains validation unified bits/spike with train-heldout mean rate as the reference, fixed 20 ms bins, fixed 1.28-second window, deterministic split, and deterministic held-in/held-out mask. The immediate valid local target is the factor-latent unified score, with the previous controller-style LFADS-family score as a dynamics-family reference. This comes before rSLDS switching because it tests smooth continuous latent evolution without adding discrete state identities or switching-transition interpretation. Outputs are local artifacts only, not official NLB leaderboard results.
+
 ## LFADS-style factor evaluation
 
 The next local evaluation uses the trained LFADS-style GRU checkpoint without training a new neural network. Held-in spike counts are the only model inputs. The checkpointed model produces factor trajectories for train, validation, and test trials, and those factors become features for a train-only ridge decoder that predicts held-out neuron rates. Held-out spikes are targets only; they are never fed into the LFADS-style model or used to fit validation/test standardization statistics.

@@ -322,7 +322,7 @@ python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_
 
 The scoreboard uses the same 20 ms bins and 1.28-second window as the metric audit. It fixes train-heldout mean rate as the default reference, so the train-mean-as-model validation score is `0.0` bits/spike. Factor-latent is the current best valid local model under unified scoring, while LFADS-style models trail but are now evaluated against the same reference convention.
 
-The old mean-rate values are historical-only because they used incompatible reference conventions. The oracle diagnostic remains an invalid-model upper bound. The scoreboard includes local LFADS-family summaries when available, including canonical tuning, controller tuning, coordinated dropout, and raw LFADS rate-calibration summaries; if ignored summaries are absent on a fresh clone, configured known LFADS-family values are used as fallback. Generated files are local artifacts under ignored `results/mc_maze_small/unified_scoreboard/` paths, not official leaderboard results.
+The old mean-rate values are historical-only because they used incompatible reference conventions. The oracle diagnostic remains an invalid-model upper bound. The scoreboard includes local LFADS/dynamics-family summaries when available, including canonical tuning, controller tuning, neural-SDE-style tuning, coordinated dropout, and raw LFADS rate-calibration summaries; if ignored summaries are absent on a fresh clone, configured known LFADS-family values are used as fallback. Generated files are local artifacts under ignored `results/mc_maze_small/unified_scoreboard/` paths, not official leaderboard results.
 
 ## Local canonical LFADS-style tuning
 
@@ -347,6 +347,18 @@ python scripts/tune_lfads_controller.py --config configs/mc_maze_small_lfads_con
 The workflow uses 20 ms bins and the same fixed 1.28-second window as the unified scoreboard. It trains a small CUDA grid with inferred inputs, evaluates every run with the train-heldout mean-rate reference, and selects by validation unified bits/spike. The current goal is to beat the factor-latent unified score before moving to neural SDE or rSLDS models.
 
 Generated controller tuning tables, reports, figures, config snapshots, and checkpoints live under ignored `results/mc_maze_small/lfads_controller_tuning/` paths. They are local artifacts only, not official NLB leaderboard results, and the model is LFADS-style with inferred inputs, not full LFADS.
+
+## Local neural-SDE-style latent generator tuning
+
+Run the MC_Maze Small Euler/Euler-Maruyama latent generator workflow with:
+
+```powershell
+python scripts/tune_neural_sde.py --config configs/mc_maze_small_neural_sde_tuning.yaml
+```
+
+The workflow uses 20 ms bins and the same fixed 1.28-second window as the unified scoreboard. It trains a small CUDA grid, evaluates every run with the train-heldout mean-rate reference, and selects by validation unified bits/spike. The current goal is to beat the factor-latent unified score before adding rSLDS switching; the previous controller-style LFADS-family score is a secondary dynamics-family reference.
+
+Generated neural-SDE-style tuning tables, reports, figures, config snapshots, and checkpoints live under ignored `results/mc_maze_small/neural_sde_tuning/` paths. They are local artifacts only, not official NLB leaderboard results. This is a compact Euler/Euler-Maruyama latent generator, not a full benchmarked neural SDE system, and old incompatible mean-rate values are not tuning targets.
 
 ## Storage and version control
 

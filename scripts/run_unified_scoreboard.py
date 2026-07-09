@@ -122,6 +122,7 @@ class InputsSection(BaseModel):
     rate_calibration_dir: str = Field(min_length=1)
     lfads_unified_tuning_summary_path: str | None = None
     lfads_controller_tuning_summary_path: str | None = None
+    neural_sde_tuning_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):

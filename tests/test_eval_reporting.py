@@ -20,6 +20,7 @@ from latentbrain.eval.reporting import (
     write_lfads_tuning_report,
     write_lfads_unified_tuning_report,
     write_metric_audit_report,
+    write_neural_sde_tuning_report,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
     write_window_matched_comparison_report,
@@ -660,3 +661,48 @@ def test_temporal_rebinning_report_includes_required_statements(tmp_path: Path) 
     assert "Bits/spike values across different bin sizes are diagnostic" in report
     assert "not an official NLB leaderboard result" in report
     assert "The model is LFADS-style only, not full LFADS." in report
+
+
+def test_neural_sde_tuning_report_includes_required_statements(tmp_path: Path) -> None:
+    report_path = write_neural_sde_tuning_report(
+        tmp_path / "neural_sde_tuning_report.md",
+        {
+            "dataset_name": "mc_maze_small",
+            "dataset_hash": "abc",
+            "bin_size_ms": 20,
+            "window_seconds": 1.28,
+            "cuda_device": "Unit GPU",
+            "reference_model": "train_heldout_mean_rate",
+            "train_mean_validation_bits_per_spike": 0.0,
+            "runs_attempted": 1,
+            "successful_runs": 1,
+            "best_run_id": "run_000",
+            "best_run_params": {"diffusion_scale": 0.03},
+            "best_validation_unified_bits_per_spike": 0.02,
+            "factor_latent_unified_reference": 0.03,
+            "previous_best_lfads_family_reference": 0.01,
+            "beats_factor_latent_unified": False,
+            "beats_previous_best_lfads_family": True,
+            "best_drift_norm": 0.4,
+            "best_diffusion_mean": 0.01,
+        },
+        pd.DataFrame(
+            {
+                "rank": [1],
+                "run_id": ["run_000"],
+                "validation_unified_bits_per_spike": [0.02],
+                "validation_poisson_nll": [2.0],
+                "diffusion_scale": [0.03],
+                "beats_factor_latent_unified": [False],
+                "beats_previous_best_lfads_family": [True],
+                "notes": [""],
+            }
+        ),
+    )
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Canonical reference model: train_heldout_mean_rate" in report
+    assert "Factor-latent unified reference: 0.03" in report
+    assert "nonzero diffusion tests stochastic latent dynamics" in report
+    assert "Old incompatible mean-rate values are not used as tuning targets" in report
+    assert "not an official NLB leaderboard result" in report

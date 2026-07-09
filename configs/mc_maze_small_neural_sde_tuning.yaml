@@ -1,0 +1,100 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+runtime:
+  device: cuda
+  fail_if_cuda_unavailable: true
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_split: validation
+  primary_metric: unified_bits_per_spike
+
+search:
+  max_runs: 8
+  run_order: deterministic
+  selection_metric: validation_unified_bits_per_spike
+  selection_mode: max
+
+grid:
+  encoder_hidden_dim:
+    - 64
+    - 96
+  drift_hidden_dim:
+    - 64
+    - 96
+  diffusion_hidden_dim:
+    - 32
+  latent_dim:
+    - 16
+    - 32
+  factor_dim:
+    - 32
+  input_dropout_rate:
+    - 0.25
+  heldout_loss_weight:
+    - 4.0
+  kl_warmup_epochs:
+    - 5
+  kl_scale:
+    - 0.1
+  diffusion_scale:
+    - 0.0
+    - 0.03
+  epochs:
+    - 25
+
+model:
+  name: neural_sde
+  input_neuron_group: heldin
+  output_dim: all
+  batch_size: 4
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-5
+  gradient_clip_norm: 5.0
+  heldin_loss_weight: 1.0
+  loss_normalization: per_observed_spike_bin
+  model_dropout: 0.0
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  dt_seconds: 0.02
+  checkpoint_metric: validation_total_loss
+  checkpoint_mode: min
+
+references:
+  train_mean_validation_bits_per_spike: 0.0
+  factor_latent_unified_validation_bits_per_spike: 0.0316438194429199
+  previous_best_lfads_family_validation_bits_per_spike: 0.013624327996805
+  oracle_validation_bits_per_spike: 3.5417067067892387
+
+evaluation:
+  evaluate_splits:
+    - train
+    - validation
+    - test
+  direct_model_primary: true
+  also_evaluate_factor_decoder: true
+  behavior_decoder_enabled: true
+
+reporting:
+  output_dir: results/mc_maze_small/neural_sde_tuning

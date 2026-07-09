@@ -299,7 +299,7 @@ python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_
 
 The scoreboard uses 20 ms bins, the fixed 1.28-second window, deterministic train/validation/test split, and the train-only held-out mean-rate reference. Bits/spike is always `(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)`, so the train-heldout mean-rate predictor scores `0.0` against itself. Future tuning should optimize against the unified scoreboard: the `0.0` train-mean reference, the current factor-latent unified local reference, and the oracle diagnostic upper bound.
 
-Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. The scoreboard reads local LFADS-family summaries when present, including `inputs.lfads_unified_tuning_summary_path`, `inputs.lfads_controller_tuning_summary_path`, the coordinated-dropout summary, and the raw LFADS rate-calibration summary. If those ignored local summaries are absent on a fresh clone, it falls back to configured known LFADS-family values. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
+Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. The scoreboard reads local LFADS/dynamics-family summaries when present, including `inputs.lfads_unified_tuning_summary_path`, `inputs.lfads_controller_tuning_summary_path`, `inputs.neural_sde_tuning_summary_path`, the coordinated-dropout summary, and the raw LFADS rate-calibration summary. If those ignored local summaries are absent on a fresh clone, it falls back to configured known LFADS-family values. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
 
 ## Canonical LFADS-style unified tuning
 
@@ -324,6 +324,20 @@ python scripts/tune_lfads_controller.py --config configs/mc_maze_small_lfads_con
 This model adds a controller GRU that reads held-in activity and generator state to infer time-varying latent inputs. Runs still use 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the selection metric. The current local target to beat is the factor-latent unified score; the previous best LFADS-family score is a secondary LFADS-family reference. Old incompatible mean-rate values are historical-only and are not tuning targets.
 
 Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_controller_tuning/` paths. This is local controller-style LFADS-family tuning, not an official NLB leaderboard result, and the model is LFADS-style with inferred inputs, not full LFADS.
+
+## Neural-SDE-style latent generator tuning
+
+Run the compact Euler/Euler-Maruyama latent generator workflow with:
+
+```powershell
+python scripts/tune_neural_sde.py --config configs/mc_maze_small_neural_sde_tuning.yaml
+```
+
+The model replaces the discrete GRU generator with continuous-time latent dynamics integrated directly in PyTorch. A bidirectional GRU encoder infers the initial latent state, drift and diffusion networks evolve the latent trajectory, and a factor readout maps latents to all-neuron Poisson rates. `diffusion_scale: 0.0` is the deterministic neural ODE-style limit; nonzero diffusion tests stochastic latent paths through Euler-Maruyama noise. No `torchsde` dependency is used.
+
+This workflow uses 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the model-selection metric. The current valid local target to beat is the factor-latent unified score; the previous controller-style LFADS-family score is the dynamics-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
+
+Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/neural_sde_tuning/` paths. This is local neural-SDE-style tuning, not an official NLB leaderboard result, and it is a compact Euler/Euler-Maruyama latent generator rather than a full benchmarked neural SDE system.
 
 ## Data policy
 
