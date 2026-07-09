@@ -13,6 +13,7 @@ from latentbrain.eval.unified_scoreboard import (
     SPLIT_SCORE_COLUMNS,
     build_historical_metric_notes,
     build_unified_score_row,
+    load_cv_rate_audit_warning,
     load_lfads_family_candidates,
     load_seed_robustness_candidates,
     load_split_audit_warning,
@@ -36,6 +37,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "switching_ode_tuning_summary_path": str(tmp_path / "switching_ode.json"),
             "seed_robustness_summary_path": str(tmp_path / "seed_robustness.json"),
             "split_audit_summary_path": str(tmp_path / "split_audit.json"),
+            "cv_rate_audit_summary_path": str(tmp_path / "cv_rate_audit.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -594,3 +596,104 @@ def test_non_string_generalization_risk_fails_clearly(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="must be a string"):
         load_split_audit_warning(config)
+
+
+def _write_cv_rate_audit(path: Path, dominates: bool = True) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "single_split_results_reportable": False,
+                "recommended_reporting_mode": "repeated_split",
+                "invalid_control_methods": [
+                    "split_mean_rate_invalid",
+                    "oracle_split_scaled_factor_latent_invalid",
+                ],
+                "invalid_controls_dominate_valid_models": dominates,
+                "best_valid_rate_control_method": "factor_latent",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_cv_rate_audit_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_cv_rate_audit(tmp_path / "cv_rate_audit.json")
+
+    warning = load_cv_rate_audit_warning(config)
+
+    assert warning["cv_rate_audit_available"] is True
+    assert warning["single_split_results_reportable"] is False
+    assert warning["recommended_reporting_mode"] == "repeated_split"
+    assert warning["invalid_rate_controls_present"] is True
+    assert "unmodeled split-level rate offset" in warning["rate_offset_warning"]
+    assert warning["cv_rate_audit_summary_path"] == str((tmp_path / "cv_rate_audit.json").resolve())
+
+
+def test_cv_rate_audit_without_dominating_invalid_controls_has_no_rate_offset_warning(
+    tmp_path: Path,
+) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_cv_rate_audit(tmp_path / "cv_rate_audit.json", dominates=False)
+
+    warning = load_cv_rate_audit_warning(config)
+
+    assert warning["invalid_controls_dominate_valid_models"] is False
+    assert warning["rate_offset_warning"] is None
+
+
+def test_missing_cv_rate_audit_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    warning = load_cv_rate_audit_warning(_lfads_candidate_config(tmp_path))
+
+    assert warning["cv_rate_audit_available"] is False
+    assert warning["single_split_results_reportable"] is None
+    assert warning["recommended_reporting_mode"] is None
+    assert warning["invalid_rate_controls_present"] is False
+
+
+def test_malformed_cv_rate_audit_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "cv_rate_audit.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        load_cv_rate_audit_warning(config)
+
+
+def test_cv_rate_audit_summary_missing_key_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "cv_rate_audit.json").write_text(json.dumps({"other": 1}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing single_split_results_reportable"):
+        load_cv_rate_audit_warning(config)
+
+
+def test_invalid_rate_controls_never_become_best_valid_model() -> None:
+    scores = pd.DataFrame(
+        [
+            build_unified_score_row(
+                "factor_latent", "decoder", "validation", 0.0316, 1.0, True, "ref", ""
+            ),
+            build_unified_score_row(
+                "split_mean_rate_invalid",
+                "invalid_control",
+                "validation",
+                0.0879,
+                None,
+                False,
+                "ref",
+                "leaks evaluation targets",
+            ),
+        ]
+    )
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(scores),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_valid_model"] == "factor_latent"
+    assert summary["best_valid_model_validation_bits_per_spike"] == 0.0316

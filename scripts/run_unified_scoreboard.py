@@ -30,6 +30,7 @@ from latentbrain.eval.scoring import (
 from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
     build_unified_score_row,
+    load_cv_rate_audit_warning,
     load_lfads_family_candidates,
     load_seed_robustness_candidates,
     load_split_audit_warning,
@@ -131,6 +132,7 @@ class InputsSection(BaseModel):
     switching_ode_tuning_summary_path: str | None = None
     seed_robustness_summary_path: str | None = None
     split_audit_summary_path: str | None = None
+    cv_rate_audit_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):
@@ -430,6 +432,7 @@ def run_unified_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "primary_split": primary_split,
         **summarize_unified_scoreboard(leaderboard, config["known_unified_values"]),
         **load_split_audit_warning(config),
+        **load_cv_rate_audit_warning(config),
         "old_mean_rate_values_historical_only": True,
         "output_dir": config["reporting"]["output_dir"],
     }
@@ -475,6 +478,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"old_mean_rate_values_historical_only: {summary['old_mean_rate_values_historical_only']}"
     )
     console.print(f"generalization_risk: {summary['generalization_risk']}")
+    console.print(f"single_split_results_reportable: {summary['single_split_results_reportable']}")
+    console.print(f"recommended_reporting_mode: {summary['recommended_reporting_mode']}")
+    console.print(f"invalid_rate_controls_present: {summary['invalid_rate_controls_present']}")
     console.print(
         f"validation_test_instability_detected: {summary['validation_test_instability_detected']}"
     )

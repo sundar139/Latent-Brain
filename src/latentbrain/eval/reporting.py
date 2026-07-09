@@ -1295,6 +1295,10 @@ def write_unified_scoreboard_report(
         f"- Generalization risk: {summary.get('generalization_risk')}",
         "- Validation/test instability detected: "
         f"{summary.get('validation_test_instability_detected')}",
+        f"- Single-split results reportable: {summary.get('single_split_results_reportable')}",
+        f"- Recommended reporting mode: {summary.get('recommended_reporting_mode')}",
+        f"- Invalid rate controls present: {summary.get('invalid_rate_controls_present')}",
+        f"- Rate offset warning: {summary.get('rate_offset_warning')}",
         "- Best LFADS-family source summary path: "
         f"{summary.get('best_lfads_family_source_summary_path')}",
         "- Oracle diagnostic score: "
@@ -2422,5 +2426,161 @@ def write_split_audit_outputs(
         gap_summary,
         repeated_split,
         split_comparison,
+    )
+    return paths
+
+
+def write_cv_rate_audit_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    method_summary: pd.DataFrame,
+    fa_sensitivity: pd.DataFrame,
+    decomposition: pd.DataFrame,
+    recommendations: dict[str, Any],
+) -> Path:
+    """Write a Markdown report for the local cross-validated rate-offset audit."""
+    valid = (
+        method_summary[method_summary["valid_model"].astype(bool)]
+        if not method_summary.empty
+        else method_summary
+    )
+    invalid = (
+        method_summary[~method_summary["valid_model"].astype(bool)]
+        if not method_summary.empty
+        else method_summary
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} cross-validated rate audit",
+        "",
+        "This is local cross-validated rate-offset audit work, not an official NLB "
+        "leaderboard result.",
+        "Invalid controls use evaluation split targets and cannot be reported as model "
+        "performance.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        f"- Split seeds: {summary.get('split_seeds')}",
+        f"- FactorAnalysis random states: {summary.get('factor_analysis_random_states')}",
+        f"- Accepted split seed: {summary.get('accepted_split_seed')}",
+        "",
+        "## Repeated-split factor-latent",
+        f"- Validation mean: {summary.get('factor_latent_repeated_split_validation_mean')}",
+        f"- Validation std: {summary.get('factor_latent_repeated_split_validation_std')}",
+        f"- Test mean: {summary.get('factor_latent_repeated_split_test_mean')}",
+        f"- Test std: {summary.get('factor_latent_repeated_split_test_std')}",
+        f"- Test-positive fraction: {summary.get('factor_latent_test_positive_fraction')}",
+        f"- Between-split test variance: {summary.get('between_split_test_variance')}",
+        "- Within-split FactorAnalysis random-state test variance: "
+        f"{summary.get('within_split_random_state_test_variance')}",
+        "- Split variance exceeds random-state variance: "
+        f"{summary.get('split_variance_exceeds_random_state_variance')}",
+        "",
+        "## FactorAnalysis random-state sensitivity",
+        f"- Validation range: {summary.get('factor_analysis_random_state_validation_range')}",
+        f"- Test range: {summary.get('factor_analysis_random_state_test_range')}",
+        "",
+        *_format_table(fa_sensitivity),
+        "",
+        "## Valid rate controls",
+        *(_format_table(valid) if not valid.empty else ["No valid rate controls were scored."]),
+        "",
+        "## Invalid diagnostic controls",
+        (
+            "These read the evaluation split's own held-out targets. They are diagnostics, "
+            "never model performance, and never compete for best valid model."
+        ),
+        "",
+        *(
+            _format_table(invalid)
+            if not invalid.empty
+            else ["No invalid diagnostic controls were scored."]
+        ),
+        "",
+        "## Rate-offset decomposition",
+        *_format_table(decomposition),
+        "",
+        f"- Best valid rate-control method: {summary.get('best_valid_rate_control_method')}",
+        f"- Best valid rate-control test mean: {summary.get('best_valid_rate_control_test_mean')}",
+        f"- Split-mean invalid test mean: {summary.get('split_mean_rate_invalid_test_mean')}",
+        "- Invalid split-mean advantage over factor-latent: "
+        f"{summary.get('invalid_split_mean_advantage_over_factor_latent')}",
+        f"- Train-only rate calibration helps: {summary.get('train_only_rate_calibration_helps')}",
+        "- Train-only rate calibration test gain: "
+        f"{summary.get('train_only_rate_calibration_test_gain')}",
+        "- Train-only rate calibration gain is negligible: "
+        f"{summary.get('train_only_rate_calibration_gain_is_negligible')}",
+        "- Rate offset explains the split-mean advantage: "
+        f"{summary.get('rate_offset_explains_split_mean_advantage')}",
+        "- Invalid controls dominate valid models: "
+        f"{summary.get('invalid_controls_dominate_valid_models')}",
+        "- Invalid controls excluded from best valid model: "
+        f"{summary.get('invalid_controls_excluded_from_best_valid_model')}",
+        "",
+        "## Reporting recommendation",
+        "- Single-split results reportable: "
+        f"{recommendations.get('single_split_results_reportable')}",
+        f"- Recommended reporting mode: {recommendations.get('recommended_reporting_mode')}",
+        f"- Carried forward for reporting: {recommendations.get('carried_forward_for_reporting')}",
+        f"- Neural models carried forward: {recommendations.get('neural_models_carried_forward')}",
+        f"- Must label invalid: {recommendations.get('must_label_invalid')}",
+        f"- Rate-offset warning: {recommendations.get('rate_offset_warning')}",
+        "",
+        "## Interpretation",
+        "- Single-split numbers are not reportable as final performance.",
+        "- Factor-latent should be reported as a repeated-split baseline.",
+        ("- The invalid split-mean control shows an unmodeled split-level rate offset."),
+        "- Invalid controls must not be compared as valid models.",
+        ("- If train-only calibration helps, it can be carried forward as a valid baseline."),
+        (
+            "- If only invalid controls help, the issue is evaluation split mean leakage, not a "
+            "deployable model gain."
+        ),
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_cv_rate_audit_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    repeated_scores: pd.DataFrame,
+    fa_sensitivity: pd.DataFrame,
+    rate_controls: pd.DataFrame,
+    decomposition: pd.DataFrame,
+    method_summary: pd.DataFrame,
+    recommendations: dict[str, Any],
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "cv_rate_audit_summary.json",
+        "repeated_split_scores": output_dir / "repeated_split_scores.csv",
+        "fa_sensitivity": output_dir / "factor_analysis_random_state_sensitivity.csv",
+        "rate_control_scores": output_dir / "rate_control_scores.csv",
+        "rate_offset_decomposition": output_dir / "rate_offset_decomposition.csv",
+        "method_summary": output_dir / "method_summary.csv",
+        "reporting_recommendations": output_dir / "reporting_recommendations.json",
+        "report": output_dir / "cv_rate_audit_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["reporting_recommendations"].write_text(
+        json.dumps(recommendations, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    repeated_scores.to_csv(paths["repeated_split_scores"], index=False)
+    fa_sensitivity.to_csv(paths["fa_sensitivity"], index=False)
+    rate_controls.to_csv(paths["rate_control_scores"], index=False)
+    decomposition.to_csv(paths["rate_offset_decomposition"], index=False)
+    method_summary.to_csv(paths["method_summary"], index=False)
+    write_cv_rate_audit_report(
+        paths["report"], summary, method_summary, fa_sensitivity, decomposition, recommendations
     )
     return paths

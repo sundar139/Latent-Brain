@@ -456,6 +456,44 @@ def load_split_audit_warning(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def load_cv_rate_audit_warning(config: dict[str, Any]) -> dict[str, Any]:
+    """Cross-validated rate-audit warnings. Absent summary falls back cleanly; malformed fails."""
+    path = _summary_path(config["inputs"].get("cv_rate_audit_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "cv_rate_audit_available": False,
+            "single_split_results_reportable": None,
+            "recommended_reporting_mode": None,
+            "invalid_rate_controls_present": False,
+            "rate_offset_warning": None,
+        }
+    label = "cv rate audit"
+    summary = _load_summary(path, label)
+    for key in ("single_split_results_reportable", "recommended_reporting_mode"):
+        if key not in summary:
+            msg = f"malformed cv rate audit summary ({label}): missing {key} at {path}"
+            raise ValueError(msg)
+    invalid_methods = list(summary.get("invalid_control_methods", []))
+    warning = None
+    if summary.get("invalid_controls_dominate_valid_models"):
+        warning = (
+            "An invalid rate control that reads evaluation targets outscores every valid model; "
+            "an unmodeled split-level rate offset remains."
+        )
+    return {
+        "cv_rate_audit_available": True,
+        "single_split_results_reportable": bool(summary["single_split_results_reportable"]),
+        "recommended_reporting_mode": str(summary["recommended_reporting_mode"]),
+        "invalid_rate_controls_present": bool(invalid_methods),
+        "invalid_rate_control_methods": invalid_methods,
+        "invalid_controls_dominate_valid_models": bool(
+            summary.get("invalid_controls_dominate_valid_models", False)
+        ),
+        "rate_offset_warning": warning,
+        "cv_rate_audit_summary_path": str(path),
+    }
+
+
 def _is_seed_robustness_aggregate(method_name: object) -> bool:
     return str(method_name).startswith("seed_robustness_")
 

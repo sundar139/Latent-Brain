@@ -67,6 +67,33 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Cross-validated rate audit
+
+The split generalization audit showed two things that make single-split numbers unreportable: the
+accepted 70/15/15 split's test-negative result is split-specific luck, and an **invalid** control
+that reads the evaluation split's own mean firing rate beats every valid model by a wide margin.
+This workflow replaces single-split interpretation with repeated-split reporting and quantifies
+that rate offset:
+
+```powershell
+python scripts/run_cv_rate_audit.py --config configs/mc_maze_small_cv_rate_audit.yaml
+```
+
+It is CPU-only and trains no neural networks. Factor-latent is scored across ten trial splits
+crossed with five sklearn `FactorAnalysis` random states, which separates trial-split variance
+from the estimator's own randomized-SVD variance — the latter alone moves the metric enough to
+matter. Alongside it run valid train-only controls (per-neuron train mean, held-in population
+rescaling, a train-only rate calibration) and clearly-labelled **invalid** diagnostic controls
+(`split_mean_rate_invalid`, `oracle_split_scaled_factor_latent_invalid`) that read evaluation
+targets.
+
+**Invalid controls use evaluation split targets and can never be reported as model performance.**
+They never compete for best valid model; they exist only to measure how much of the gap is a
+split-level rate offset. Single-split numbers are not reportable as final performance — report
+factor-latent as a repeated-split baseline instead. Old mean-rate values remain historical-only.
+Outputs and figures are local ignored artifacts under `results/mc_maze_small/cv_rate_audit/`, not
+official NLB leaderboard results.
+
 ## Validation/test generalization audit
 
 Seed robustness established that no neural method beats factor-latent, but it also surfaced a

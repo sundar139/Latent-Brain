@@ -1,0 +1,78 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+splits:
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+  split_seeds:
+    - 2027
+    - 2028
+    - 2029
+    - 2030
+    - 2031
+    - 2032
+    - 2033
+    - 2034
+    - 2035
+    - 2036
+  factor_analysis_random_states:
+    - 0
+    - 2027
+    - 2028
+    - 2029
+    - 2030
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_metric: unified_bits_per_spike
+
+factor_latent:
+  latent_dim: 8
+  smoothing_sigma_ms: 200.0
+  heldout_decoder_alpha: 10000.0
+  standardize_features: true
+  fit_intercept: true
+
+rate_controls:
+  include_train_mean_rate: true
+  include_split_mean_rate_invalid: true
+  include_train_per_neuron_mean_rate: true
+  include_train_population_scaled_mean_rate: true
+  include_train_split_rate_calibrated_factor_latent: true
+  include_oracle_split_scaled_factor_latent_invalid: true
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+
+inputs:
+  split_audit_summary_path: results/mc_maze_small/split_audit/split_audit_summary.json
+  seed_robustness_summary_path: results/mc_maze_small/seed_robustness/seed_robustness_summary.json
+
+references:
+  accepted_split_seed: 2027
+  accepted_factor_latent_validation_mean: 0.029024681086082044
+  accepted_factor_latent_test_mean: -0.00831021784181964
+  repeated_split_factor_latent_test_mean: 0.008239381674871806
+  split_mean_rate_validation_reference: 0.0879
+  split_mean_rate_test_reference: 0.0924
+  train_mean_validation_bits_per_spike: 0.0
+
+reporting:
+  output_dir: results/mc_maze_small/cv_rate_audit

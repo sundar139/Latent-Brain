@@ -10,6 +10,7 @@ from latentbrain.eval.reporting import (
     write_baseline_outputs,
     write_cosmoothing_markdown_report,
     write_cosmoothing_sweep_markdown_report,
+    write_cv_rate_audit_outputs,
     write_factor_latent_markdown_report,
     write_factor_latent_sweep_markdown_report,
     write_lfads_audit_report,
@@ -1289,3 +1290,157 @@ def test_unified_scoreboard_report_warns_on_high_generalization_risk(tmp_path: P
         in text
     )
     assert "Generalization risk: high" in text
+
+
+def _cv_rate_audit_summary() -> dict:
+    return {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "window_seconds": 1.28,
+        "reference_model": "train_heldout_mean_rate",
+        "split_seeds": [2027, 2028, 2029],
+        "factor_analysis_random_states": [0, 2027],
+        "accepted_split_seed": 2027,
+        "factor_latent_repeated_split_validation_mean": 0.0267,
+        "factor_latent_repeated_split_validation_std": 0.0179,
+        "factor_latent_repeated_split_test_mean": 0.0082,
+        "factor_latent_repeated_split_test_std": 0.0135,
+        "factor_latent_test_positive_fraction": 0.7,
+        "between_split_test_variance": 0.00018,
+        "within_split_random_state_test_variance": 0.00001,
+        "split_variance_exceeds_random_state_variance": True,
+        "factor_analysis_random_state_validation_range": 0.005,
+        "factor_analysis_random_state_test_range": 0.004,
+        "best_valid_rate_control_method": "train_rate_calibrated_factor_latent",
+        "best_valid_rate_control_test_mean": 0.011,
+        "split_mean_rate_invalid_test_mean": 0.0924,
+        "invalid_split_mean_advantage_over_factor_latent": 0.084,
+        "train_only_rate_calibration_helps": True,
+        "rate_offset_explains_split_mean_advantage": True,
+        "invalid_controls_dominate_valid_models": True,
+        "invalid_controls_excluded_from_best_valid_model": True,
+    }
+
+
+def _cv_method_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "method_name": "factor_latent",
+                "valid_model": True,
+                "n_scores": 20,
+                "mean_test_unified_bits_per_spike": 0.0082,
+                "notes": "train-only",
+            },
+            {
+                "method_name": "split_mean_rate_invalid",
+                "valid_model": False,
+                "n_scores": 20,
+                "mean_test_unified_bits_per_spike": 0.0924,
+                "notes": "leaks evaluation targets",
+            },
+        ]
+    )
+
+
+def test_cv_rate_audit_report_includes_repeated_split_sensitivity_and_decomposition(
+    tmp_path: Path,
+) -> None:
+    fa_sensitivity = pd.DataFrame(
+        [
+            {
+                "split_seed": 2027,
+                "factor_analysis_random_state": 0,
+                "validation_unified_bits_per_spike": 0.0268,
+                "test_unified_bits_per_spike": -0.0119,
+                "difference_from_random_state_0_validation": 0.0,
+                "difference_from_random_state_0_test": 0.0,
+                "notes": "randomized SVD",
+            }
+        ]
+    )
+    decomposition = pd.DataFrame(
+        [
+            {
+                "split_seed": 2027,
+                "split": "test",
+                "factor_latent_bits_per_spike": -0.0119,
+                "train_rate_calibrated_factor_latent_bits_per_spike": -0.010,
+                "split_mean_rate_invalid_bits_per_spike": 0.0924,
+                "oracle_split_scaled_factor_latent_invalid_bits_per_spike": 0.05,
+                "valid_calibration_gain": 0.0019,
+                "invalid_oracle_gain": 0.0619,
+                "split_mean_advantage_over_factor_latent": 0.1043,
+                "rate_offset_explains_gap": True,
+                "notes": "diagnostic only",
+            }
+        ]
+    )
+    recommendations = {
+        "single_split_results_reportable": False,
+        "recommended_reporting_mode": "repeated_split",
+        "carried_forward_for_reporting": "factor_latent",
+        "neural_models_carried_forward": False,
+        "must_label_invalid": ["split_mean_rate_invalid"],
+        "rate_offset_warning": "unmodeled split-level rate offset",
+    }
+
+    paths = write_cv_rate_audit_outputs(
+        tmp_path,
+        _cv_rate_audit_summary(),
+        pd.DataFrame([{"split_seed": 2027}]),
+        fa_sensitivity,
+        pd.DataFrame([{"method_name": "factor_latent"}]),
+        decomposition,
+        _cv_method_summary(),
+        recommendations,
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert paths["reporting_recommendations"].exists()
+    assert paths["method_summary"].exists()
+
+    assert "Repeated-split factor-latent" in text
+    assert "Test mean: 0.0082" in text
+    assert "Test-positive fraction: 0.7" in text
+    assert "FactorAnalysis random-state sensitivity" in text
+    assert "Valid rate controls" in text
+    assert "Invalid diagnostic controls" in text
+    assert "split_mean_rate_invalid" in text
+    assert "Rate-offset decomposition" in text
+    assert "Train-only rate calibration helps: True" in text
+    assert "Recommended reporting mode: repeated_split" in text
+
+    assert "Single-split numbers are not reportable as final performance." in text
+    assert (
+        "Invalid controls use evaluation split targets and cannot be reported as model performance."
+        in text
+    )
+    assert "not an official NLB leaderboard result" in text
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+
+
+def test_unified_scoreboard_report_includes_repeated_split_reporting_warning(
+    tmp_path: Path,
+) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "reference_model": "train_heldout_mean_rate",
+        "generalization_risk": "high",
+        "validation_test_instability_detected": True,
+        "single_split_results_reportable": False,
+        "recommended_reporting_mode": "repeated_split",
+        "invalid_rate_controls_present": True,
+        "rate_offset_warning": "unmodeled split-level rate offset",
+    }
+
+    path = write_unified_scoreboard_report(
+        tmp_path / "report.md", summary, pd.DataFrame(), pd.DataFrame()
+    )
+    text = path.read_text(encoding="utf-8")
+
+    assert "Single-split results reportable: False" in text
+    assert "Recommended reporting mode: repeated_split" in text
+    assert "Invalid rate controls present: True" in text
+    assert "Rate offset warning: unmodeled split-level rate offset" in text

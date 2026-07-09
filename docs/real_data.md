@@ -452,3 +452,27 @@ datasets, or more data — not more architecture. Under high generalization risk
 claim may be made, and results here are validation-only diagnostics. Generated outputs and figures
 remain ignored under `results/mc_maze_small/split_audit/` and are not official NLB leaderboard
 results.
+
+## MC_Maze Small cross-validated rate audit
+
+Run the CPU-only cross-validated rate audit with:
+
+```powershell
+python scripts/run_cv_rate_audit.py --config configs/mc_maze_small_cv_rate_audit.yaml
+```
+
+MC_Maze Small's 15-trial validation and 15-trial test splits are unstable. Across repeated trial
+splits, factor-latent's test score changes sign, and its validation score spans a range wider than
+any difference between the methods compared in this repository. A single-split number is therefore
+not a final result and should not be treated as one. Report the repeated-split factor-latent
+baseline instead, with its spread.
+
+The estimator adds its own noise: sklearn `FactorAnalysis` uses randomized SVD, so changing only
+its `random_state` moves the score. This workflow crosses split seeds with random states so the two
+sources of variance can be told apart.
+
+`split_mean_rate_invalid` predicts each evaluation split from that split's own held-out mean rate.
+It is an invalid diagnostic — it reads evaluation targets — and it exists solely to size the
+split-level rate effect, which is large. It can never be reported as model performance and never
+competes for best valid model. Generated outputs and figures remain ignored under
+`results/mc_maze_small/cv_rate_audit/` and are not official NLB leaderboard results.

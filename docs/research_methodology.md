@@ -228,3 +228,46 @@ splits show high variance, the dataset is underpowered for strong conclusions an
 response is cross-validation or more data, not more architecture and not a better-looking seed.
 Evaluation remains canonical and unweighted throughout, and old incompatible mean-rate values are
 never tuning targets. All outputs are local artifacts, not official NLB leaderboard results.
+
+## Cross-validated rate-offset audit
+
+The split audit left two facts that block reporting. Repeated trial splits move factor-latent's
+test score across the sign boundary, so the accepted split's number is one draw from a wide
+distribution rather than a measurement. And an invalid control — predicting each evaluation split
+by its own held-out mean rate — outscores every valid model, which means a large, trivially
+capturable split-level rate offset sits unmodeled inside the metric.
+
+Repeated-split evaluation replaces single-split interpretation. Factor-latent is refit under every
+combination of trial split seed and sklearn `FactorAnalysis` random state. Crossing the two lets
+the variance be attributed: the variance of per-split means measures the trial-split effect, while
+the mean of within-split variances measures the estimator's randomized-SVD effect. Both are
+reported. Any claim that survives only one particular pairing of the two is not a result.
+
+Valid controls use train data and model inputs only. `train_mean_rate` is the canonical reference
+and therefore scores exactly `0.0` against itself, which doubles as a scorer self-check.
+`train_per_neuron_mean_rate` is, by construction, that same per-neuron train mean; it is retained
+precisely to make the degeneracy explicit rather than to imply headroom that does not exist.
+`train_population_scaled_mean_rate` rescales the train held-out profile by a population factor read
+from **held-in** spikes, which are legal model inputs at evaluation time — this is the honest test
+of whether the split-level rate offset can be recovered without touching evaluation targets.
+`train_rate_calibrated_factor_latent` fits one scalar calibration on train held-out counts and
+train predictions only, then applies it unchanged to validation and test.
+
+Invalid controls are diagnostics, never performance. `split_mean_rate_invalid` fits the evaluation
+split's own held-out targets. `oracle_split_scaled_factor_latent_invalid` rescales factor-latent to
+match the evaluation split's observed mean rate. Both carry `valid_model: false` and an
+`invalid_reason`, and both are excluded from best-valid-model selection at every layer, including
+the unified scoreboard.
+
+The rate-offset decomposition asks how much of the invalid split-mean advantage a pure rescaling
+recovers. If the oracle-rescaled factor-latent recovers at least half of that advantage, the gap is
+dominated by a split-level rate offset rather than by trial structure. If the train-only
+calibration reproduces the gain, it can be carried forward as a valid baseline. If only the invalid
+controls gain, the effect is evaluation-split mean leakage and not a deployable model improvement —
+the correct response is a better reference or per-split rate handling, not a better model.
+
+Reporting rules that follow. Single-split results are not reportable as final performance. The
+recommended reporting mode is repeated split. Factor-latent, not any neural model, is carried
+forward as the reporting baseline. Evaluation stays canonical and unweighted, and old incompatible
+mean-rate values are never tuning targets. All outputs are local artifacts, not official NLB
+leaderboard results.

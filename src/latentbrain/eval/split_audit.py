@@ -344,13 +344,14 @@ FACTOR_LATENT_DEFAULTS: dict[str, float] = {
 }
 
 
-def _factor_latent_heldout_rates(
+def factor_latent_heldout_rates(
     dataset: NeuralDataset,
     split: TrialSplit,
     heldin_indices: np.ndarray,
     heldout_indices: np.ndarray,
     scoring: ScoringConfig,
     settings: dict[str, float],
+    random_state: int = 0,
 ) -> dict[str, np.ndarray]:
     """Train-only factor-analysis latents decoded to held-out rates, per split."""
     bin_size_ms = scoring.bin_size_ms
@@ -375,7 +376,7 @@ def _factor_latent_heldout_rates(
     train_features, feature_stats = standardize_train_apply(train_features_raw, train_features_raw)
     model = FactorLatentModel(
         latent_dim=int(settings["latent_dim"]),
-        random_state=0,
+        random_state=int(random_state),
         max_iter=int(settings["max_iter"]),
         tol=float(settings["tol"]),
     ).fit(train_features)
@@ -428,7 +429,7 @@ def run_repeated_split_baselines(
         train_counts = spikes[np.isin(trial_ids, split.train)][:, :, heldout_indices]
         factor_predictions: dict[str, np.ndarray] | None = None
         if "factor_latent" in methods:
-            factor_predictions = _factor_latent_heldout_rates(
+            factor_predictions = factor_latent_heldout_rates(
                 dataset, split, heldin_indices, heldout_indices, scoring, resolved
             )
         for method_name in methods:
