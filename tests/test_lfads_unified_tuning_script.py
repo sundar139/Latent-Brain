@@ -101,11 +101,7 @@ def test_missing_processed_data_fails_clearly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _script_module()
-    monkeypatch.setattr(
-        module,
-        "_cuda_diagnostic",
-        lambda: {"cuda_available": True, "device_name": "Unit GPU"},
-    )
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
     config = _config(tmp_path / "out")
 
     with pytest.raises(FileNotFoundError, match="Processed dataset is missing"):
@@ -116,8 +112,12 @@ def test_cuda_unavailable_path_fails_clearly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     module = _script_module()
+    processed = tmp_path / "dataset.npz"
+    processed.write_bytes(b"x")
     config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml.safe_dump(_config(tmp_path / "out")), encoding="utf-8")
+    config = _config(tmp_path / "out")
+    config["dataset"]["processed_path"] = str(processed)
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
 
     assert module.main(["--config", str(config_path)]) == 2
@@ -129,8 +129,12 @@ def test_script_like_run_writes_expected_outputs(
 ) -> None:
     module = _script_module()
     output_dir = tmp_path / "out"
+    processed = tmp_path / "dataset.npz"
+    processed.write_bytes(b"x")
     config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml.safe_dump(_config(output_dir)), encoding="utf-8")
+    config = _config(output_dir)
+    config["dataset"]["processed_path"] = str(processed)
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     monkeypatch.setattr(
         module,
         "_cuda_diagnostic",

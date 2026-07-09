@@ -54,6 +54,14 @@ def _load_config(path: Path) -> dict[str, Any]:
     return raw
 
 
+def _check_processed_path(config: dict[str, Any]) -> None:
+    repo_root = get_repo_root()
+    processed_path = resolve_configured_path(str(config["dataset"]["processed_path"]), repo_root)
+    if not processed_path.exists():
+        msg = f"Processed dataset is missing: {processed_path}"
+        raise FileNotFoundError(msg)
+
+
 def _validate_config(config: dict[str, Any]) -> None:
     if str(config["runtime"]["device"]) != "cuda":
         msg = "runtime.device must be cuda"
@@ -165,6 +173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     try:
         config = _load_config(config_path)
+        _check_processed_path(config)
     except (OSError, ValueError) as exc:
         console.print(f"Config validation failed: {exc}")
         return 2

@@ -182,8 +182,10 @@ def _check_required_paths(config: dict[str, Any]) -> None:
     if not processed.exists():
         msg = f"Processed dataset is missing: {_relative(processed, root)}"
         raise FileNotFoundError(msg)
-    checkpoint = resolve_configured_path(str(config["checkpoints"]["tuned_lfads_best"]), root)
-    if not checkpoint.exists():
+    for checkpoint_key in ("tuned_lfads_best", "masked_cosmoothing_best"):
+        checkpoint = resolve_configured_path(str(config["checkpoints"][checkpoint_key]), root)
+        if checkpoint.exists():
+            continue
         msg = (
             f"LFADS checkpoint is missing: {_relative(checkpoint, root)}\n"
             "Run: python scripts/tune_lfads_gru.py --config "
@@ -528,6 +530,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         validated = LFADSAuditConfig.from_yaml(config_path)
         config = validated.model_dump(mode="python")
+        _check_required_paths(config)
         diagnostic = _cuda_diagnostic()
         console.print(f"torch: {diagnostic.get('torch_version')}")
         console.print(f"cuda_available: {diagnostic['available']}")
@@ -535,7 +538,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         console.print(f"gpu_name: {diagnostic['gpu']}")
         if not diagnostic["available"]:
             raise RuntimeError("CUDA was requested, but torch.cuda.is_available() is False.")
-        _check_required_paths(config)
         summary, tables = run_lfads_audit(config)
         output_dir = resolve_configured_path(
             str(config["reporting"]["output_dir"]), get_repo_root()

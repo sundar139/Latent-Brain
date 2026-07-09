@@ -67,9 +67,10 @@ def _config(processed: Path, checkpoint: Path, output: Path) -> dict[str, Any]:
 
 
 def test_missing_processed_data_fails_clearly(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     module = _script_module()
+    monkeypatch.setattr(module, "_cuda_diagnostic", lambda: {"available": False, "gpu": "NONE"})
     checkpoint = tmp_path / "checkpoint.pt"
     checkpoint.write_bytes(b"x")
     config_path = tmp_path / "config.yaml"
@@ -83,9 +84,10 @@ def test_missing_processed_data_fails_clearly(
 
 
 def test_missing_checkpoint_fails_clearly(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     module = _script_module()
+    monkeypatch.setattr(module, "_cuda_diagnostic", lambda: {"available": False, "gpu": "NONE"})
     processed = tmp_path / "dataset.npz"
     processed.write_bytes(b"x")
     config_path = tmp_path / "config.yaml"
@@ -148,3 +150,22 @@ def test_script_like_run_with_monkeypatched_audit_writes_outputs(
         json.loads((output / "audit_summary.json").read_text())["validation_bits_per_spike"] == 0.1
     )
     assert "local diagnostic audit" in (output / "audit_report.md").read_text(encoding="utf-8")
+
+
+def test_cuda_unavailable_fails_after_inputs_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    module = _script_module()
+    processed = tmp_path / "dataset.npz"
+    processed.write_bytes(b"x")
+    checkpoint = tmp_path / "checkpoint.pt"
+    checkpoint.write_bytes(b"x")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(_config(processed, checkpoint, tmp_path / "out")),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "_cuda_diagnostic", lambda: {"available": False, "gpu": "NONE"})
+
+    assert module.main(["--config", str(config_path)]) == 2
+    assert "CUDA was requested" in capsys.readouterr().out

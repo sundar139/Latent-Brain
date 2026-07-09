@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -106,6 +107,18 @@ def test_toy_script_run_writes_expected_outputs(
 ) -> None:
     module = _script_module()
     config = _config(tmp_path)
+    tuning_summary = tmp_path / "tuning_summary.json"
+    tuning_summary.write_text(
+        json.dumps(
+            {
+                "best_run_id": "run_006",
+                "best_validation_unified_bits_per_spike": 0.0102066110689813,
+                "best_validation_poisson_nll": 2010.939399749279,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config["inputs"]["lfads_unified_tuning_summary"] = str(tuning_summary)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     monkeypatch.setattr(module, "_prepare_dataset", lambda _config: (_toy_dataset(), "abc", 2))
@@ -115,10 +128,17 @@ def test_toy_script_run_writes_expected_outputs(
     output_dir = Path(config["reporting"]["output_dir"])
     assert (output_dir / "unified_scoreboard_summary.json").exists()
     report = (output_dir / "unified_scoreboard_report.md").read_text(encoding="utf-8")
+    summary = json.loads(
+        (output_dir / "unified_scoreboard_summary.json").read_text(encoding="utf-8")
+    )
     scores = pd.read_csv(output_dir / "unified_split_scores.csv")
+    leaderboard = pd.read_csv(output_dir / "unified_validation_leaderboard.csv")
     train_mean = scores[
         (scores["method_name"] == "train_heldout_mean_rate") & (scores["split"] == "validation")
     ].iloc[0]
     assert abs(float(train_mean["bits_per_spike"])) < 1e-12
+    assert summary["best_lfads_family_method"] == "lfads_unified_tuning"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.0102066110689813
+    assert "lfads_unified_tuning" in set(leaderboard["method_name"])
     assert "Old mean-rate values are historical-only" in report
     assert "not an official NLB leaderboard result" in report

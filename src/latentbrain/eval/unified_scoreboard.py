@@ -55,6 +55,21 @@ def build_unified_score_row(
     }
 
 
+def build_lfads_tuning_score_row(
+    tuning_summary: dict[str, Any], reference_name: str
+) -> dict[str, Any]:
+    return build_unified_score_row(
+        "lfads_unified_tuning",
+        "canonical_tuning_direct_model",
+        "validation",
+        float(tuning_summary["best_validation_unified_bits_per_spike"]),
+        float(tuning_summary["best_validation_poisson_nll"]),
+        True,
+        reference_name,
+        f"Latest canonical LFADS-style tuning run: {tuning_summary['best_run_id']}",
+    )
+
+
 def _is_oracle(row: pd.Series) -> bool:
     text = " ".join(
         [

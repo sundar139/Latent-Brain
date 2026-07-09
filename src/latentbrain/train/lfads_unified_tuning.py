@@ -160,6 +160,15 @@ def _relative(path: Path, root: Path) -> str:
         return str(path)
 
 
+def _resolve_processed_path(config: dict[str, Any]) -> Path:
+    repo_root = get_repo_root()
+    processed_path = resolve_configured_path(str(config["dataset"]["processed_path"]), repo_root)
+    if not processed_path.exists():
+        msg = f"Processed dataset is missing: {_relative(processed_path, repo_root)}"
+        raise FileNotFoundError(msg)
+    return processed_path
+
+
 def _validate_cuda(config: dict[str, Any]) -> str:
     if str(config["runtime"]["device"]) != "cuda":
         msg = "runtime.device must be cuda for LFADS-family unified tuning"
@@ -172,11 +181,7 @@ def _validate_cuda(config: dict[str, Any]) -> str:
 
 
 def _load_dataset(config: dict[str, Any]) -> tuple[NeuralDataset, str, int]:
-    repo_root = get_repo_root()
-    processed_path = resolve_configured_path(str(config["dataset"]["processed_path"]), repo_root)
-    if not processed_path.exists():
-        msg = f"Processed dataset is missing: {_relative(processed_path, repo_root)}"
-        raise FileNotFoundError(msg)
+    processed_path = _resolve_processed_path(config)
     dataset = load_neural_dataset(processed_path)
     validate_neural_dataset(dataset)
     dataset_hash = compute_dataset_hash(dataset)
@@ -280,6 +285,7 @@ def _run_metrics(run_dir: Path, device: str) -> dict[str, Any]:
 def run_lfads_unified_tuning(
     config: dict[str, Any],
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
+    _resolve_processed_path(config)
     gpu_name = _validate_cuda(config)
     dataset, dataset_hash, window_bins = _load_dataset(config)
     split, mask = _split_and_mask(dataset, config)
