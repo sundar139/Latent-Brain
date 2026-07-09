@@ -36,6 +36,7 @@ inputs:
   neural_sde_tuning_summary_path: results/mc_maze_small/neural_sde_tuning/neural_sde_tuning_summary.json
   neural_ode_tuning_summary_path: results/mc_maze_small/neural_ode_tuning/neural_ode_tuning_summary.json
   neural_ode_refinement_summary_path: results/mc_maze_small/neural_ode_refinement/neural_ode_refinement_summary.json
+  neural_ode_objective_summary_path: results/mc_maze_small/neural_ode_objectives/neural_ode_objective_summary.json
   switching_ode_tuning_summary_path: results/mc_maze_small/switching_ode_tuning/switching_ode_tuning_summary.json
 
 known_unified_values:

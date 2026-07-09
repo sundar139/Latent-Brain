@@ -1968,3 +1968,151 @@ def write_neural_ode_refinement_outputs(
     checkpoint_scores.to_csv(paths["checkpoint_selection"], index=False)
     write_neural_ode_refinement_report(paths["report"], summary, leaderboard, checkpoint_scores)
     return paths
+
+
+def write_neural_ode_objective_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    leaderboard: pd.DataFrame,
+    objective_diagnostics: pd.DataFrame,
+    checkpoint_scores: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local deterministic neural-ODE objective diagnostics."""
+    lines = [
+        f"# {summary.get('dataset_name')} deterministic neural-ODE objective diagnostics",
+        "",
+        (
+            "This is local deterministic neural-ODE objective diagnostics, "
+            "not an official NLB leaderboard result."
+        ),
+        (
+            "Evaluation uses canonical unweighted unified bits/spike even when training "
+            "losses are weighted."
+        ),
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and scoring",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- CUDA device: {summary.get('cuda_device')}",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        "- Train-mean-as-model equals 0.0 bits/spike.",
+        "- Train-mean validation bits/spike: "
+        f"{summary.get('train_mean_validation_bits_per_spike')}",
+        f"- Shared seed across variants: {summary.get('shared_seed')}",
+        (
+            "- All variants share one seed, so score differences are attributable to the "
+            "objective and not to initialization."
+        ),
+        "",
+        "## Selection",
+        f"- Runs attempted: {summary.get('runs_attempted')}",
+        f"- Successful runs: {summary.get('successful_runs')}",
+        f"- Best run ID: {summary.get('best_run_id')}",
+        f"- Best objective name: {summary.get('best_objective_name')}",
+        f"- Best objective parameters: {summary.get('best_run_params')}",
+        "- Best validation unified bits/spike: "
+        f"{summary.get('best_validation_unified_bits_per_spike')}",
+        f"- Best validation Poisson NLL: {summary.get('best_validation_poisson_nll')}",
+        "- Best factor-decoder unified bits/spike: "
+        f"{summary.get('best_factor_decoder_unified_bits_per_spike')}",
+        f"- Best checkpoint source: {summary.get('best_checkpoint_source')}",
+        f"- Factor-latent unified reference: {summary.get('factor_latent_unified_reference')}",
+        "- Previous neural-ODE refinement reference: "
+        f"{summary.get('previous_neural_ode_refinement_reference')}",
+        f"- Switching ODE reference: {summary.get('switching_ode_reference')}",
+        f"- Beats factor-latent: {summary.get('beats_factor_latent_unified')}",
+        "- Beats previous neural-ODE refinement: "
+        f"{summary.get('beats_previous_neural_ode_refinement')}",
+        "",
+        "## Objective diagnostics",
+        f"- Best held-out loss weight: {summary.get('best_heldout_loss_weight')}",
+        f"- Best zero count weight: {summary.get('best_zero_count_weight')}",
+        f"- Best positive count weight: {summary.get('best_positive_count_weight')}",
+        f"- Best rate calibration loss weight: {summary.get('best_rate_calibration_loss_weight')}",
+        f"- Best rate calibration loss: {summary.get('best_rate_calibration_loss')}",
+        f"- Drift norm: {summary.get('best_drift_norm')}",
+        f"- Drift regularization loss: {summary.get('best_drift_regularization_loss')}",
+        f"- Diffusion mean: {summary.get('best_diffusion_mean')}",
+        "",
+        *_format_table(objective_diagnostics),
+        "",
+        "## Checkpoint selection",
+        *_format_table(checkpoint_scores),
+        "",
+        "## Validation leaderboard",
+        (
+            "| rank | run | objective | bits/spike | poisson NLL | factor bits | heldout weight | "
+            "zero weight | positive weight | rate calibration | checkpoint | "
+            "beats factor-latent | beats previous refinement | notes |"
+        ),
+        (
+            "| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: "
+            "| --- | --- | --- | --- |"
+        ),
+    ]
+    for _, row in leaderboard.iterrows():
+        lines.append(
+            f"| {row.get('rank')} | {row.get('run_id')} | {row.get('objective_name')} | "
+            f"{row.get('validation_unified_bits_per_spike')} | "
+            f"{row.get('validation_poisson_nll')} | "
+            f"{row.get('validation_factor_decoder_unified_bits_per_spike')} | "
+            f"{row.get('heldout_loss_weight')} | {row.get('zero_count_weight')} | "
+            f"{row.get('positive_count_weight')} | "
+            f"{row.get('rate_calibration_loss_weight')} | "
+            f"{row.get('best_checkpoint_source')} | "
+            f"{row.get('beats_factor_latent_unified')} | "
+            f"{row.get('beats_previous_neural_ode_refinement')} | {row.get('notes')} |"
+        )
+    if leaderboard.empty:
+        lines.append("| | no successful runs | | | | | | | | | | | | |")
+    lines.extend(
+        [
+            "",
+            "## Interpretation",
+            ("- If held-out-heavy objectives help, the previous model underweighted co-smoothing."),
+            ("- If zero-downweighting helps, sparse-count imbalance was limiting training."),
+            "- If rate calibration hurts, the output scale was already adequate.",
+            (
+                "- If none beat factor-latent, the next step should be multi-seed/local "
+                "robustness of the best dynamics model plus expanded baselines/datasets, "
+                "not more architecture."
+            ),
+        ]
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_neural_ode_objective_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    results: pd.DataFrame,
+    leaderboard: pd.DataFrame,
+    objective_diagnostics: pd.DataFrame,
+    checkpoint_scores: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "neural_ode_objective_summary.json",
+        "results": output_dir / "neural_ode_objective_results.csv",
+        "leaderboard": output_dir / "neural_ode_objective_leaderboard.csv",
+        "objective_diagnostics": output_dir / "objective_diagnostics.csv",
+        "checkpoint_selection": output_dir / "checkpoint_selection.csv",
+        "report": output_dir / "neural_ode_objective_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    results.to_csv(paths["results"], index=False)
+    leaderboard.to_csv(paths["leaderboard"], index=False)
+    objective_diagnostics.to_csv(paths["objective_diagnostics"], index=False)
+    checkpoint_scores.to_csv(paths["checkpoint_selection"], index=False)
+    write_neural_ode_objective_report(
+        paths["report"], summary, leaderboard, objective_diagnostics, checkpoint_scores
+    )
+    return paths

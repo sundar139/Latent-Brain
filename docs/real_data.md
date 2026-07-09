@@ -395,3 +395,19 @@ The deterministic neural-ODE-style workflow uses the real MC_Maze Small processe
 The current goal is to beat the factor-latent unified score before adding rSLDS switching or other architectural complexity. The previous neural-SDE-style score is a dynamics-family reference, while the oracle remains an invalid diagnostic because it uses held-out truth. Old incompatible mean-rate values are historical-only and are not tuning targets.
 
 If deterministic tuning beats the factor-latent reference, the next local milestone should be multi-seed robustness on the same dataset/bin/window/split before adding more architecture. Generated outputs, checkpoints, reports, and figures stay under ignored `results/mc_maze_small/neural_ode_tuning/` paths.
+
+## MC_Maze Small deterministic neural-ODE objective diagnostics
+
+Run local objective redesign diagnostics with:
+
+```powershell
+python scripts/tune_neural_ode_objectives.py --config configs/mc_maze_small_neural_ode_objectives.yaml
+```
+
+These diagnostics use 20 ms rebinned MC_Maze Small data and the fixed 1.28-second window, the same deterministic split and held-in/held-out neuron mask as the other dynamics workflows, and train-heldout mean rate as the canonical reference. Diffusion stays disabled at exactly `0.0`.
+
+Switching latent dynamics collapsed to one dominant regime locally and did not improve validation unified bits/spike. Deterministic neural-ODE refinement improved on the switching and neural-SDE runs, but only marginally, and still trailed the factor-latent unified reference. That is why this workflow varies the objective — held-out loss weighting, zero/positive spike-count weighting, a train-only rate-calibration auxiliary loss, drift regularization, and the KL schedule — rather than adding architecture.
+
+Training losses may be weighted; evaluation always uses the canonical unweighted unified bits/spike metric. If no objective variant beats factor-latent, the next step should not be more architecture. It should be multi-seed robustness of the best dynamics model plus expanded baselines and datasets. Generated outputs, figures, and checkpoints remain ignored under `results/mc_maze_small/neural_ode_objectives/` and are not official NLB leaderboard results.
+
+Objective variants all train under one shared seed so that score differences reflect the objective rather than initialization. The stored refinement reference was produced at a different seed, so compare objective variants against the same-seed `refined_baseline` row; the cross-seed reference comparison is uncontrolled and is retained only for scoreboard continuity.

@@ -125,6 +125,7 @@ class InputsSection(BaseModel):
     neural_sde_tuning_summary_path: str | None = None
     neural_ode_tuning_summary_path: str | None = None
     neural_ode_refinement_summary_path: str | None = None
+    neural_ode_objective_summary_path: str | None = None
     switching_ode_tuning_summary_path: str | None = None
 
 

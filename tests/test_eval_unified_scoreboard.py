@@ -29,6 +29,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "neural_sde_tuning_summary_path": str(tmp_path / "neural_sde.json"),
             "neural_ode_tuning_summary_path": str(tmp_path / "neural_ode.json"),
             "neural_ode_refinement_summary_path": str(tmp_path / "neural_ode_refinement.json"),
+            "neural_ode_objective_summary_path": str(tmp_path / "neural_ode_objectives.json"),
             "switching_ode_tuning_summary_path": str(tmp_path / "switching_ode.json"),
         },
         "known_unified_values": {
@@ -157,6 +158,78 @@ def test_neural_ode_refinement_can_become_best_dynamics_family_method(tmp_path: 
 
     assert summary["best_lfads_family_method"] == "neural_ode_refinement"
     assert summary["best_lfads_family_validation_bits_per_spike"] == 0.029
+
+
+def test_neural_ode_objective_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_ode_objectives.json", 0.031, 0.9)
+
+    rows = load_lfads_family_candidates(config)
+    row = next(row for row in rows if row["method_name"] == "neural_ode_objectives")
+
+    assert row["bits_per_spike"] == 0.031
+    assert row["poisson_nll"] == 0.9
+    assert row["source_summary_path"] == str((tmp_path / "neural_ode_objectives.json").resolve())
+
+
+def test_neural_ode_objectives_can_become_best_dynamics_family_method(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_ode_refinement.json", 0.0283)
+    _write_summary(tmp_path / "neural_ode_objectives.json", 0.0299)
+    rows = [
+        build_unified_score_row(
+            "factor_latent", "decoder", "validation", 0.0316, 1.0, True, "ref", ""
+        ),
+        *load_lfads_family_candidates(config),
+    ]
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(pd.DataFrame(rows)),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_valid_model"] == "factor_latent"
+    assert summary["best_lfads_family_method"] == "neural_ode_objectives"
+    assert summary["best_lfads_family_validation_bits_per_spike"] == 0.0299
+    assert summary["lfads_family_beats_factor_latent"] is False
+
+
+def test_weaker_objective_summary_keeps_refinement_as_best_dynamics_family(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_ode_refinement.json", 0.0283)
+    _write_summary(tmp_path / "neural_ode_objectives.json", 0.0201)
+    rows = load_lfads_family_candidates(config)
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(pd.DataFrame(rows)),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_lfads_family_method"] == "neural_ode_refinement"
+
+
+def test_missing_neural_ode_objective_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_summary(tmp_path / "neural_ode_refinement.json", 0.0283)
+
+    methods = {row["method_name"] for row in load_lfads_family_candidates(config)}
+
+    assert "neural_ode_objectives" not in methods
+    assert "neural_ode_refinement" in methods
+
+
+def test_malformed_neural_ode_objective_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "neural_ode_objectives.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed LFADS-family summary"):
+        load_lfads_family_candidates(config)
 
 
 def test_switching_can_become_best_dynamics_family_method(tmp_path: Path) -> None:

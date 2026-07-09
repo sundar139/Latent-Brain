@@ -67,6 +67,18 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Deterministic neural-ODE objective diagnostics
+
+Switching dynamics collapsed to one dominant regime and deterministic refinement gained only marginally, so the next workflow interrogates the training objective rather than the architecture:
+
+```powershell
+python scripts/tune_neural_ode_objectives.py --config configs/mc_maze_small_neural_ode_objectives.yaml
+```
+
+Controlled objective variants around the best deterministic neural-ODE refinement setting vary held-in/held-out loss weighting, zero/positive spike-count weighting, an optional train-only rate-calibration auxiliary loss, drift regularization, KL schedule, and input dropout. The model class is unchanged and `diffusion_scale` is forced to `0.0`.
+
+The canonical scoring target is validation unified bits/spike over 20 ms MC_Maze Small bins, a 1.28-second window, the deterministic split/mask, and train-heldout mean rate as the reference. Training losses may be weighted, but evaluation always uses the canonical unweighted unified metric. Factor-latent (0.0316438194429199) remains the current valid local target to beat; old mean-rate values are historical-only and are never tuning targets. Outputs, figures, and checkpoints are local ignored artifacts under `results/mc_maze_small/neural_ode_objectives/`, not official NLB leaderboard results.
+
 ## Deterministic neural-ODE refinement
 
 Switching dynamics collapsed to one dominant regime locally, so the next local neural workflow refines deterministic latent dynamics instead of adding regimes:

@@ -151,3 +151,27 @@ The switching neural-ODE-style latent generator extends deterministic latent dyn
 Regime occupancy and categorical entropy are diagnostics, not claims of discovered discrete brain states. A useful switching result should show multiple active regimes, non-degenerate occupancy, and improved validation unified bits/spike under the same canonical scorer. If one regime dominates, switching did not add meaningful dynamics. If switching beats factor-latent, the next step is multi-seed robustness before any scientific or benchmark-style claims.
 
 Selection remains validation unified bits/spike with train-heldout mean rate as the reference, fixed 20 ms bins, fixed 1.28-second window, deterministic split, and deterministic held-in/held-out mask. Old incompatible mean-rate values remain historical-only and are not tuning targets. Outputs are local artifacts only, not official NLB leaderboard results.
+
+## Objective redesign diagnostics for deterministic latent dynamics
+
+Switching dynamics collapsed to one dominant regime and deterministic refinement produced only marginal gains, so the next controlled workflow asks whether the deterministic neural-ODE family is limited by the training objective rather than the architecture. The model class, dataset hash, 20 ms bins, 1.28-second window, deterministic split/mask, and train-heldout mean-rate reference are all held fixed. `diffusion_scale` stays exactly `0.0`.
+
+Held-out loss weighting varies the ratio between the held-in reconstruction term and the held-out prediction term. If held-out-heavy objectives improve validation unified bits/spike, the previous model was underweighting the co-smoothing task it is scored on.
+
+Sparse-count weighting assigns `positive_count_weight` to bins with at least one spike and `zero_count_weight` to empty bins before summing the Poisson negative log likelihood. MC_Maze Small at 20 ms is dominated by zero bins, so this variant tests whether that imbalance limits training. If zero-downweighting helps, sparse-count imbalance was a real constraint.
+
+The rate-calibration auxiliary loss adds `rate_calibration_loss_weight * mean((mean_predicted_rate - mean_observed_train_rate) ** 2)` using per-neuron train-only observed rates. Validation and test targets are never used for calibration. If calibration hurts, the output scale was already adequate.
+
+Drift regularization adds `drift_regularization * mean(drift ** 2)` and reports both drift norm and the scaled regularization loss. Cosine learning-rate scheduling is retained and the learning rate is logged per epoch.
+
+Unified checkpoint selection is preserved: saved validation-loss and latest checkpoints are re-ranked after training under the canonical scorer, the winner is copied to `best_unified.pt`, and `checkpoint_scores.csv` records the comparison.
+
+Evaluation stays canonical and unweighted. Weighted losses shape training only; validation unified bits/spike is computed with the same unweighted scorer used by every other method on the scoreboard, so cross-method comparison remains valid.
+
+Decision rule before further architecture: if no objective variant beats the factor-latent unified reference, the next step is multi-seed and local robustness analysis of the best dynamics model plus expanded baselines and datasets, not more model classes. Old incompatible mean-rate values remain historical-only and are not tuning targets. Outputs are local artifacts only, not official NLB leaderboard results.
+
+### Seed control in objective diagnostics
+
+Every objective variant trains under one shared seed. The grid workflows seed with `seed + run_index`, which is acceptable when each grid point is a different model, but it would confound the objective with initialization here. Locally, re-running the identical `refined_baseline` objective under two seed offsets moved validation unified bits/spike from `-0.0038` to `0.0283514699322505` — a swing larger than any objective effect measured in this workflow. Objective variants are therefore only compared against the same-seed `refined_baseline` row, never against references produced under a different seed.
+
+This also means the stored `previous_neural_ode_refinement_validation_bits_per_spike` reference (`0.0283514699322505`) was produced at a different seed than these runs. A `beats_previous_neural_ode_refinement` value of `false` is not by itself evidence that an objective is worse; the same-seed baseline row is the controlled comparison. Cross-seed reference comparisons remain in the outputs for continuity with the scoreboard, and should be read as uncontrolled.

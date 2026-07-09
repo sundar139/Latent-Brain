@@ -20,6 +20,7 @@ from latentbrain.eval.reporting import (
     write_lfads_tuning_report,
     write_lfads_unified_tuning_report,
     write_metric_audit_report,
+    write_neural_ode_objective_outputs,
     write_neural_ode_refinement_outputs,
     write_neural_ode_tuning_report,
     write_neural_sde_tuning_report,
@@ -903,5 +904,109 @@ def test_neural_ode_refinement_report_includes_requested_statements(tmp_path: Pa
     assert "Drift regularization" in text
     assert "Scheduler / learning-rate" in text
     assert "switching collapsed to one regime" in text
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+    assert "not an official NLB leaderboard result" in text
+
+
+def test_neural_ode_objective_report_documents_objective_diagnostics(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "window_seconds": 1.28,
+        "cuda_device": "Unit GPU",
+        "reference_model": "train_heldout_mean_rate",
+        "train_mean_validation_bits_per_spike": 0.0,
+        "runs_attempted": 2,
+        "successful_runs": 2,
+        "best_run_id": "run_001_heldout_heavy",
+        "best_objective_name": "heldout_heavy",
+        "best_run_params": {"heldout_loss_weight": 10.0, "zero_count_weight": 1.0},
+        "best_validation_unified_bits_per_spike": 0.029,
+        "best_validation_poisson_nll": 2000.0,
+        "best_factor_decoder_unified_bits_per_spike": 0.01,
+        "best_heldout_loss_weight": 10.0,
+        "best_zero_count_weight": 1.0,
+        "best_positive_count_weight": 1.0,
+        "best_rate_calibration_loss_weight": 0.0,
+        "best_rate_calibration_loss": 0.0,
+        "best_drift_norm": 0.5,
+        "best_drift_regularization_loss": 0.001,
+        "best_diffusion_mean": 0.0,
+        "best_checkpoint_source": "latest",
+        "factor_latent_unified_reference": 0.0316438194429199,
+        "previous_neural_ode_refinement_reference": 0.0283514699322505,
+        "switching_ode_reference": 0.0065057546390714,
+        "beats_factor_latent_unified": False,
+        "beats_previous_neural_ode_refinement": True,
+        "old_incompatible_mean_rate_values_used_as_targets": False,
+    }
+    leaderboard = pd.DataFrame(
+        [
+            {
+                "rank": 1,
+                "run_id": "run_001_heldout_heavy",
+                "objective_name": "heldout_heavy",
+                "validation_unified_bits_per_spike": 0.029,
+                "validation_poisson_nll": 2000.0,
+                "validation_factor_decoder_unified_bits_per_spike": 0.01,
+                "heldout_loss_weight": 10.0,
+                "zero_count_weight": 1.0,
+                "positive_count_weight": 1.0,
+                "rate_calibration_loss_weight": 0.0,
+                "kl_scale": 0.01,
+                "drift_regularization": 1.0e-4,
+                "input_dropout_rate": 0.1,
+                "best_checkpoint_source": "latest",
+                "beats_factor_latent_unified": False,
+                "beats_previous_neural_ode_refinement": True,
+                "notes": "held-out emphasis",
+            }
+        ]
+    )
+    diagnostics = pd.DataFrame(
+        [
+            {
+                "run_id": "run_001_heldout_heavy",
+                "objective_name": "heldout_heavy",
+                "heldout_loss_weight": 10.0,
+                "zero_count_weight": 1.0,
+                "positive_count_weight": 1.0,
+                "rate_calibration_loss_weight": 0.0,
+                "rate_calibration_loss": 0.0,
+                "drift_regularization_loss": 0.001,
+                "drift_norm": 0.5,
+                "mean_predicted_rate": 0.56,
+                "mean_observed_rate": 0.58,
+            }
+        ]
+    )
+    checkpoints = pd.DataFrame(
+        [
+            {
+                "run_id": "run_001_heldout_heavy",
+                "checkpoint_source": "latest",
+                "selected_by_unified": True,
+            }
+        ]
+    )
+
+    paths = write_neural_ode_objective_outputs(
+        tmp_path, summary, pd.DataFrame(), leaderboard, diagnostics, checkpoints
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert paths["objective_diagnostics"].exists()
+    assert "Canonical reference model: train_heldout_mean_rate" in text
+    assert "Factor-latent unified reference: 0.0316438194429199" in text
+    assert "Previous neural-ODE refinement reference: 0.0283514699322505" in text
+    assert "Objective diagnostics" in text
+    assert "Best zero count weight" in text
+    assert "Best rate calibration loss" in text
+    assert "Drift regularization loss" in text
+    assert (
+        "Evaluation uses canonical unweighted unified bits/spike even when training "
+        "losses are weighted." in text
+    )
     assert "Old incompatible mean-rate values are not used as tuning targets" in text
     assert "not an official NLB leaderboard result" in text

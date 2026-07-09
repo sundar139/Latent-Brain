@@ -409,6 +409,7 @@ def _write_final_evaluation(
     factor_summary: pd.DataFrame,
     metadata: dict[str, Any],
     checkpoint_path: Path,
+    model_name: str = "neural_ode_refinement",
 ) -> None:
     from latentbrain.eval.reporting import write_lfads_gru_evaluation_outputs
 
@@ -428,7 +429,7 @@ def _write_final_evaluation(
             "dataset_hash": run_config["dataset"].get("expected_hash"),
             "checkpoint_path": _relative(checkpoint_path, get_repo_root()),
             "checkpoint_epoch": metadata.get("checkpoint_epoch"),
-            "model_name": "neural_ode_refinement",
+            "model_name": model_name,
             "factor_dim": int(metadata["factor_dim"]),
             "latent_dim": int(metadata["latent_dim"]),
             "primary_split": "validation",

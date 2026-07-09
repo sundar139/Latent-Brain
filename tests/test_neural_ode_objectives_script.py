@@ -1,0 +1,251 @@
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+from types import ModuleType
+from typing import Any
+
+import pandas as pd  # type: ignore[import-untyped]
+import pytest
+import yaml
+
+
+def _script_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "tune_neural_ode_objectives", Path("scripts/tune_neural_ode_objectives.py")
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _config(tmp_path: Path) -> dict[str, Any]:
+    return {
+        "dataset": {
+            "name": "unit",
+            "processed_path": str(tmp_path / "data.npz"),
+            "expected_hash": "abc",
+            "original_bin_size_ms": 5,
+        },
+        "splits": {
+            "seed": 2027,
+            "train_fraction": 0.5,
+            "validation_fraction": 0.25,
+            "test_fraction": 0.25,
+            "heldout_neuron_fraction": 0.5,
+        },
+        "window": {"duration_seconds": 0.04, "crop_policy": "from_start"},
+        "binning": {"target_bin_size_ms": 20},
+        "runtime": {"device": "cuda", "fail_if_cuda_unavailable": True},
+        "scoring": {
+            "reference_model": "train_heldout_mean_rate",
+            "include_poisson_constant": True,
+            "min_rate_hz": 1.0e-4,
+            "max_rate_hz": 500.0,
+            "primary_split": "validation",
+            "primary_metric": "unified_bits_per_spike",
+        },
+        "search": {
+            "max_runs": 1,
+            "run_order": "deterministic",
+            "selection_metric": "validation_unified_bits_per_spike",
+            "selection_mode": "max",
+        },
+        "base_model": {
+            "name": "neural_ode_objectives",
+            "input_neuron_group": "heldin",
+            "output_dim": "all",
+            "batch_size": 2,
+            "encoder_hidden_dim": 4,
+            "drift_hidden_dim": 4,
+            "diffusion_hidden_dim": 4,
+            "latent_dim": 2,
+            "factor_dim": 2,
+            "input_dropout_rate": 0.0,
+            "heldin_loss_weight": 1.0,
+            "heldout_loss_weight": 1.0,
+            "kl_warmup_epochs": 1,
+            "kl_scale": 0.1,
+            "drift_regularization": 0.0,
+            "learning_rate": 0.001,
+            "scheduler": "cosine",
+            "weight_decay": 0.0,
+            "gradient_clip_norm": 1.0,
+            "loss_normalization": "mean",
+            "model_dropout": 0.0,
+            "min_rate_hz": 1.0e-4,
+            "max_rate_hz": 500.0,
+            "dt_seconds": 0.02,
+            "diffusion_scale": 0.0,
+            "epochs": 1,
+            "checkpoint_metric": "validation_total_loss",
+            "checkpoint_mode": "min",
+            "save_unified_checkpoints": True,
+            "evaluate_checkpoints_by_unified_metric": True,
+        },
+        "objective_variants": [
+            {
+                "name": "refined_baseline",
+                "heldin_loss_weight": 1.0,
+                "heldout_loss_weight": 1.0,
+                "zero_count_weight": 1.0,
+                "positive_count_weight": 1.0,
+                "rate_calibration_loss_weight": 0.0,
+                "drift_regularization": 0.0,
+                "notes": "baseline",
+            }
+        ],
+        "references": {
+            "train_mean_validation_bits_per_spike": 0.0,
+            "factor_latent_unified_validation_bits_per_spike": 0.03,
+            "previous_neural_ode_refinement_validation_bits_per_spike": 0.028,
+            "switching_ode_validation_bits_per_spike": 0.006,
+            "oracle_validation_bits_per_spike": 3.0,
+        },
+        "evaluation": {
+            "evaluate_splits": ["train", "validation", "test"],
+            "direct_model_primary": True,
+            "also_evaluate_factor_decoder": True,
+            "behavior_decoder_enabled": True,
+        },
+        "reporting": {"output_dir": str(tmp_path / "out")},
+    }
+
+
+def test_missing_processed_data_fails_before_cuda(tmp_path: Path) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    config["dataset"]["processed_path"] = str(tmp_path / "missing.npz")
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert module.main(["--config", str(path)]) == 2
+
+
+def test_cuda_unavailable_fails_after_input_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    Path(config["dataset"]["processed_path"]).write_bytes(b"exists")
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
+
+    assert module.main(["--config", str(path)]) == 2
+
+
+def test_duplicate_variant_names_fail_config_validation(tmp_path: Path) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    Path(config["dataset"]["processed_path"]).write_bytes(b"exists")
+    config["objective_variants"] = [
+        config["objective_variants"][0],
+        dict(config["objective_variants"][0]),
+    ]
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert module.main(["--config", str(path)]) == 2
+
+
+def test_reference_zero_validation_rejects_nonzero() -> None:
+    module = _script_module()
+
+    with pytest.raises(RuntimeError, match="must be 0.0"):
+        module._validate_reference_zero(0.1)
+
+
+def test_script_like_run_writes_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    Path(config["dataset"]["processed_path"]).write_bytes(b"exists")
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    out = Path(config["reporting"]["output_dir"])
+    run_dir = out / "runs" / "run_000_refined_baseline"
+    run_dir.mkdir(parents=True)
+    results = pd.DataFrame(
+        [
+            {
+                "run_id": "run_000_refined_baseline",
+                "run_index": 0,
+                "status": "completed",
+                "objective_name": "refined_baseline",
+                "heldin_loss_weight": 1.0,
+                "heldout_loss_weight": 1.0,
+                "zero_count_weight": 1.0,
+                "positive_count_weight": 1.0,
+                "rate_calibration_loss_weight": 0.0,
+                "kl_warmup_epochs": 1,
+                "kl_scale": 0.1,
+                "drift_regularization": 0.0,
+                "scheduler": "cosine",
+                "input_dropout_rate": 0.0,
+                "validation_unified_bits_per_spike": 0.02,
+                "validation_poisson_nll": 1.0,
+                "validation_behavior_mean_r2": 0.0,
+                "validation_factor_decoder_unified_bits_per_spike": 0.01,
+                "validation_heldout_prediction_loss": 1.5,
+                "z0_kl_loss": 0.1,
+                "drift_regularization_loss": 0.0,
+                "rate_calibration_loss": 0.0,
+                "drift_norm": 0.2,
+                "diffusion_mean": 0.0,
+                "best_checkpoint_source": "latest",
+                "beats_factor_latent_unified": False,
+                "beats_previous_neural_ode_refinement": False,
+                "notes": "baseline",
+                "output_dir": str(run_dir),
+            }
+        ]
+    )
+    summary = {
+        "train_mean_validation_bits_per_spike": 0.0,
+        "dataset_name": "unit",
+        "reference_model": "train_heldout_mean_rate",
+        "runs_attempted": 1,
+        "successful_runs": 1,
+        "best_run_id": "run_000_refined_baseline",
+        "best_objective_name": "refined_baseline",
+        "best_validation_unified_bits_per_spike": 0.02,
+        "best_validation_poisson_nll": 1.0,
+        "best_factor_decoder_unified_bits_per_spike": 0.01,
+        "best_heldout_loss_weight": 1.0,
+        "best_zero_count_weight": 1.0,
+        "best_positive_count_weight": 1.0,
+        "best_rate_calibration_loss_weight": 0.0,
+        "best_rate_calibration_loss": 0.0,
+        "best_drift_norm": 0.2,
+        "best_drift_regularization_loss": 0.0,
+        "best_diffusion_mean": 0.0,
+        "best_checkpoint_source": "latest",
+        "factor_latent_unified_reference": 0.03,
+        "previous_neural_ode_refinement_reference": 0.028,
+        "switching_ode_reference": 0.006,
+        "beats_factor_latent_unified": False,
+        "beats_previous_neural_ode_refinement": False,
+        "old_incompatible_mean_rate_values_used_as_targets": False,
+    }
+    pd.DataFrame({"checkpoint_source": ["latest"], "selected_by_unified": [True]}).to_csv(
+        out / "checkpoint_selection.csv", index=False
+    )
+    results.to_csv(out / "objective_diagnostics.csv", index=False)
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        module, "run_neural_ode_objective_variants", lambda _config: (results, summary)
+    )
+
+    assert module.main(["--config", str(path)]) == 0
+    assert (out / "neural_ode_objective_summary.json").exists()
+    assert (out / "neural_ode_objective_results.csv").exists()
+    assert (out / "neural_ode_objective_leaderboard.csv").exists()
+    assert (out / "figures" / "objective_validation_bits_by_run.png").exists()
+    assert (out / "figures" / "zero_spike_weight_sensitivity.png").exists()
+    report = (out / "neural_ode_objective_report.md").read_text(encoding="utf-8")
+    assert "Train-mean-as-model equals 0.0 bits/spike." in report
+    assert "Old incompatible mean-rate values are not used as tuning targets" in report
+    assert "canonical unweighted unified bits/spike" in report
