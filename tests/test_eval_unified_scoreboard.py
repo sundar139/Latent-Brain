@@ -14,6 +14,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
     build_unified_score_row,
     load_cv_rate_audit_warning,
+    load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
     load_recommended_window_cv_warning,
@@ -1025,3 +1026,63 @@ def test_lfads_pilot_can_never_enable_final_claim(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="final claim"):
         load_lfads_pilot_scoreboard({"inputs": {"lfads_pilot_summary_path": str(path)}})
+
+
+def _write_lfads_diagnostics_summary(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "integrity_checks_passed": True,
+                "dominant_failure_mode": "posterior_or_latent_collapse",
+                "estimated_recoverable_gap": 0.05,
+                "recommended_next_action": "targeted_lfads_repair_pilot",
+                "full_lfads_evaluation_allowed": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_lfads_diagnostics_load_without_replacing_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    _write_lfads_diagnostics_summary(path)
+
+    loaded = load_lfads_diagnostics_scoreboard(
+        {"inputs": {"lfads_diagnostics_summary_path": str(path)}}
+    )
+
+    assert loaded["lfads_diagnostics_available"] is True
+    assert loaded["lfads_integrity_checks_passed"] is True
+    assert loaded["lfads_dominant_failure_mode"] == "posterior_or_latent_collapse"
+    assert loaded["lfads_estimated_recoverable_gap"] == 0.05
+    assert loaded["lfads_recommended_next_action"] == "targeted_lfads_repair_pilot"
+    assert loaded["lfads_full_evaluation_allowed"] is False
+    assert "baseline_to_beat" not in loaded
+
+
+def test_missing_lfads_diagnostics_falls_back_cleanly(tmp_path: Path) -> None:
+    loaded = load_lfads_diagnostics_scoreboard(
+        {"inputs": {"lfads_diagnostics_summary_path": str(tmp_path / "missing.json")}}
+    )
+
+    assert loaded["lfads_diagnostics_available"] is False
+    assert loaded["lfads_full_evaluation_allowed"] is False
+
+
+def test_malformed_lfads_diagnostics_fails_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    path.write_text(json.dumps({"integrity_checks_passed": True}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed LFADS diagnostics summary"):
+        load_lfads_diagnostics_scoreboard({"inputs": {"lfads_diagnostics_summary_path": str(path)}})
+
+
+def test_lfads_diagnostics_can_never_allow_full_evaluation(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    _write_lfads_diagnostics_summary(path)
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    summary["full_lfads_evaluation_allowed"] = True
+    path.write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="full LFADS evaluation"):
+        load_lfads_diagnostics_scoreboard({"inputs": {"lfads_diagnostics_summary_path": str(path)}})

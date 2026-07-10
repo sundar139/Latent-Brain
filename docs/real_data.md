@@ -1175,3 +1175,36 @@ Full evaluation is **not recommended** because the mean paired difference is wor
 predeclared `-0.02` margin. The corrected movement window produced positive, initialization-stable
 LFADS-style scores, but it did not resolve the earlier failure mode of trailing the valid
 factor-latent baseline. Later neural-model phases were not started.
+
+### Failure-mode audit
+
+The post-hoc audit reused all 25 selected checkpoints and performed no training or checkpoint
+reselection. All checkpoint hashes, architectures, seeds, folds, split labels, and held-in/held-out
+partitions passed integrity checks; accepted outer scores reproduced to numerical precision.
+
+Mean unified bits/spike was `0.03465399348776309` on outer training, `0.031155044536727138` on inner
+validation, and `0.02925965290281929` on outer evaluation. The mean train-to-inner and inner-to-outer
+gaps were only `0.0034989489510359496` and `0.0018953916339078463`, respectively. This excludes
+material overfitting, checkpoint-selection mismatch, and training instability as dominant causes.
+
+Across held-out-neuron diagnostics, 69.0 percent of LFADS scores were positive, 29.5 percent were
+negative, and only 12.2 percent beat the compatible neuron-level factor-latent prediction. Global
+predicted/observed rate ratio was `1.000593198877632`; train-fit global and per-neuron scalar
+calibration recovered no mean score. Performance fell from `0.03636918045052086` before peak speed to
+`0.0026472081505686494` near peak, then recovered to `0.03198509446884249` after peak.
+
+Factor trajectories had mean effective rank `1.2161114061725022` of 32, or fraction
+`0.038003481442890695`, and first-difference variance ratio was `0.0004091211292621589`. Posterior-mean
+effective-rank fraction was `0.22218967449927313`; therefore the audit found severe factor
+underutilization and excessive temporal smoothing, but not enough converging evidence for full
+posterior collapse. Selected KL loss averaged `2.6621164743116655e-05`; weighted KL contribution was
+only `2.503585741578505e-07`, so KL did not dominate the objective.
+
+The largest measured recoverable component was only `0.004180215719041369` bits/spike from the
+negative-neuron concentration, leaving `0.1404872601248432` unexplained. Overlapping diagnostic upper
+bounds do not sum to a causal decomposition. The dominant classification is a mismatch between this
+minimal autonomous LFADS-style dynamic model and the co-smoothing task, with temporal oversmoothing
+and insufficient latent utilization as secondary failures. No single frozen repair plausibly clears
+the `0.04` repair threshold. The required next action is
+`retire_lfads_and_start_neural_ode_pilot`; that action was not started here. Full multi-repeat LFADS
+evaluation remains disallowed.

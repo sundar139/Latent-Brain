@@ -180,6 +180,11 @@ def test_small_dataset_summary_does_not_load_lfads_pilot(
         "load_lfads_pilot_scoreboard",
         lambda _config: pytest.fail("Small must not load the Large LFADS pilot"),
     )
+    monkeypatch.setattr(
+        module,
+        "load_lfads_diagnostics_scoreboard",
+        lambda _config: pytest.fail("Small must not load the Large LFADS diagnostics"),
+    )
     monkeypatch.setattr(module, "write_dataset_scoreboard_outputs", lambda *_args: None)
 
     result = module.run_dataset_scoreboard(

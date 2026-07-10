@@ -664,3 +664,27 @@ losses, every selected checkpoint comes from inner validation, leakage checks pa
 bits/spike is non-negative, at least 60 percent of seed means are positive, seed-mean standard
 deviation is at most 0.05, and mean paired difference from `factor_latent_train_selected` is no worse
 than -0.02. Failure of any gate stops progression; the pilot never permits a final performance claim.
+
+## LFADS post-hoc failure-mode analysis
+
+The failure-mode audit loads the 25 already selected repeat-0 checkpoints. It verifies checkpoint
+hashes, frozen protocol identity, held-in/held-out separation, inner-validation selection, and exact
+reproduction of accepted outer scores before interpreting the model. It never trains, tunes, or
+reselects a checkpoint. Outer-evaluation diagnostics can characterize a selected model but cannot
+change which epoch or seed was selected.
+
+Split scores distinguish broad underfitting from overfitting or validation mismatch. Per-neuron and
+per-time-bin scores localize failures by firing rate, variability, and position relative to peak
+movement speed. Rate calibration and temporal shifts are diagnostic counterfactuals only; their
+scores are not reported as model performance.
+
+Latent effective rank is the entropy exponent of the normalized covariance eigenvalue spectrum,
+divided by latent dimensionality when reported as a fraction. Collapse requires converging evidence:
+low effective-rank fraction, low posterior variation, and negligible KL or prior/posterior separation.
+No single scalar is sufficient. Temporal oversmoothing is assessed from population-rate variance,
+first- and second-difference variance, lag-one autocorrelation, and inferred population lag.
+
+A targeted repair pilot requires one technically actionable failure mode and a measured diagnostic
+recovery estimate above 0.04 unified bits/spike under one frozen repair configuration. Broad tuning,
+overlapping upper bounds, or an unexplained stable deficit are insufficient. Otherwise LFADS is
+retired for this track; any integrity failure blocks all successor experiments.

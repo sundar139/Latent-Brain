@@ -36,6 +36,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_baseline_suite_scoreboard,
     load_cv_rate_audit_warning,
     load_dataset_cv_scoreboard,
+    load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
     load_recommended_window_cv_warning,
@@ -253,6 +254,7 @@ def run_dataset_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
     }
     if str(config["dataset"]["name"]) == "mc_maze_large":
         summary.update(load_lfads_pilot_scoreboard(config))
+        summary.update(load_lfads_diagnostics_scoreboard(config))
     output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
     write_dataset_scoreboard_outputs(output_dir, summary)
     return {"summary": summary, "output_dir": output_dir}
@@ -517,6 +519,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "lfads_pilot_mean_difference_vs_baseline",
             "lfads_full_evaluation_recommended",
             "lfads_pilot_final_claim_allowed",
+            "lfads_diagnostics_available",
+            "lfads_integrity_checks_passed",
+            "lfads_dominant_failure_mode",
+            "lfads_estimated_recoverable_gap",
+            "lfads_recommended_next_action",
+            "lfads_full_evaluation_allowed",
             "single_split_results_reportable",
             "official_leaderboard_claim",
         ):

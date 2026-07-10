@@ -1,0 +1,50 @@
+dataset:
+  name: mc_maze_large
+  expected_hash: 074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+
+protocol:
+  trial_source: trial_aware_raw
+  window_name: behavior_speed_peak_centered_1p28s
+  target_bin_size_ms: 20
+  repeat_index: 0
+  fold_indices: [0, 1, 2, 3, 4]
+  initialization_seeds: [2027, 2028, 2029, 2030, 2031]
+
+inputs:
+  pilot_config_path: configs/mc_maze_large_lfads_pilot.yaml
+  pilot_summary_path: results/mc_maze_large/lfads_pilot/lfads_pilot_summary.json
+  pilot_runs_path: results/mc_maze_large/lfads_pilot/lfads_pilot_runs.csv
+  checkpoint_manifest_path: results/mc_maze_large/lfads_pilot/checkpoint_manifest.csv
+  baseline_scores_path: results/mc_maze_large/baseline_suite/outer_fold_scores.csv
+  baseline_summary_path: results/mc_maze_large/baseline_suite/baseline_suite_summary.json
+  readiness_path: results/mc_maze_large/baseline_suite/neural_reevaluation_readiness.json
+
+diagnostics:
+  evaluate_train_split: true
+  evaluate_inner_validation_split: true
+  evaluate_outer_split: true
+  compute_per_neuron_metrics: true
+  compute_per_time_bin_metrics: true
+  compute_latent_spectrum: true
+  compute_rate_calibration: true
+  compute_temporal_smoothness: true
+  compute_checkpoint_trajectory: true
+  compute_objective_balance: true
+
+thresholds:
+  posterior_collapse_effective_rank_fraction: 0.20
+  low_latent_variance_fraction: 0.10
+  severe_rate_bias_fraction: 0.20
+  oversmoothing_ratio: 0.50
+  train_inner_gap_warning: 0.05
+  inner_outer_gap_warning: 0.05
+  negative_neuron_fraction_warning: 0.50
+  baseline_gap_repairable_limit: 0.04
+
+decision:
+  allow_targeted_lfads_repair_pilot: true
+  allow_full_lfads_evaluation: false
+  default_when_no_clear_repair: retire_lfads_and_start_neural_ode_pilot
+
+reporting:
+  output_dir: results/mc_maze_large/lfads_diagnostics

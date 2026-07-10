@@ -621,6 +621,17 @@ no `seed + run_index` derivation. The baseline to beat is `factor_latent_train_s
 
 Checkpoint selection and early stopping use only a stratified inner split of each outer-training set.
 Outer-evaluation trials are never used for checkpoint selection, normalization, calibration, or
-hyperparameter selection. Full five-repeat LFADS evaluation is permitted only if every predeclared
+Full five-repeat LFADS evaluation is permitted only if every predeclared
 gate passes. This pilot is feasibility and seed-stability evidence from one held-out-neuron mask; it
 cannot support a final model-performance claim or replace the frozen baseline.
+
+The gate failed. Audit the accepted checkpoints without retraining or checkpoint reselection:
+
+```powershell
+python scripts/run_lfads_diagnostics.py --config configs/mc_maze_large_lfads_diagnostics.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+The audit can recommend only `targeted_lfads_repair_pilot`,
+`retire_lfads_and_start_neural_ode_pilot`, or `block_due_to_integrity_issue`. It does not start any of
+those actions, and full multi-repeat LFADS evaluation remains disabled.

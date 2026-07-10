@@ -887,3 +887,58 @@ def load_lfads_pilot_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "lfads_pilot_final_claim_allowed": False,
         "lfads_pilot_summary_path": str(path),
     }
+
+
+LFADS_DIAGNOSTIC_KEYS = (
+    "integrity_checks_passed",
+    "dominant_failure_mode",
+    "estimated_recoverable_gap",
+    "recommended_next_action",
+    "full_lfads_evaluation_allowed",
+)
+
+
+def load_lfads_diagnostics_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Optional post-hoc LFADS audit fields; never a ranked baseline candidate."""
+    path = _summary_path(config.get("inputs", {}).get("lfads_diagnostics_summary_path"))
+    fallback = {
+        "lfads_diagnostics_available": False,
+        "lfads_integrity_checks_passed": None,
+        "lfads_dominant_failure_mode": None,
+        "lfads_estimated_recoverable_gap": None,
+        "lfads_recommended_next_action": None,
+        "lfads_full_evaluation_allowed": False,
+    }
+    if path is None or not path.exists():
+        return fallback
+    summary = _load_summary(path, "LFADS diagnostics")
+    for key in LFADS_DIAGNOSTIC_KEYS:
+        if key not in summary:
+            msg = f"malformed LFADS diagnostics summary: missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["full_lfads_evaluation_allowed"]):
+        msg = (
+            "malformed LFADS diagnostics summary: full LFADS evaluation must remain false at "
+            f"{path}"
+        )
+        raise ValueError(msg)
+    allowed = {
+        "targeted_lfads_repair_pilot",
+        "retire_lfads_and_start_neural_ode_pilot",
+        "block_due_to_integrity_issue",
+    }
+    action = str(summary["recommended_next_action"])
+    if action not in allowed:
+        msg = f"malformed LFADS diagnostics summary: invalid next action {action} at {path}"
+        raise ValueError(msg)
+    return {
+        "lfads_diagnostics_available": True,
+        "lfads_integrity_checks_passed": bool(summary["integrity_checks_passed"]),
+        "lfads_dominant_failure_mode": str(summary["dominant_failure_mode"]),
+        "lfads_estimated_recoverable_gap": _required_float(
+            summary, "estimated_recoverable_gap", path, "LFADS diagnostics"
+        ),
+        "lfads_recommended_next_action": action,
+        "lfads_full_evaluation_allowed": False,
+        "lfads_diagnostics_summary_path": str(path),
+    }

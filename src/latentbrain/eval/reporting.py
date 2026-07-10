@@ -3758,3 +3758,129 @@ def write_lfads_pilot_outputs(
     ]
     paths["report"].write_text("\n".join(lines), encoding="utf-8")
     return paths
+
+
+def write_lfads_diagnostics_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tables: dict[str, pd.DataFrame],
+    recommendation: dict[str, Any],
+) -> dict[str, Path]:
+    """Persist the post-hoc LFADS failure-mode audit without model artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "lfads_diagnostics_summary.json",
+        "run_diagnostics": output_dir / "run_diagnostics.csv",
+        "checkpoint_diagnostics": output_dir / "checkpoint_diagnostics.csv",
+        "neuron_diagnostics": output_dir / "neuron_diagnostics.csv",
+        "time_bin_diagnostics": output_dir / "time_bin_diagnostics.csv",
+        "latent_diagnostics": output_dir / "latent_diagnostics.csv",
+        "rate_diagnostics": output_dir / "rate_diagnostics.csv",
+        "objective_diagnostics": output_dir / "objective_diagnostics.csv",
+        "baseline_gap_decomposition": output_dir / "baseline_gap_decomposition.csv",
+        "recommendation": output_dir / "next_action_recommendation.json",
+        "report": output_dir / "lfads_diagnostics_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["recommendation"].write_text(
+        json.dumps(recommendation, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    for key in (
+        "run_diagnostics",
+        "checkpoint_diagnostics",
+        "neuron_diagnostics",
+        "time_bin_diagnostics",
+        "latent_diagnostics",
+        "rate_diagnostics",
+        "objective_diagnostics",
+        "baseline_gap_decomposition",
+    ):
+        tables[key].to_csv(paths[key], index=False)
+
+    lines = [
+        "# MC_Maze Large LFADS Failure-Mode Audit",
+        "",
+        "## Scope",
+        "",
+        "This audit uses already selected checkpoints and does not train or select a new model.",
+        "Outer-evaluation diagnostics were not used to change checkpoint selection.",
+        "",
+        "## Pilot integrity",
+        "",
+        f"Integrity checks passed: {summary.get('integrity_checks_passed')}",
+        f"Accepted checkpoints: {summary.get('accepted_checkpoints')}",
+        f"Non-completed manifest/run rows excluded: {summary.get('excluded_preflight_artifacts')}",
+        "Terminated preflight processes not represented in the accepted manifest are excluded by "
+        "construction.",
+        "",
+        "## Train, validation, and outer-evaluation behavior",
+        "",
+        f"Outer-training mean bits/spike: {summary.get('train_mean_unified_bits_per_spike')}",
+        f"Inner-validation mean bits/spike: {summary.get('inner_mean_unified_bits_per_spike')}",
+        f"Outer-evaluation mean bits/spike: {summary.get('outer_mean_unified_bits_per_spike')}",
+        f"Mean train-to-inner gap: {summary.get('mean_train_to_inner_gap')}",
+        f"Mean inner-to-outer gap: {summary.get('mean_inner_to_outer_gap')}",
+        "",
+        "## Per-neuron performance",
+        "",
+        f"Positive-neuron fraction: {summary.get('positive_neuron_fraction')}",
+        f"Negative-neuron fraction: {summary.get('negative_neuron_fraction')}",
+        f"Median neuron bits/spike: {summary.get('median_neuron_unified_bits_per_spike')}",
+        f"Fraction beating factor-latent: {summary.get('fraction_neurons_beating_factor_latent')}",
+        "",
+        "## Time-resolved performance",
+        "",
+        str(summary.get("time_resolved_failure_pattern")),
+        f"High-rate-bin mean: {summary.get('high_rate_time_bin_mean_bits_per_spike')}",
+        f"Low-rate-bin mean: {summary.get('low_rate_time_bin_mean_bits_per_spike')}",
+        "",
+        "## Rate calibration",
+        "",
+        str(summary.get("rate_bias_finding")),
+        "Calibrated scores are diagnostic counterfactuals, not model performance.",
+        "",
+        "## Temporal smoothness",
+        "",
+        str(summary.get("temporal_smoothness_finding")),
+        "",
+        "## Latent utilization",
+        "",
+        f"Mean effective rank: {summary.get('mean_effective_rank')}",
+        f"Mean effective-rank fraction: {summary.get('mean_effective_rank_fraction')}",
+        f"Posterior collapse detected: {summary.get('posterior_collapse_detected')}",
+        str(summary.get("latent_utilization_finding")),
+        "",
+        "## Objective balance",
+        "",
+        str(summary.get("objective_balance_finding")),
+        "",
+        "## Baseline-gap decomposition",
+        "",
+        _markdown_table(tables["baseline_gap_decomposition"]),
+        "",
+        "Components may overlap and are not required to sum exactly.",
+        "",
+        "## Failure-mode classification",
+        "",
+        "The LFADS pilot was stable and positive but substantially below "
+        "factor_latent_train_selected on the pilot neuron mask.",
+        f"Dominant failure mode: {summary.get('dominant_failure_mode')}",
+        "",
+        "## Recommended next action",
+        "",
+        f"{recommendation.get('recommended_next_action')}",
+        f"Rationale: {recommendation.get('rationale')}",
+        "Full multi-repeat LFADS evaluation remains disallowed.",
+        "",
+        "## Limitations",
+        "",
+        "The pilot covers one held-out-neuron mask and is not a final multi-repeat comparison.",
+        "This is local research analysis, not an official NLB leaderboard result.",
+        "",
+    ]
+    paths["report"].write_text("\n".join(lines), encoding="utf-8")
+    return paths
