@@ -4053,3 +4053,169 @@ def write_lfads_diagnostics_outputs(
     ]
     paths["report"].write_text("\n".join(lines), encoding="utf-8")
     return paths
+
+
+def write_neural_ode_diagnostics_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tables: dict[str, pd.DataFrame],
+    recommendation: dict[str, Any],
+) -> dict[str, Path]:
+    """Persist the post-hoc deterministic neural-ODE targeted diagnostic; no model is trained."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "neural_ode_diagnostics_summary.json",
+        "checkpoint_integrity": output_dir / "checkpoint_integrity.csv",
+        "split_diagnostics": output_dir / "split_diagnostics.csv",
+        "neuron_diagnostics": output_dir / "neuron_diagnostics.csv",
+        "time_bin_diagnostics": output_dir / "time_bin_diagnostics.csv",
+        "latent_diagnostics": output_dir / "latent_diagnostics.csv",
+        "dynamics_diagnostics": output_dir / "dynamics_diagnostics.csv",
+        "decoder_diagnostics": output_dir / "decoder_diagnostics.csv",
+        "objective_diagnostics": output_dir / "objective_diagnostics.csv",
+        "counterfactual_diagnostics": output_dir / "counterfactual_diagnostics.csv",
+        "baseline_gap_decomposition": output_dir / "baseline_gap_decomposition.csv",
+        "next_action": output_dir / "next_action_recommendation.json",
+        "report": output_dir / "neural_ode_diagnostics_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["next_action"].write_text(
+        json.dumps(recommendation, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    for key in (
+        "checkpoint_integrity",
+        "split_diagnostics",
+        "neuron_diagnostics",
+        "time_bin_diagnostics",
+        "latent_diagnostics",
+        "dynamics_diagnostics",
+        "decoder_diagnostics",
+        "objective_diagnostics",
+        "counterfactual_diagnostics",
+        "baseline_gap_decomposition",
+    ):
+        tables[key].to_csv(paths[key], index=False)
+
+    lines = [
+        "# MC_Maze Large Deterministic Neural-ODE Targeted Diagnostic",
+        "",
+        "## Scope",
+        "",
+        "This audit uses already selected checkpoints and does not train or select a "
+        "replacement neural-ODE.",
+        "Outer-evaluation diagnostics did not alter checkpoint selection or the frozen model "
+        "configuration.",
+        "",
+        "## Pilot integrity",
+        "",
+        f"Integrity checks passed: {summary.get('integrity_checks_passed')}",
+        f"Accepted checkpoints: {summary.get('accepted_checkpoints')}",
+        f"Excluded non-completed artifacts: {summary.get('excluded_preflight_artifacts')}",
+        f"Accepted outer scores reproduced: {summary.get('accepted_outer_scores_reproduced')}",
+        "",
+        "## Split-level generalization",
+        "",
+        "Outer-training mean bits/spike: "
+        f"{summary.get('outer_training_mean_unified_bits_per_spike')}",
+        "Inner-validation mean bits/spike: "
+        f"{summary.get('inner_validation_mean_unified_bits_per_spike')}",
+        "Outer-evaluation mean bits/spike: "
+        f"{summary.get('outer_evaluation_mean_unified_bits_per_spike')}",
+        f"Mean train-to-inner gap: {summary.get('mean_train_to_inner_gap')}",
+        f"Mean inner-to-outer gap: {summary.get('mean_inner_to_outer_gap')}",
+        "",
+        "## Per-neuron behavior",
+        "",
+        f"Positive-neuron fraction: {summary.get('positive_neuron_fraction')}",
+        f"Negative-neuron fraction: {summary.get('negative_neuron_fraction')}",
+        f"Median neuron bits/spike: {summary.get('median_neuron_unified_bits_per_spike')}",
+        f"Fraction beating factor-latent: {summary.get('fraction_neurons_beating_factor_latent')}",
+        "",
+        "## Time-resolved behavior",
+        "",
+        _markdown_table(
+            tables["time_bin_diagnostics"]
+            .groupby("relative_time_seconds", as_index=False)["unified_bits_per_spike"]
+            .mean()
+        ),
+        "",
+        "## Latent utilization",
+        "",
+        f"Mean factor effective rank: {summary.get('mean_effective_rank')} "
+        f"(fraction {summary.get('mean_effective_rank_fraction')}).",
+        "Mean initial-state (z0) effective-rank fraction: "
+        f"{summary.get('mean_z0_effective_rank_fraction')}.",
+        "",
+        "## Learned dynamics",
+        "",
+        f"Mean drift Jacobian norm: {summary.get('mean_drift_jacobian_norm')}",
+        f"Temporal oversmoothing detected: {summary.get('temporal_oversmoothing_detected')} "
+        f"(first-difference variance ratio {summary.get('mean_first_difference_variance_ratio')})",
+        "Static encoder-only recovery vs accepted: "
+        f"{summary.get('static_state_recovery_vs_accepted')}",
+        str(summary.get("solver_discretization_note")),
+        "",
+        "## Decoder conditioning",
+        "",
+        f"Mean decoder condition number: {summary.get('mean_decoder_condition_number')}",
+        f"Decoder ill-conditioned: {summary.get('decoder_ill_conditioned')}; "
+        f"decoder low-rank: {summary.get('decoder_low_rank')}",
+        "Frozen train-only linear readout recovery vs accepted: "
+        f"{summary.get('frozen_readout_recovery_vs_accepted')}",
+        "",
+        "## Frozen counterfactuals",
+        "",
+        "Counterfactual readouts and calibrations are diagnostic only and are not reported as "
+        "accepted model performance.",
+        "Scalar rate calibration recovery vs accepted: "
+        f"{summary.get('scalar_calibration_recovery_vs_accepted')}",
+        "",
+        "## Objective balance",
+        "",
+        _markdown_table(
+            tables["objective_diagnostics"][
+                [
+                    "fold_index",
+                    "initialization_seed",
+                    "inner_validation_reconstruction_loss",
+                    "inner_validation_heldout_prediction_loss",
+                    "inner_validation_z0_kl_loss",
+                ]
+            ]
+        ),
+        "",
+        "## Baseline-gap decomposition",
+        "",
+        _markdown_table(tables["baseline_gap_decomposition"]),
+        "",
+        "Components may overlap and are not required to sum exactly.",
+        f"Exact required recovery: {summary.get('exact_required_recovery')}",
+        "",
+        "## Dominant failure mode",
+        "",
+        f"Dominant failure mode: {summary.get('dominant_failure_mode')}",
+        f"Secondary failure modes: {summary.get('secondary_failure_modes')}",
+        f"Estimated recoverable gap: {summary.get('estimated_recoverable_gap')}",
+        "",
+        "## Recommended next action",
+        "",
+        f"{recommendation.get('recommended_next_action')}",
+        f"Rationale: {recommendation.get('rationale')}",
+        f"Broad sweep allowed: {recommendation.get('broad_sweep_allowed')}",
+        "The full multi-repeat neural-ODE evaluation remains blocked unless the declared gate is "
+        "satisfied.",
+        "LFADS remains retired.",
+        "",
+        "## Limitations",
+        "",
+        "The pilot covers one held-out-neuron mask and does not support a final project-wide "
+        "superiority claim.",
+        "This is local research analysis, not an official NLB leaderboard result.",
+        "",
+    ]
+    paths["report"].write_text("\n".join(lines), encoding="utf-8")
+    return paths

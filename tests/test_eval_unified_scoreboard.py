@@ -17,6 +17,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
+    load_neural_ode_diagnostics_scoreboard,
     load_neural_ode_pilot_scoreboard,
     load_recommended_window_cv_warning,
     load_seed_robustness_candidates,
@@ -1163,3 +1164,87 @@ def test_lfads_diagnostics_can_never_allow_full_evaluation(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="full LFADS evaluation"):
         load_lfads_diagnostics_scoreboard({"inputs": {"lfads_diagnostics_summary_path": str(path)}})
+
+
+def _write_neural_ode_diagnostics_summary(path: Path, **overrides: object) -> None:
+    summary = {
+        "integrity_checks_passed": True,
+        "dominant_failure_mode": "trained decoder limitation",
+        "exact_required_recovery": 0.0126,
+        "estimated_recoverable_gap": 0.02,
+        "targeted_repair_available": True,
+        "proposed_single_repair": "replace_or_retrain_only_the_heldout_readout",
+        "recommended_next_action": "run_targeted_neural_ode_repair_pilot",
+        "full_evaluation_allowed": False,
+    }
+    summary.update(overrides)
+    path.write_text(json.dumps(summary), encoding="utf-8")
+
+
+def test_neural_ode_diagnostics_load_without_replacing_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    _write_neural_ode_diagnostics_summary(path)
+
+    loaded = load_neural_ode_diagnostics_scoreboard(
+        {"inputs": {"neural_ode_diagnostics_summary_path": str(path)}}
+    )
+
+    assert loaded["neural_ode_diagnostics_available"] is True
+    assert loaded["neural_ode_integrity_checks_passed"] is True
+    assert loaded["neural_ode_dominant_failure_mode"] == "trained decoder limitation"
+    assert loaded["neural_ode_exact_required_recovery"] == 0.0126
+    assert loaded["neural_ode_targeted_repair_available"] is True
+    assert loaded["neural_ode_proposed_single_repair"] == (
+        "replace_or_retrain_only_the_heldout_readout"
+    )
+    assert loaded["neural_ode_diagnostics_recommended_next_action"] == (
+        "run_targeted_neural_ode_repair_pilot"
+    )
+    assert loaded["neural_ode_diagnostics_full_evaluation_allowed"] is False
+    assert "baseline_to_beat" not in loaded
+
+
+def test_missing_neural_ode_diagnostics_falls_back_cleanly(tmp_path: Path) -> None:
+    loaded = load_neural_ode_diagnostics_scoreboard(
+        {"inputs": {"neural_ode_diagnostics_summary_path": str(tmp_path / "missing.json")}}
+    )
+
+    assert loaded["neural_ode_diagnostics_available"] is False
+    assert loaded["neural_ode_diagnostics_full_evaluation_allowed"] is False
+
+
+def test_small_scoreboard_without_neural_ode_diagnostics_input_remains_unchanged() -> None:
+    loaded = load_neural_ode_diagnostics_scoreboard({"inputs": {}})
+
+    assert loaded["neural_ode_diagnostics_available"] is False
+    assert loaded["neural_ode_diagnostics_full_evaluation_allowed"] is False
+
+
+def test_malformed_neural_ode_diagnostics_fails_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    path.write_text(json.dumps({"integrity_checks_passed": True}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed neural-ODE diagnostics summary"):
+        load_neural_ode_diagnostics_scoreboard(
+            {"inputs": {"neural_ode_diagnostics_summary_path": str(path)}}
+        )
+
+
+def test_neural_ode_diagnostics_invalid_action_fails_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    _write_neural_ode_diagnostics_summary(path, recommended_next_action="declare_victory")
+
+    with pytest.raises(ValueError, match="invalid next action"):
+        load_neural_ode_diagnostics_scoreboard(
+            {"inputs": {"neural_ode_diagnostics_summary_path": str(path)}}
+        )
+
+
+def test_neural_ode_diagnostics_can_never_allow_full_evaluation(tmp_path: Path) -> None:
+    path = tmp_path / "diagnostics.json"
+    _write_neural_ode_diagnostics_summary(path, full_evaluation_allowed=True)
+
+    with pytest.raises(ValueError, match="full evaluation"):
+        load_neural_ode_diagnostics_scoreboard(
+            {"inputs": {"neural_ode_diagnostics_summary_path": str(path)}}
+        )

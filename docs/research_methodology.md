@@ -733,3 +733,40 @@ characterized against the retired model, but they never enter any selection: not
 not the gate, and not the next-action decision. The valid baseline to beat remains
 `factor_latent_train_selected`. Cross-model effective rank alone is not treated as evidence of
 superiority. The single-mask pilot never permits a final performance claim.
+
+## Deterministic neural-ODE targeted diagnostic
+
+Frozen-checkpoint diagnostics. The diagnostic loads the 25 already-selected pilot checkpoints, verifies
+their hashes, shared model/solver-configuration digests, and inner-validation selection, and reproduces
+every accepted outer score within `1e-10` before running any analysis. It never trains a model, never
+adjusts a hyperparameter, and never reselects a checkpoint; outer-evaluation diagnostics characterize the
+already-accepted model but cannot change which epoch or seed was selected.
+
+Train-only auxiliary readouts. The frozen latent linear readout fits a ridge decoder on factors
+extracted from the frozen, already-trained model: regularization is selected using only the inner-train/
+inner-validation split from the accepted pilot, the final mapping is fit on outer-training trials only,
+and it is scored exactly once on outer-evaluation data. The static-state counterfactual decodes the
+encoded initial state (`z0_mean`) through the same frozen factor and rate readouts with no temporal
+evolution — a direct test of whether the learned drift adds value beyond the encoder alone. The scalar
+rate calibration fits one global multiplier from outer-training rates and applies it once to outer
+predictions. None of these fits touch outer-evaluation data during fitting.
+
+Why counterfactual scores are not accepted performance. Every counterfactual method is labeled
+`diagnostic_only` in `counterfactual_diagnostics.csv` and `baseline_gap_decomposition.csv`. They exist to
+attribute the baseline gap to candidate causes (decoder capacity, learned dynamics, rate scale, temporal
+smoothing, negative-neuron concentration, checkpoint-selection mismatch, latent-dimension bottleneck),
+not to report an alternative model score. Gap-decomposition components may overlap and are not required
+to sum to the total gap.
+
+Single-repair evidence threshold. The exact required recovery is computed from the accepted pilot
+summary as `full_evaluation_margin_over_baseline - mean_paired_difference_vs_baseline`, never a rounded
+value. A targeted repair pilot is recommended only if integrity passed, the pilot is positive and stable
+(non-negative mean, positive-seed fraction and seed-mean std within the pilot's own gates), and the
+single largest actionable decomposition component's estimated recovery is at least the exact required
+recovery — never a broad hyperparameter grid, and never tuned against outer-evaluation performance.
+
+Neural-model retirement criteria. If integrity is sound, the pilot is stable, and no single frozen
+correction plausibly clears the required recovery, `retire_neural_ode_and_close_neural_model_search` is
+the only allowed outcome; broad architecture or objective tuning is explicitly prohibited by this
+diagnostic. `full_evaluation_allowed` and `broad_sweep_allowed` are always reported `false` regardless of
+outcome, and the gate is never loosened merely because a result is numerically close.

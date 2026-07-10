@@ -1016,3 +1016,71 @@ def load_neural_ode_pilot_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "neural_ode_pilot_final_claim_allowed": False,
         "neural_ode_pilot_summary_path": str(path),
     }
+
+
+NEURAL_ODE_DIAGNOSTICS_KEYS = (
+    "integrity_checks_passed",
+    "dominant_failure_mode",
+    "exact_required_recovery",
+    "estimated_recoverable_gap",
+    "targeted_repair_available",
+    "proposed_single_repair",
+    "recommended_next_action",
+    "full_evaluation_allowed",
+)
+
+NEURAL_ODE_DIAGNOSTICS_ACTIONS = (
+    "run_targeted_neural_ode_repair_pilot",
+    "run_full_neural_ode_evaluation",
+    "retire_neural_ode_and_close_neural_model_search",
+    "block_due_to_integrity_issue",
+)
+
+
+def load_neural_ode_diagnostics_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Optional post-hoc neural-ODE audit fields; never a ranked baseline candidate."""
+    path = _summary_path(config.get("inputs", {}).get("neural_ode_diagnostics_summary_path"))
+    fallback = {
+        "neural_ode_diagnostics_available": False,
+        "neural_ode_integrity_checks_passed": None,
+        "neural_ode_dominant_failure_mode": None,
+        "neural_ode_exact_required_recovery": None,
+        "neural_ode_estimated_recoverable_gap": None,
+        "neural_ode_targeted_repair_available": None,
+        "neural_ode_proposed_single_repair": None,
+        "neural_ode_diagnostics_recommended_next_action": None,
+        "neural_ode_diagnostics_full_evaluation_allowed": False,
+    }
+    if path is None or not path.exists():
+        return fallback
+    label = "neural-ODE diagnostics"
+    summary = _load_summary(path, label)
+    for key in NEURAL_ODE_DIAGNOSTICS_KEYS:
+        if key not in summary:
+            msg = f"malformed neural-ODE diagnostics summary: missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["full_evaluation_allowed"]):
+        msg = (
+            f"malformed neural-ODE diagnostics summary: full evaluation must remain false at {path}"
+        )
+        raise ValueError(msg)
+    action = str(summary["recommended_next_action"])
+    if action not in NEURAL_ODE_DIAGNOSTICS_ACTIONS:
+        msg = f"malformed neural-ODE diagnostics summary: invalid next action {action} at {path}"
+        raise ValueError(msg)
+    return {
+        "neural_ode_diagnostics_available": True,
+        "neural_ode_integrity_checks_passed": bool(summary["integrity_checks_passed"]),
+        "neural_ode_dominant_failure_mode": str(summary["dominant_failure_mode"]),
+        "neural_ode_exact_required_recovery": _required_float(
+            summary, "exact_required_recovery", path, label
+        ),
+        "neural_ode_estimated_recoverable_gap": _required_float(
+            summary, "estimated_recoverable_gap", path, label
+        ),
+        "neural_ode_targeted_repair_available": bool(summary["targeted_repair_available"]),
+        "neural_ode_proposed_single_repair": summary["proposed_single_repair"],
+        "neural_ode_diagnostics_recommended_next_action": action,
+        "neural_ode_diagnostics_full_evaluation_allowed": False,
+        "neural_ode_diagnostics_summary_path": str(path),
+    }

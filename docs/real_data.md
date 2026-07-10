@@ -1261,3 +1261,45 @@ selects exactly one of `run_full_neural_ode_evaluation`, `run_targeted_neural_od
 descriptive references only and never select the neural-ODE configuration. This is one held-out-neuron
 mask; it cannot support a final project-wide superiority claim. Generated results, checkpoints, reports,
 and figures remain ignored under `results/mc_maze_large/neural_ode_pilot/`.
+
+## MC_Maze Large deterministic neural-ODE targeted diagnostic
+
+The pilot gate failed only on the baseline margin (mean paired difference `-0.032633447273094814`
+against the `-0.02` requirement), so the exact required recovery is `-0.02 - (-0.032633447273094814)
+= 0.012633447273094813` bits/spike, loaded from the accepted pilot summary rather than a rounded
+value. Audit the 25 already-selected checkpoints with:
+
+```powershell
+python scripts/run_neural_ode_diagnostics.py --config configs/mc_maze_large_neural_ode_diagnostics.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+Integrity. All 25 checkpoints exist with matching SHA-256 hashes, share one frozen
+model/solver-configuration digest, were selected on `inner_validation`, and confirm
+`diffusion_scale == 0.0`. Every accepted outer score reproduced within `1e-10` with no retraining or
+reselection.
+
+Findings. Outer-training/inner-validation/outer-evaluation mean unified bits/spike =
+`0.235849 / 0.138117 / 0.141294`; the inner-to-outer gap is slightly negative (`-0.003177`),
+indicating no overfitting from checkpoint selection, while the larger train-to-inner gap
+(`0.097732`) reflects held-in-heavy training exposure rather than a generalization failure.
+Neuron score fractions: positive `0.785`, negative `0.200`. Factor effective rank `3.561` of 32
+(fraction `0.111`), a materially broader latent representation than the retired LFADS pilot's
+`1.216` (fraction `0.038`).
+
+Frozen counterfactuals (train-only fit, diagnostic-only, never replace the accepted checkpoint):
+a train-only linear readout on frozen factors recovered `0.0` bits/spike (the trained decoder is not
+a bottleneck; condition number `4.93`, not ill-conditioned or low-rank); a static encoder-only path
+with no evolved dynamics also recovered `0.0` (the learned drift dynamics are not currently hurting
+held-out prediction); a global scalar rate calibration recovered only `0.000038`.
+
+Gap decomposition. The largest single measured component was negative-neuron concentration at
+`0.005223` bits/spike, followed by late-window temporal failure at `0.004403`; both are below the
+required `0.012633` recovery. The unexplained remainder is `0.027410`.
+
+Decision. No single component reaches the exact required recovery, so
+`recommended_next_action = retire_neural_ode_and_close_neural_model_search`. Integrity passed and the
+pilot was stable, but no narrow, frozen correction is justified; broad architecture/objective tuning
+would be required, which this diagnostic explicitly prohibits. Full evaluation and broad sweeps remain
+disallowed; LFADS remains retired. Generated outputs stay ignored under
+`results/mc_maze_large/neural_ode_diagnostics/`.

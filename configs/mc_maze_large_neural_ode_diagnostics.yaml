@@ -1,0 +1,53 @@
+dataset:
+  name: mc_maze_large
+  expected_hash: 074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+
+protocol:
+  trial_source: trial_aware_raw
+  window_name: behavior_speed_peak_centered_1p28s
+  target_bin_size_ms: 20
+  repeat_index: 0
+  fold_indices: [0, 1, 2, 3, 4]
+  initialization_seeds: [2027, 2028, 2029, 2030, 2031]
+
+inputs:
+  pilot_config_path: configs/mc_maze_large_neural_ode_pilot.yaml
+  pilot_summary_path: results/mc_maze_large/neural_ode_pilot/neural_ode_pilot_summary.json
+  pilot_runs_path: results/mc_maze_large/neural_ode_pilot/neural_ode_pilot_runs.csv
+  checkpoint_manifest_path: results/mc_maze_large/neural_ode_pilot/checkpoint_manifest.csv
+  baseline_scores_path: results/mc_maze_large/baseline_suite/outer_fold_scores.csv
+  baseline_summary_path: results/mc_maze_large/baseline_suite/baseline_suite_summary.json
+  lfads_diagnostics_path: results/mc_maze_large/lfads_diagnostics/lfads_diagnostics_summary.json
+
+diagnostics:
+  evaluate_outer_training: true
+  evaluate_inner_validation: true
+  evaluate_outer_evaluation: true
+  compute_per_neuron_metrics: true
+  compute_per_time_bin_metrics: true
+  compute_latent_spectrum: true
+  compute_drift_statistics: true
+  compute_decoder_spectrum: true
+  compute_rate_calibration: true
+  compute_temporal_smoothness: true
+  compute_objective_balance: true
+  run_frozen_latent_linear_readout: true
+  run_frozen_state_static_decoder: true
+  run_dynamics_ablation_counterfactual: true
+  run_scalar_rate_calibration: true
+
+thresholds:
+  train_inner_gap_warning: 0.05
+  inner_outer_gap_warning: 0.05
+  low_effective_rank_fraction: 0.10
+  decoder_condition_warning: 10000.0
+  severe_temporal_smoothing_ratio: 0.50
+
+decision:
+  full_evaluation_currently_allowed: false
+  allow_one_targeted_repair: true
+  prohibit_broad_sweep: true
+  default_when_no_clear_repair: retire_neural_ode_and_close_neural_model_search
+
+reporting:
+  output_dir: results/mc_maze_large/neural_ode_diagnostics

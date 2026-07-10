@@ -663,3 +663,21 @@ of `run_full_neural_ode_evaluation`, `run_targeted_neural_ode_diagnostic`,
 held-out-neuron-mask feasibility pilot: it cannot support a final model-performance claim or replace the
 frozen baseline. Generated results, checkpoints, reports, and figures are local ignored artifacts under
 `results/mc_maze_large/neural_ode_pilot/`, not official NLB leaderboard results.
+
+The pilot's gate failed on the baseline margin only (paired difference `-0.032633` vs a `-0.02`
+requirement). Audit the 25 accepted checkpoints without retraining or reselecting anything:
+
+```powershell
+python scripts/run_neural_ode_diagnostics.py --config configs/mc_maze_large_neural_ode_diagnostics.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+The diagnostic reproduces every accepted outer score, decomposes the baseline gap into candidate
+causes (decoder conditioning, learned dynamics, rate calibration, temporal smoothing, negative-neuron
+concentration, and more), and fits train-only frozen counterfactuals (a linear readout on frozen
+factors, a static encoder-only path with no evolved dynamics, and a scalar rate calibration) purely
+for diagnosis — none of them retrain or replace the accepted model. It can recommend only
+`run_targeted_neural_ode_repair_pilot`, `run_full_neural_ode_evaluation`,
+`retire_neural_ode_and_close_neural_model_search`, or `block_due_to_integrity_issue`; broad
+hyperparameter tuning is never permitted and full evaluation stays blocked unless the declared gate
+passes. Generated outputs stay under ignored `results/mc_maze_large/neural_ode_diagnostics/`.
