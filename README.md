@@ -297,6 +297,8 @@ The source is DANDI dandiset `000138`, version `0.220113.0407` (`https://gui.dan
 
 Inspection reports one record per candidate file with the detected dataset and variant, NWB identifier, session description, subject, acquisition series, processing modules, trial table presence and count, unit count, and behavior series candidates. Variant detection reads NWB metadata first and falls back to the filename only when metadata is unavailable, so a Small file under a Large config is rejected, as is a mix of incompatible sessions.
 
+MC_Maze Large real ingestion is verified: `spikes [500, 2006, 162]`, `behavior [500, 2006, 4]` at a 5 ms source bin, 350/75/75 train/validation/test trials, 122 held-in and 40 held-out neurons, dataset hash `074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84`, reproducible across repeated preparations. Under `crop_to_min`, 296795 of 916892 raw spikes across 450340 bins are excluded and reported as warnings. See `docs/real_data.md` for the full record. Next: movement-window protocol validation.
+
 Large begins as protocol transfer, not model tuning. This milestone is ingestion only: no factor-latent, neural model, stratified cross-validation, window selection, or benchmark comparison is run. Later Large reporting inherits the frozen MC_Maze Small protocol — 20 ms bins, the peak-speed-centered 1.28-second window candidate, stratified cross-validation, and the same claim-safety enforcement. Nothing here is an official NLB leaderboard result.
 
 ## Data validation report

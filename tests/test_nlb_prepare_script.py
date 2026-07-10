@@ -61,6 +61,11 @@ def _mock_dataset() -> NeuralDataset:
     )
 
 
+def metadata_hash(processed: Path) -> str:
+    text = (processed / "mc_maze_large_metadata.json").read_text("utf-8")
+    return str(json.loads(text)["dataset_hash"])
+
+
 def _local_config(tmp_path: Path) -> Path:
     raw = yaml.safe_load(LARGE_CONFIG.read_text(encoding="utf-8"))
     raw["dataset"]["processed_root"] = str(tmp_path / "processed")
@@ -149,7 +154,7 @@ def test_mock_large_ingestion_writes_outputs_and_prints_fields(
     assert provenance["dandiset_id"] == "000138"
     assert provenance["automatic_download_performed"] is False
     assert provenance["config_digest"]
-    assert provenance["processed_dataset_hash"]
+    assert provenance["processed_dataset_hash"] == metadata_hash(processed)
     assert provenance["creation_command"].startswith("python scripts/prepare_nlb_data.py")
 
     with np.load(npz_path, allow_pickle=False) as data:

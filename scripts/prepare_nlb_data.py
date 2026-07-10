@@ -163,6 +163,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     metadata_path = processed_root / config.dataset.metadata_filename
     provenance_path = processed_root / config.dataset.provenance_filename
     hash_limit_bytes = config.provenance.hash_size_limit_mb * 1024 * 1024
+    # Mirror save_neural_dataset so provenance records the same hash the artifact carries.
+    if dataset.behavior is not None:
+        dataset.metadata["dataset_hash_includes_behavior"] = True
     dataset_hash = compute_dataset_hash(dataset)
     relative_config = _relative(config_path, repo_root)
     provenance = write_provenance(

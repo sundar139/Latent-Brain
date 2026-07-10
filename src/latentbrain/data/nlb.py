@@ -317,6 +317,7 @@ def describe_nwb_file(path: Path) -> dict[str, Any]:
     info: dict[str, Any] = {
         "nwb_identifier": None,
         "session_description": None,
+        "session_id": None,
         "subject_id": None,
         "available_acquisition_series": [],
         "available_processing_modules": [],
@@ -341,6 +342,7 @@ def describe_nwb_file(path: Path) -> dict[str, Any]:
             info["metadata_read"] = True
             info["nwb_identifier"] = _h5_text(handle, "identifier")
             info["session_description"] = _h5_text(handle, "session_description")
+            info["session_id"] = _h5_text(handle, "general/session_id")
             info["subject_id"] = _h5_text(handle, "general/subject/subject_id")
             acquisition = handle.get("acquisition")
             if acquisition is not None:
@@ -371,6 +373,10 @@ def describe_nwb_file(path: Path) -> dict[str, Any]:
 
 def detect_variant(info: dict[str, Any], path: Path) -> tuple[str | None, str]:
     """Detect the MC_Maze variant from NWB metadata first, filename only as fallback."""
+    # Real NLB MC_Maze assets name the variant in general/session_id ("small"/"large").
+    session_id = str(info.get("session_id") or "").strip().lower()
+    if session_id in KNOWN_VARIANTS:
+        return session_id, "nwb_metadata"
     for field in ("session_description", "nwb_identifier"):
         text = str(info.get(field) or "").lower()
         for variant in KNOWN_VARIANTS:

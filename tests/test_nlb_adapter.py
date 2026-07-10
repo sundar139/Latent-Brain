@@ -134,6 +134,21 @@ def test_variant_detection_prefers_nwb_metadata_over_filename(tmp_path: Path) ->
     assert (variant, evidence) == ("large", "nwb_metadata")
 
 
+def test_variant_detection_reads_session_id_over_contradicting_filename(tmp_path: Path) -> None:
+    """Real NLB assets carry the variant in general/session_id, not in the description."""
+    h5py = pytest.importorskip("h5py")
+    path = tmp_path / SMALL_TRAIN
+    with h5py.File(path, "w") as handle:
+        handle["identifier"] = "368fc9f0-0b95-11ec-a513-5fc582312949"
+        handle["session_description"] = "Data from monkey Jenkins performing center-out reaching."
+        handle.create_dataset("general/session_id", data="large")
+
+    info = describe_nwb_file(path)
+
+    assert info["session_id"] == "large"
+    assert detect_variant(info, path) == ("large", "nwb_metadata")
+
+
 def test_variant_detection_falls_back_to_filename(tmp_path: Path) -> None:
     small = tmp_path / SMALL_TRAIN
     large = tmp_path / LARGE_TRAIN
