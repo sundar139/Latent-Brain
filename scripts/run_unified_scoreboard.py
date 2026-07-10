@@ -39,6 +39,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
+    load_neural_ode_pilot_scoreboard,
     load_recommended_window_cv_warning,
     load_seed_robustness_candidates,
     load_split_audit_warning,
@@ -255,6 +256,7 @@ def run_dataset_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
     if str(config["dataset"]["name"]) == "mc_maze_large":
         summary.update(load_lfads_pilot_scoreboard(config))
         summary.update(load_lfads_diagnostics_scoreboard(config))
+        summary.update(load_neural_ode_pilot_scoreboard(config))
     output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
     write_dataset_scoreboard_outputs(output_dir, summary)
     return {"summary": summary, "output_dir": output_dir}
@@ -525,6 +527,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "lfads_estimated_recoverable_gap",
             "lfads_recommended_next_action",
             "lfads_full_evaluation_allowed",
+            "neural_ode_pilot_available",
+            "neural_ode_pilot_complete",
+            "neural_ode_pilot_mean",
+            "neural_ode_pilot_seed_std",
+            "neural_ode_pilot_positive_seed_fraction",
+            "neural_ode_pilot_mean_difference_vs_baseline",
+            "neural_ode_solver_stability_passed",
+            "neural_ode_full_evaluation_recommended",
+            "neural_ode_recommended_next_action",
+            "neural_ode_pilot_final_claim_allowed",
             "single_split_results_reportable",
             "official_leaderboard_claim",
         ):

@@ -1208,3 +1208,56 @@ and insufficient latent utilization as secondary failures. No single frozen repa
 the `0.04` repair threshold. The required next action is
 `retire_lfads_and_start_neural_ode_pilot`; that action was not started here. Full multi-repeat LFADS
 evaluation remains disallowed.
+
+## MC_Maze Large deterministic neural-ODE feasibility pilot
+
+The frozen `retire_lfads_and_start_neural_ode_pilot` decision is executed by:
+
+```powershell
+python scripts/run_neural_ode_pilot.py --config configs/mc_maze_large_neural_ode_pilot.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+Protocol. The pilot reuses the LFADS pilot's exact controls: trial-aware peak-speed-centered 1.28 s
+window extracted at 5 ms then rebinned to 20 ms (shape `[500, 64, 162]`); outer repeat 0, folds 0-4;
+the frozen repeat-0 mask (122 held-in inputs, 40 scored held-out neurons); and initialization seeds
+`2027`-`2031`, one per fold — 25 runs. Every declared seed is applied before model construction,
+parameter initialization, and data-loader creation; no `seed + run_index`. The deterministic
+neural-ODE is the existing NeuralSDE Euler latent generator with `diffusion_scale = 0.0`.
+
+Configuration provenance. Dimensions and objective are frozen from the accepted MC_Maze Small
+neural-ODE refinement best run
+`run_008_enc64_drift64_lat32_fac32_drop0p1_hw6p0_kl0p01_kw10_dr0p0001_cosine`: latent 32, factor 32,
+encoder hidden 64, drift hidden 64, Tanh drift net, dt 0.02 s, 50 epochs, AdamW lr 7.5e-4, weight
+decay 1e-5, gradient clip 5.0, cosine schedule, held-out loss weight 6.0, KL scale 0.01 with 10-epoch
+warmup, input dropout 0.1, drift regularization 1e-4, per-observed-spike-bin normalization. Only the
+input/output dimensions (122/162 vs Small's 106/142) and the batch size context were adapted to Large;
+the diffusion hidden width (32) is retained for construction though diffusion is disabled. No Large
+outer score was used to pick any value.
+
+Selection and leakage. Checkpoints maximize inner-validation unified bits/spike on a stratified inner
+split of each outer-training set (`split_seed_base 6061 + fold_index`); outer-evaluation trials never
+enter checkpoint selection, early stopping, normalization, calibration, or configuration. The
+train-heldout mean-rate reference is recomputed from outer-training trials for each fold. Held-in and
+held-out neuron sets are disjoint and assert-checked.
+
+Deterministic dynamics and diagnostics. `solver_diagnostics.csv` records solver name, integration step
+and step count, solver-failure and non-finite-state counts, maximum/mean latent-state and drift norms,
+terminal-state norm, gradient norm, and integration runtime. A run fails on any non-finite latent state
+or rate, a solver exception, or a state/drift norm above the configured hard limits (100.0).
+`latent_diagnostics.csv` records per-dimension latent and factor variance, covariance eigenvalues,
+effective rank and fraction, near-zero-variance counts, and temporal first/second-difference variance,
+compared descriptively to the accepted LFADS factor effective rank `1.2161` (fraction `0.0380`). The
+before/near/after-peak scores are compared to the accepted LFADS values (before `0.03636918`, near
+`0.00264721`, after `0.03198509`) to test whether the near-peak collapse is reproduced, attenuated,
+absent, or unresolved.
+
+Gate and decision. `full_evaluation_recommendation.json` proceeds only if all 25 runs complete with
+finite scores/losses, every checkpoint comes from inner validation, leakage and solver-stability checks
+pass, mean unified bits/spike is at least 0, positive seed fraction is at least 0.60, seed-mean std is
+at most 0.05, and the mean paired difference clears `-0.02`. `next_action_recommendation.json` then
+selects exactly one of `run_full_neural_ode_evaluation`, `run_targeted_neural_ode_diagnostic`,
+`retire_neural_ode_and_close_neural_model_search`, or `block_due_to_integrity_issue`. LFADS values are
+descriptive references only and never select the neural-ODE configuration. This is one held-out-neuron
+mask; it cannot support a final project-wide superiority claim. Generated results, checkpoints, reports,
+and figures remain ignored under `results/mc_maze_large/neural_ode_pilot/`.

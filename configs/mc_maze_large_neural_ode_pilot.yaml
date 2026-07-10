@@ -1,0 +1,136 @@
+dataset:
+  name: mc_maze_large
+  expected_hash: 074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+  raw_dir: data/raw/nlb/mc_maze_large
+  original_bin_size_ms: 5
+
+trial_source:
+  type: trial_aware_raw
+  allow_global_crop_to_min: false
+
+window:
+  name: behavior_speed_peak_centered_1p28s
+  duration_seconds: 1.28
+  extract_before_rebin: true
+
+binning:
+  target_bin_size_ms: 20
+
+outer_protocol:
+  assignments_path: results/mc_maze_large/recommended_window_cv/recommended_window_fold_assignments.csv
+  baseline_scores_path: results/mc_maze_large/baseline_suite/outer_fold_scores.csv
+  baseline_summary_path: results/mc_maze_large/baseline_suite/baseline_suite_summary.json
+  readiness_path: results/mc_maze_large/baseline_suite/neural_reevaluation_readiness.json
+  lfads_pilot_summary_path: results/mc_maze_large/lfads_pilot/lfads_pilot_summary.json
+  lfads_diagnostics_path: results/mc_maze_large/lfads_diagnostics/lfads_diagnostics_summary.json
+  repeat_index: 0
+  fold_indices: [0, 1, 2, 3, 4]
+  reuse_exact_assignments: true
+  reuse_exact_neuron_mask: true
+
+initialization:
+  seeds: [2027, 2028, 2029, 2030, 2031]
+  seed_policy: exact_declared_seed
+  deterministic_algorithms: true
+
+# Model + objective frozen from the accepted MC_Maze Small deterministic neural-ODE
+# refinement best run: run_008_enc64_drift64_lat32_fac32_drop0p1_hw6p0_kl0p01_kw10_dr0p0001_cosine
+# (results/mc_maze_small/neural_ode_refinement/neural_ode_refinement_summary.json).
+# input_dim/output_dim are dimensional and derive from the Large repeat-0 mask
+# (122 held-in, 162 total). All other values are reused verbatim.
+model:
+  name: deterministic_neural_ode
+  input_dim_source: heldin_neurons
+  output_dim_source: all_neurons
+  diffusion_enabled: false
+  latent_dim: 32
+  factor_dim: 32
+  encoder_hidden_dim: 64
+  drift_hidden_dim: 64
+  diffusion_hidden_dim: 32
+  activation: tanh
+  dropout_rate: 0.0
+  log_rate_min: -12.0
+  log_rate_max: 8.0
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+
+dynamics:
+  solver: euler
+  integration_step_seconds: 0.02
+  integration_horizon_seconds: 1.28
+  adjoint: false
+  maximum_state_norm: 100.0
+  maximum_drift_norm: 100.0
+  fail_on_nonfinite_state: true
+  fail_on_solver_error: true
+
+training:
+  device: cuda
+  epochs: 50
+  batch_size: 4
+  num_workers: 0
+  learning_rate: 7.5e-4
+  weight_decay: 1.0e-5
+  gradient_clip_norm: 5.0
+  optimizer: adamw
+  scheduler: cosine
+  early_stopping_patience: 20
+  minimum_epochs: 40
+  mixed_precision: true
+  reconstruction_loss: poisson_nll
+  checkpoint_metric: inner_validation_unified_bits_per_spike
+  checkpoint_mode: max
+  heldin_loss_weight: 1.0
+  heldout_loss_weight: 6.0
+  loss_normalization: per_observed_spike_bin
+  kl_scale: 0.01
+  kl_warmup_epochs: 10
+  drift_regularization: 1.0e-4
+  input_dropout_rate: 0.1
+
+inner_checkpoint_selection:
+  enabled: true
+  validation_fraction: 0.15
+  split_seed_base: 6061
+  stratified: true
+  use_outer_evaluation_for_selection: false
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_metric: unified_bits_per_spike
+
+baseline:
+  method: factor_latent_train_selected
+  expected_overall_mean: 0.135544701273979
+  pilot_repeat_mean: 0.17392712874670385
+  comparison_unit: fold
+  load_pilot_repeat_fold_scores: true
+
+lfads_reference:
+  pilot_mean: 0.02925965290281923
+  use_for_descriptive_comparison_only: true
+
+pilot_gates:
+  require_all_runs_complete: true
+  maximum_failed_run_fraction: 0.0
+  require_finite_scores: true
+  require_finite_losses: true
+  require_checkpoint_from_inner_validation: true
+  require_solver_stability: true
+  maximum_nonfinite_run_fraction: 0.0
+  minimum_mean_unified_bits_per_spike: 0.0
+  minimum_positive_seed_fraction: 0.60
+  maximum_seed_mean_std: 0.05
+  full_evaluation_margin_over_baseline: -0.02
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+
+reporting:
+  output_dir: results/mc_maze_large/neural_ode_pilot

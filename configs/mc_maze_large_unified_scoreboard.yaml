@@ -7,6 +7,7 @@ inputs:
   baseline_suite_summary_path: results/mc_maze_large/baseline_suite/baseline_suite_summary.json
   lfads_pilot_summary_path: results/mc_maze_large/lfads_pilot/lfads_pilot_summary.json
   lfads_diagnostics_summary_path: results/mc_maze_large/lfads_diagnostics/lfads_diagnostics_summary.json
+  neural_ode_pilot_summary_path: results/mc_maze_large/neural_ode_pilot/neural_ode_pilot_summary.json
 
 reporting:
   output_dir: results/mc_maze_large/unified_scoreboard

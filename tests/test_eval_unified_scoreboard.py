@@ -17,6 +17,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
+    load_neural_ode_pilot_scoreboard,
     load_recommended_window_cv_warning,
     load_seed_robustness_candidates,
     load_split_audit_warning,
@@ -1026,6 +1027,82 @@ def test_lfads_pilot_can_never_enable_final_claim(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="final claim"):
         load_lfads_pilot_scoreboard({"inputs": {"lfads_pilot_summary_path": str(path)}})
+
+
+def _write_neural_ode_pilot_summary(path: Path, **overrides: object) -> None:
+    summary = {
+        "completed_runs": 25,
+        "failed_runs": 0,
+        "mean_unified_bits_per_spike": 0.03,
+        "seed_mean_std": 0.001,
+        "positive_seed_fraction": 1.0,
+        "mean_paired_difference_vs_baseline": -0.14,
+        "solver_stability_passed": True,
+        "full_evaluation_recommended": False,
+        "recommended_next_action": "retire_neural_ode_and_close_neural_model_search",
+        "pilot_final_claim_allowed": False,
+    }
+    summary.update(overrides)
+    path.write_text(json.dumps(summary), encoding="utf-8")
+
+
+def test_neural_ode_pilot_fields_load_without_replacing_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "neural_ode_pilot.json"
+    _write_neural_ode_pilot_summary(path)
+
+    loaded = load_neural_ode_pilot_scoreboard(
+        {"inputs": {"neural_ode_pilot_summary_path": str(path)}}
+    )
+
+    assert loaded["neural_ode_pilot_available"] is True
+    assert loaded["neural_ode_pilot_complete"] is True
+    assert loaded["neural_ode_pilot_mean"] == 0.03
+    assert loaded["neural_ode_solver_stability_passed"] is True
+    assert loaded["neural_ode_recommended_next_action"] == (
+        "retire_neural_ode_and_close_neural_model_search"
+    )
+    assert loaded["neural_ode_pilot_final_claim_allowed"] is False
+    assert "baseline_to_beat" not in loaded
+
+
+def test_missing_neural_ode_pilot_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    loaded = load_neural_ode_pilot_scoreboard(
+        {"inputs": {"neural_ode_pilot_summary_path": str(tmp_path / "missing.json")}}
+    )
+
+    assert loaded["neural_ode_pilot_available"] is False
+    assert loaded["neural_ode_pilot_final_claim_allowed"] is False
+
+
+def test_small_scoreboard_without_neural_ode_pilot_input_remains_unchanged() -> None:
+    loaded = load_neural_ode_pilot_scoreboard({"inputs": {}})
+
+    assert loaded["neural_ode_pilot_available"] is False
+    assert loaded["neural_ode_pilot_final_claim_allowed"] is False
+
+
+def test_malformed_neural_ode_pilot_summary_fails_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "neural_ode_pilot.json"
+    path.write_text(json.dumps({"completed_runs": 25}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed neural-ODE pilot summary"):
+        load_neural_ode_pilot_scoreboard({"inputs": {"neural_ode_pilot_summary_path": str(path)}})
+
+
+def test_neural_ode_pilot_invalid_action_fails_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "neural_ode_pilot.json"
+    _write_neural_ode_pilot_summary(path, recommended_next_action="declare_victory")
+
+    with pytest.raises(ValueError, match="invalid next action"):
+        load_neural_ode_pilot_scoreboard({"inputs": {"neural_ode_pilot_summary_path": str(path)}})
+
+
+def test_neural_ode_pilot_can_never_enable_final_claim(tmp_path: Path) -> None:
+    path = tmp_path / "neural_ode_pilot.json"
+    _write_neural_ode_pilot_summary(path, pilot_final_claim_allowed=True)
+
+    with pytest.raises(ValueError, match="final claim"):
+        load_neural_ode_pilot_scoreboard({"inputs": {"neural_ode_pilot_summary_path": str(path)}})
 
 
 def _write_lfads_diagnostics_summary(path: Path) -> None:

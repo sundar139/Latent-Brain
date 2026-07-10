@@ -688,3 +688,48 @@ A targeted repair pilot requires one technically actionable failure mode and a m
 recovery estimate above 0.04 unified bits/spike under one frozen repair configuration. Broad tuning,
 overlapping upper bounds, or an unexplained stable deficit are insufficient. Otherwise LFADS is
 retired for this track; any integrity failure blocks all successor experiments.
+
+## Deterministic neural-ODE feasibility pilot
+
+The neural-ODE pilot is the successor selected by the LFADS retirement decision and inherits the LFADS
+pilot's protocol exactly: repeat 0, folds 0-4, the frozen 122/40 repeat-0 mask, the peak-speed-centered
+1.28 s / 20 ms evaluation window, nested inner-validation checkpoint selection, and the five fixed
+initialization seeds `2027`-`2031` applied before construction with no seed arithmetic. Only the model
+changes. This keeps the neural-ODE result comparable to the LFADS pilot as a controlled substitution
+rather than a new protocol.
+
+Deterministic dynamics: diffusion deferral. The model is the existing NeuralSDE Euler latent generator
+with `diffusion_scale = 0.0`, so the latent trajectory is a deterministic Euler integration of a learned
+drift field with no stochastic term. Diffusion is deferred, not merely unused: the earlier MC_Maze Small
+result showed the stochastic term contributed nothing on this co-smoothing task, so a neural-SDE or
+switching model is only justified if deterministic continuous-time dynamics first prove competitive.
+Evaluating the deterministic model in isolation is the prerequisite gate for any later stochastic work.
+
+Solver-stability requirements. Because the latent state is produced by explicit numerical integration,
+the pilot treats integration health as a first-class result. Each run records solver name, integration
+step and step count, maximum and mean latent-state and drift norms, terminal-state norm, gradient norm,
+non-finite-state and solver-failure counts, and integration runtime. A run fails hard on any non-finite
+latent state or rate, a solver exception, or a state/drift norm exceeding the configured limit; invalid
+latent states are never silently clamped. Rate clipping at the accepted scorer bounds is permitted and
+recorded. Solver instability blocks all progression, mirroring the LFADS integrity rule.
+
+Configuration provenance from Small. The model dimensions and full objective are transferred verbatim
+from the accepted MC_Maze Small deterministic neural-ODE refinement best run; only the input/output
+neuron counts are adapted to the Large mask. No Large outer-evaluation score is allowed to influence any
+architecture or objective value, which keeps configuration selection independent of the quantity being
+evaluated.
+
+One-repeat gate. As with LFADS, 25 fits over one neuron mask expose training, checkpoint, runtime,
+memory, solver, and initialization failures without spending five-repeat compute, but the five folds
+share one mask and overlapping training sets and therefore cannot support a final model comparison. Full
+five-repeat evaluation proceeds only if all 25 runs complete with finite scores and losses, every
+checkpoint comes from inner validation, leakage and solver-stability checks pass, mean unified bits/spike
+is non-negative, at least 60 percent of seed means are positive, seed-mean standard deviation is at most
+0.05, and the mean paired difference from `factor_latent_train_selected` is no worse than -0.02.
+
+Descriptive LFADS comparison versus model selection. The accepted LFADS pilot mean, factor effective
+rank, and before/near/after-peak scores are carried as descriptive references so the neural-ODE can be
+characterized against the retired model, but they never enter any selection: not checkpoint selection,
+not the gate, and not the next-action decision. The valid baseline to beat remains
+`factor_latent_train_selected`. Cross-model effective rank alone is not treated as evidence of
+superiority. The single-mask pilot never permits a final performance claim.

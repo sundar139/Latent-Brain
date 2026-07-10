@@ -942,3 +942,77 @@ def load_lfads_diagnostics_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "lfads_full_evaluation_allowed": False,
         "lfads_diagnostics_summary_path": str(path),
     }
+
+
+NEURAL_ODE_PILOT_KEYS = (
+    "completed_runs",
+    "failed_runs",
+    "mean_unified_bits_per_spike",
+    "seed_mean_std",
+    "positive_seed_fraction",
+    "mean_paired_difference_vs_baseline",
+    "solver_stability_passed",
+    "full_evaluation_recommended",
+    "recommended_next_action",
+    "pilot_final_claim_allowed",
+)
+
+NEURAL_ODE_NEXT_ACTIONS = (
+    "run_full_neural_ode_evaluation",
+    "run_targeted_neural_ode_diagnostic",
+    "retire_neural_ode_and_close_neural_model_search",
+    "block_due_to_integrity_issue",
+)
+
+
+def load_neural_ode_pilot_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Optional one-repeat deterministic neural-ODE feasibility fields; never a baseline."""
+    path = _summary_path(config.get("inputs", {}).get("neural_ode_pilot_summary_path"))
+    fallback = {
+        "neural_ode_pilot_available": False,
+        "neural_ode_pilot_complete": False,
+        "neural_ode_pilot_mean": None,
+        "neural_ode_pilot_seed_std": None,
+        "neural_ode_pilot_positive_seed_fraction": None,
+        "neural_ode_pilot_mean_difference_vs_baseline": None,
+        "neural_ode_solver_stability_passed": None,
+        "neural_ode_full_evaluation_recommended": False,
+        "neural_ode_recommended_next_action": None,
+        "neural_ode_pilot_final_claim_allowed": False,
+    }
+    if path is None or not path.exists():
+        return fallback
+    label = "neural-ODE pilot"
+    summary = _load_summary(path, label)
+    for key in NEURAL_ODE_PILOT_KEYS:
+        if key not in summary:
+            msg = f"malformed neural-ODE pilot summary: missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["pilot_final_claim_allowed"]):
+        msg = f"malformed neural-ODE pilot summary: final claim must remain false at {path}"
+        raise ValueError(msg)
+    action = str(summary["recommended_next_action"])
+    if action not in NEURAL_ODE_NEXT_ACTIONS:
+        msg = f"malformed neural-ODE pilot summary: invalid next action {action} at {path}"
+        raise ValueError(msg)
+    completed = int(summary["completed_runs"])
+    failed = int(summary["failed_runs"])
+    return {
+        "neural_ode_pilot_available": True,
+        "neural_ode_pilot_complete": completed == 25 and failed == 0,
+        "neural_ode_pilot_mean": _required_float(
+            summary, "mean_unified_bits_per_spike", path, label
+        ),
+        "neural_ode_pilot_seed_std": _required_float(summary, "seed_mean_std", path, label),
+        "neural_ode_pilot_positive_seed_fraction": _required_float(
+            summary, "positive_seed_fraction", path, label
+        ),
+        "neural_ode_pilot_mean_difference_vs_baseline": _required_float(
+            summary, "mean_paired_difference_vs_baseline", path, label
+        ),
+        "neural_ode_solver_stability_passed": bool(summary["solver_stability_passed"]),
+        "neural_ode_full_evaluation_recommended": bool(summary["full_evaluation_recommended"]),
+        "neural_ode_recommended_next_action": action,
+        "neural_ode_pilot_final_claim_allowed": False,
+        "neural_ode_pilot_summary_path": str(path),
+    }

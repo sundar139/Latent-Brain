@@ -3760,6 +3760,175 @@ def write_lfads_pilot_outputs(
     return paths
 
 
+def write_neural_ode_pilot_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tables: dict[str, pd.DataFrame],
+    protocol: dict[str, Any],
+    recommendation: dict[str, Any],
+    next_action: dict[str, Any],
+) -> dict[str, Path]:
+    """Write claim-safe deterministic neural-ODE feasibility outputs; artifacts remain ignored."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "neural_ode_pilot_summary.json",
+        "neural_ode_pilot_runs": output_dir / "neural_ode_pilot_runs.csv",
+        "fold_seed_scores": output_dir / "fold_seed_scores.csv",
+        "seed_summary": output_dir / "seed_summary.csv",
+        "fold_summary": output_dir / "fold_summary.csv",
+        "paired_baseline_comparison": output_dir / "paired_baseline_comparison.csv",
+        "lfads_descriptive_comparison": output_dir / "lfads_descriptive_comparison.csv",
+        "checkpoint_manifest": output_dir / "checkpoint_manifest.csv",
+        "solver_diagnostics": output_dir / "solver_diagnostics.csv",
+        "latent_diagnostics": output_dir / "latent_diagnostics.csv",
+        "training_resource_summary": output_dir / "training_resource_summary.csv",
+        "protocol": output_dir / "neural_ode_pilot_protocol.yaml",
+        "recommendation": output_dir / "full_evaluation_recommendation.json",
+        "next_action": output_dir / "next_action_recommendation.json",
+        "report": output_dir / "neural_ode_pilot_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["recommendation"].write_text(
+        json.dumps(recommendation, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["next_action"].write_text(
+        json.dumps(next_action, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["protocol"].write_text(yaml.safe_dump(protocol, sort_keys=False), encoding="utf-8")
+    for key in (
+        "neural_ode_pilot_runs",
+        "fold_seed_scores",
+        "seed_summary",
+        "fold_summary",
+        "paired_baseline_comparison",
+        "lfads_descriptive_comparison",
+        "checkpoint_manifest",
+        "solver_diagnostics",
+        "latent_diagnostics",
+        "training_resource_summary",
+    ):
+        tables[key].to_csv(paths[key], index=False)
+
+    lines = [
+        "# MC_Maze Large Deterministic Neural-ODE Feasibility Pilot",
+        "",
+        "## Scope",
+        "",
+        "This pilot assesses feasibility, stability, and dynamics on one held-out-neuron mask. "
+        "It is not a final multi-repeat model comparison.",
+        "Diffusion is disabled; this is a deterministic neural-ODE pilot.",
+        "",
+        "## Frozen evaluation protocol",
+        "",
+        "Event-centered inputs were extracted from the trial-aware source before rebinning.",
+        f"Shape: {summary.get('data_shape')}; repeat: {summary.get('repeat_index')}; "
+        f"folds: {summary.get('fold_indices')}; seeds: {summary.get('initialization_seeds')}.",
+        f"Input neurons: {summary.get('input_neuron_count')}; output neurons: "
+        f"{summary.get('output_neuron_count')}; scored held-out neurons: "
+        f"{summary.get('heldout_neuron_count')}.",
+        "",
+        "## Configuration provenance",
+        "",
+        "Model dimensions and objective are frozen from the accepted MC_Maze Small deterministic "
+        "neural-ODE refinement best run; only input/output dimensions were adapted to the Large "
+        "repeat-0 neuron mask.",
+        "",
+        "## Seed and checkpoint controls",
+        "",
+        "Each declared seed is applied before model construction, parameter initialization, and "
+        "data-loader creation; no seed arithmetic is used.",
+        "Outer-evaluation data were not used for checkpoint selection, early stopping, "
+        "normalization, calibration, or configuration selection.",
+        f"Checkpoint selection split: {summary.get('checkpoint_selection_split')}; "
+        f"selection valid: {summary.get('checkpoint_selection_valid')}; leakage checks passed: "
+        f"{summary.get('leakage_checks_passed')}.",
+        "",
+        "## Deterministic dynamics",
+        "",
+        f"Solver: {summary.get('solver')}; integration step (s): "
+        f"{summary.get('integration_step_seconds')}; diffusion enabled: "
+        f"{summary.get('diffusion_enabled')}.",
+        "Diffusion is unnecessary on this task, consistent with the earlier MC_Maze Small result.",
+        "",
+        "## Solver stability",
+        "",
+        f"Solver stability passed: {summary.get('solver_stability_passed')}.",
+        _markdown_table(tables["solver_diagnostics"]),
+        "",
+        "## Pilot scores",
+        "",
+        f"Completed runs: {summary.get('completed_runs')}; failed runs: "
+        f"{summary.get('failed_runs')}.",
+        f"Mean unified bits/spike: {summary.get('mean_unified_bits_per_spike')}; run-level std: "
+        f"{summary.get('run_level_score_std')}; seed-mean std: {summary.get('seed_mean_std')}.",
+        f"Positive run fraction: {summary.get('positive_run_fraction')}; positive seed fraction: "
+        f"{summary.get('positive_seed_fraction')}; runs beating baseline: "
+        f"{summary.get('runs_beating_baseline')}.",
+        _markdown_table(tables["seed_summary"]),
+        "",
+        "## Valid-baseline comparison",
+        "",
+        "The baseline to beat is factor_latent_train_selected.",
+        f"Pilot-repeat baseline mean: {summary.get('pilot_repeat_baseline_mean')}; mean paired "
+        f"difference: {summary.get('mean_paired_difference_vs_baseline')}.",
+        "Paired fold differences are descriptive diagnostics only; no final superiority test is "
+        "reported.",
+        "",
+        "## Descriptive comparison with LFADS",
+        "",
+        "LFADS values are included only as a descriptive reference and do not select the "
+        "neural-ODE configuration.",
+        f"LFADS pilot mean: {summary.get('lfads_descriptive_reference_mean')}; neural-ODE minus "
+        f"LFADS: {summary.get('mean_difference_vs_lfads_reference')}.",
+        "",
+        "## Near-peak movement behavior",
+        "",
+        f"Before peak: {summary.get('before_peak_mean_bits_per_spike')}; near peak: "
+        f"{summary.get('near_peak_mean_bits_per_spike')}; after peak: "
+        f"{summary.get('after_peak_mean_bits_per_spike')}.",
+        f"LFADS reference: before 0.03636918, near 0.00264721, after 0.03198509. Near-peak "
+        f"failure status: {summary.get('near_peak_failure_status')}.",
+        "",
+        "## Latent utilization",
+        "",
+        f"Mean factor effective rank: {summary.get('mean_factor_effective_rank')} "
+        f"(fraction {summary.get('mean_factor_effective_rank_fraction')}). LFADS factor effective "
+        f"rank {summary.get('lfads_factor_effective_rank')} "
+        f"(fraction {summary.get('lfads_factor_effective_rank_fraction')}).",
+        "Cross-model effective rank alone is not treated as evidence of superiority.",
+        "",
+        "## Compute and memory",
+        "",
+        f"Estimated full-evaluation runtime hours: "
+        f"{recommendation.get('runtime_estimate_full_evaluation_hours')}; estimated peak CUDA "
+        f"memory MB: {recommendation.get('estimated_peak_cuda_memory_mb')}.",
+        "Runtime is an observed-pilot estimate, not an exact completion-time promise.",
+        "",
+        "## Full-evaluation gate",
+        "",
+        f"Proceed: {recommendation.get('proceed')}; reasons: {recommendation.get('reasons')}.",
+        "",
+        "## Recommended next action",
+        "",
+        f"Recommended next action: {next_action.get('recommended_next_action')}.",
+        f"Rationale: {next_action.get('rationale')}.",
+        "",
+        "## Limitations",
+        "",
+        "The pilot uses one held-out-neuron mask and cannot support a final project-wide "
+        "superiority claim.",
+        "This is local research analysis, not an official NLB leaderboard result.",
+        "",
+    ]
+    paths["report"].write_text("\n".join(lines), encoding="utf-8")
+    return paths
+
+
 def write_lfads_diagnostics_outputs(
     output_dir: Path,
     summary: dict[str, Any],

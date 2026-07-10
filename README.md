@@ -635,3 +635,31 @@ python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_
 The audit can recommend only `targeted_lfads_repair_pilot`,
 `retire_lfads_and_start_neural_ode_pilot`, or `block_due_to_integrity_issue`. It does not start any of
 those actions, and full multi-repeat LFADS evaluation remains disabled.
+
+## MC_Maze Large deterministic neural-ODE feasibility pilot
+
+The retirement decision selected the deterministic neural-ODE successor. Run the one-repeat pilot with:
+
+```powershell
+python scripts/run_neural_ode_pilot.py --config configs/mc_maze_large_neural_ode_pilot.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+The pilot reuses exactly the LFADS pilot's controls: outer repeat 0, folds 0-4, the fixed 122/40
+held-in/held-out neuron mask, evaluation window, and initialization seeds `2027`, `2028`, `2029`,
+`2030`, `2031` — 25 fixed runs (5 folds x 5 seeds), no sweep and no `seed + run_index` derivation. Each
+declared seed is applied before model construction. The model is the existing NeuralSDE Euler latent
+generator with **diffusion disabled** (`diffusion_scale = 0.0`); its dimensions and objective are frozen
+from the accepted MC_Maze Small neural-ODE refinement best run, with only input/output dimensions
+adapted to Large. The baseline to beat is `factor_latent_train_selected`.
+
+Checkpoints are selected only on a stratified inner split of each outer-training set, maximizing
+inner-validation unified bits/spike; outer-evaluation trials never touch selection, normalization, or
+configuration. The pilot records solver stability (state/drift norms, non-finite counts), latent
+utilization (effective rank), and before/near/after-peak scores. Full five-repeat evaluation is
+permitted only if every predeclared gate passes; `next_action_recommendation.json` selects exactly one
+of `run_full_neural_ode_evaluation`, `run_targeted_neural_ode_diagnostic`,
+`retire_neural_ode_and_close_neural_model_search`, or `block_due_to_integrity_issue`. This is a one
+held-out-neuron-mask feasibility pilot: it cannot support a final model-performance claim or replace the
+frozen baseline. Generated results, checkpoints, reports, and figures are local ignored artifacts under
+`results/mc_maze_large/neural_ode_pilot/`, not official NLB leaderboard results.
