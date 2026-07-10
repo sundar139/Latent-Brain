@@ -10,6 +10,15 @@ import pandas as pd  # type: ignore[import-untyped]
 import pytest
 import yaml
 
+# Mirrors the keys of the script's own _cuda_diagnostic() so tests never touch real CUDA.
+_FAKE_CUDA: dict[str, Any] = {
+    "torch": "unit-test",
+    "cuda_available": True,
+    "torch_cuda": "unit-test",
+    "device_count": 1,
+    "device_name": "Unit Test GPU",
+}
+
 
 def _script_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
@@ -223,7 +232,7 @@ def test_script_like_run_writes_outputs(tmp_path: Path, monkeypatch: pytest.Monk
     Path(config["dataset"]["processed_path"]).write_bytes(b"exists")
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
-    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(module, "_cuda_diagnostic", lambda: _FAKE_CUDA)
     monkeypatch.setattr(module, "run_seed_robustness", lambda _config: (_results(), _summary()))
 
     assert module.main(["--config", str(path)]) == 0
@@ -256,7 +265,7 @@ def test_script_rejects_nonzero_train_mean_reference(
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
     broken = _summary() | {"train_mean_validation_bits_per_spike": 0.5}
-    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(module, "_cuda_diagnostic", lambda: _FAKE_CUDA)
     monkeypatch.setattr(module, "run_seed_robustness", lambda _config: (_results(), broken))
 
     assert module.main(["--config", str(path)]) == 2

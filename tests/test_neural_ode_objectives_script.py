@@ -10,6 +10,15 @@ import pandas as pd  # type: ignore[import-untyped]
 import pytest
 import yaml
 
+# Mirrors the keys of the script's own _cuda_diagnostic() so tests never touch real CUDA.
+_FAKE_CUDA: dict[str, Any] = {
+    "torch": "unit-test",
+    "cuda_available": True,
+    "torch_cuda": "unit-test",
+    "device_count": 1,
+    "device_name": "Unit Test GPU",
+}
+
 
 def _script_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
@@ -234,7 +243,7 @@ def test_script_like_run_writes_outputs(tmp_path: Path, monkeypatch: pytest.Monk
         out / "checkpoint_selection.csv", index=False
     )
     results.to_csv(out / "objective_diagnostics.csv", index=False)
-    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(module, "_cuda_diagnostic", lambda: _FAKE_CUDA)
     monkeypatch.setattr(
         module, "run_neural_ode_objective_variants", lambda _config: (results, summary)
     )
