@@ -532,6 +532,34 @@ def load_stratified_cv_warning(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def load_window_audit_warning(config: dict[str, Any]) -> dict[str, Any]:
+    """Movement-window recommendation. Absent falls back cleanly; malformed fails clearly."""
+    path = _summary_path(config["inputs"].get("window_audit_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "window_audit_available": False,
+            "recommended_window_name": None,
+            "current_window_still_supported": None,
+        }
+    label = "movement window audit"
+    summary = _load_summary(path, label)
+    for key in ("recommended_window_name", "recommended_reporting_mode"):
+        if key not in summary:
+            msg = f"malformed window audit summary ({label}): missing {key} at {path}"
+            raise ValueError(msg)
+    window_name = summary["recommended_window_name"]
+    if not isinstance(window_name, str):
+        msg = f"malformed window audit summary ({label}): recommended_window_name must be a string"
+        raise ValueError(msg)
+    return {
+        "window_audit_available": True,
+        "recommended_window_name": window_name,
+        "recommended_reporting_mode": str(summary["recommended_reporting_mode"]),
+        "current_window_still_supported": summary.get("current_window_still_supported"),
+        "window_audit_summary_path": str(path),
+    }
+
+
 def _is_seed_robustness_aggregate(method_name: object) -> bool:
     return str(method_name).startswith("seed_robustness_")
 

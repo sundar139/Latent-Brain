@@ -348,3 +348,46 @@ unweighted. `split_mean_rate_invalid` is scored on every fold as a leakage diagn
 from valid-model selection, as is the reference itself: neither is reportable as model performance.
 Stratified cross-validation is the recommended reporting mode for MC_Maze Small; single-split numbers
 remain unreportable, and old incompatible mean-rate values remain historical-only.
+
+## Movement-window and alignment audit
+
+A window is an experimental choice, not a formatting detail. Stratified cross-validation on the
+`from_start` 1.28-second crop showed endpoint-direction entropy far below its ceiling, which is the
+signature of a window that ends before the reach has expressed itself. If most bins precede
+movement, then behavior-related latent structure is largely absent from the data being scored, and
+every model comparison run on that window is answering a narrower question than it appears to.
+
+Three families of candidate window are compared. From-start windows keep the current convention and
+vary only in length, isolating the effect of duration. Peak-speed-centred windows place the crop
+symmetrically around each trial's fastest hand movement, which guarantees the reach is inside the
+window at the cost of aligning trials to an outcome of the movement. Movement-onset windows begin a
+configurable interval before the first bin whose speed reaches a per-trial quantile, which aligns to
+the start of the movement rather than its peak.
+
+Onset detection needs care. On a trial that is static and then moves, a fixed speed quantile can
+coincide with the minimum speed, placing "onset" at the first bin — the opposite of the intent. The
+implementation detects that degeneracy and falls back to a fraction of the trial's own peak speed,
+so onset always lands where movement actually begins.
+
+Windows are applied per trial, so different trials may be cropped at different offsets. Every window
+keeps a fixed length; trials whose ideal crop would run off either edge are clipped to the nearest
+valid position and counted, so the report can state how many trials were shifted rather than
+silently misaligning them. Behavior features, stratified folds, and the train-held-out mean-rate
+reference are all recomputed inside each candidate window; nothing is carried across windows.
+
+Coverage is measured, not assumed. For each window we record the behavior source actually used
+(hand position, falling back to cursor position when hand position is absent), the mean and peak
+hand speed, the mean endpoint distance, the Shannon entropy of endpoint directions, and the fraction
+of bins in which speed clears a fraction of that trial's peak. A window whose moving-bin fraction
+falls below a floor is treated as pre-movement rather than as a reach window.
+
+Selection rules are deliberately conservative and use valid models only. A candidate is eligible if
+it has usable behavior coverage, produces no fold-balance warning, and preserves factor-latent
+against the current window's confidence-interval lower bound, so that ordinary fold noise cannot
+disqualify it. Among eligible candidates, a challenger replaces the current window only if it
+carries strictly more reach-direction diversity *and* more moving bins. Invalid controls are scored
+on every window and excluded from the decision entirely: a window that raises the split-mean control
+has increased the leakage available in the metric, not the quality of the evaluation. When no
+candidate clears both bars, the current window is retained and must be reported as an early-window
+diagnostic. Reporting remains stratified cross-validation, old incompatible mean-rate values remain
+historical-only, and none of this is an official benchmark result.

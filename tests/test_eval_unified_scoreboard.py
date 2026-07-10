@@ -18,6 +18,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_seed_robustness_candidates,
     load_split_audit_warning,
     load_stratified_cv_warning,
+    load_window_audit_warning,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -40,6 +41,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "split_audit_summary_path": str(tmp_path / "split_audit.json"),
             "cv_rate_audit_summary_path": str(tmp_path / "cv_rate_audit.json"),
             "stratified_cv_summary_path": str(tmp_path / "stratified_cv.json"),
+            "window_audit_summary_path": str(tmp_path / "window_audit.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -795,6 +797,108 @@ def test_invalid_fold_controls_never_become_best_valid_model() -> None:
         rank_unified_validation_scores(scores),
         {
             "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_valid_model"] == "factor_latent"
+
+
+def _write_window_audit(path: Path, supported: bool = True) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+                "recommended_reporting_mode": "stratified_cross_validation",
+                "current_window_still_supported": supported,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_window_audit_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_window_audit(tmp_path / "window_audit.json", supported=False)
+
+    warning = load_window_audit_warning(config)
+
+    assert warning["window_audit_available"] is True
+    assert warning["recommended_window_name"] == "behavior_speed_peak_centered_1p28s"
+    assert warning["recommended_reporting_mode"] == "stratified_cross_validation"
+    assert warning["current_window_still_supported"] is False
+    assert warning["window_audit_summary_path"] == str((tmp_path / "window_audit.json").resolve())
+
+
+def test_scoreboard_exposes_recommended_window(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_window_audit(tmp_path / "window_audit.json")
+
+    warning = load_window_audit_warning(config)
+
+    assert warning["current_window_still_supported"] is True
+    assert warning["recommended_window_name"]
+
+
+def test_missing_window_audit_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    warning = load_window_audit_warning(_lfads_candidate_config(tmp_path))
+
+    assert warning["window_audit_available"] is False
+    assert warning["recommended_window_name"] is None
+    assert warning["current_window_still_supported"] is None
+
+
+def test_malformed_window_audit_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "window_audit.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        load_window_audit_warning(config)
+
+
+def test_window_audit_summary_missing_key_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "window_audit.json").write_text(json.dumps({"other": 1}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing recommended_window_name"):
+        load_window_audit_warning(config)
+
+
+def test_window_audit_summary_non_string_window_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "window_audit.json").write_text(
+        json.dumps({"recommended_window_name": 3, "recommended_reporting_mode": "x"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must be a string"):
+        load_window_audit_warning(config)
+
+
+def test_window_audit_invalid_controls_never_become_best_valid_model() -> None:
+    scores = pd.DataFrame(
+        [
+            build_unified_score_row(
+                "factor_latent", "decoder", "validation", 0.0254, 1.0, True, "ref", ""
+            ),
+            build_unified_score_row(
+                "split_mean_rate_invalid",
+                "invalid_control",
+                "validation",
+                0.0803,
+                None,
+                False,
+                "ref",
+                "uses evaluation fold targets",
+            ),
+        ]
+    )
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(scores),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0254,
             "best_oracle_validation_bits_per_spike": 3.0,
         },
     )

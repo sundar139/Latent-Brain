@@ -67,6 +67,30 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Movement-window and alignment audit
+
+Stratified cross-validation stabilised *how* MC_Maze Small is evaluated, but it also exposed a
+problem with *what* is being evaluated: endpoint directions are heavily concentrated in the current
+`from_start` 1.28-second crop, which suggests the window captures mostly early or pre-movement
+activity rather than the reach itself. This audit tests that directly:
+
+```powershell
+python scripts/run_window_audit.py --config configs/mc_maze_small_window_audit.yaml
+```
+
+Candidate windows include the current early window, a longer early window, windows centred on peak
+hand speed, and a movement-onset-aligned window. Each candidate is cropped per trial, has its
+behavior features recomputed, gets fresh behavior-stratified folds, and is scored under the same
+canonical unweighted metric. Reach-direction entropy and the fraction of moving bins measure how
+much actual movement each window contains.
+
+The window recommendation uses **valid-model performance and behavior coverage only**. The
+`split_mean_rate_invalid` control is scored on every window as a leakage diagnostic and can never
+influence the choice, because a window that inflates an invalid control has not become a better
+window. If no candidate improves both behavior coverage and valid-model performance, the current
+window is retained and explicitly labelled an early-window diagnostic. Outputs and figures are local
+ignored artifacts under `results/mc_maze_small/window_audit/`, not official NLB leaderboard results.
+
 ## Behavior-stratified cross-validation
 
 The diagnostic report froze MC_Maze Small with one issue unresolved: repeated *random* splits

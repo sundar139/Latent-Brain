@@ -35,6 +35,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_seed_robustness_candidates,
     load_split_audit_warning,
     load_stratified_cv_warning,
+    load_window_audit_warning,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -135,6 +136,7 @@ class InputsSection(BaseModel):
     split_audit_summary_path: str | None = None
     cv_rate_audit_summary_path: str | None = None
     stratified_cv_summary_path: str | None = None
+    window_audit_summary_path: str | None = None
 
 
 class KnownUnifiedValues(BaseModel):
@@ -436,6 +438,7 @@ def run_unified_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         **load_split_audit_warning(config),
         **load_cv_rate_audit_warning(config),
         **load_stratified_cv_warning(config),
+        **load_window_audit_warning(config),
         "old_mean_rate_values_historical_only": True,
         "output_dir": config["reporting"]["output_dir"],
     }
@@ -484,6 +487,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     console.print(f"single_split_results_reportable: {summary['single_split_results_reportable']}")
     console.print(f"recommended_reporting_mode: {summary['recommended_reporting_mode']}")
     console.print(f"stratified_cv_available: {summary['stratified_cv_available']}")
+    console.print(f"window_audit_available: {summary['window_audit_available']}")
+    console.print(f"recommended_window_name: {summary['recommended_window_name']}")
+    console.print(f"current_window_still_supported: {summary['current_window_still_supported']}")
     console.print(
         f"factor_latent_stratified_cv_mean: {summary['factor_latent_stratified_cv_mean']}"
     )

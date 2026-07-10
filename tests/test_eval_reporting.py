@@ -31,6 +31,7 @@ from latentbrain.eval.reporting import (
     write_switching_ode_tuning_outputs,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
+    write_window_audit_outputs,
     write_window_matched_comparison_report,
 )
 
@@ -1600,3 +1601,148 @@ def test_unified_scoreboard_report_exposes_stratified_cv_fields(tmp_path: Path) 
     assert "Stratified CV available: True" in text
     assert "Factor-latent stratified CV mean: 0.0143" in text
     assert "Factor-latent stratified CV CI95 low: 0.0091" in text
+
+
+def _window_audit_summary() -> dict:
+    return {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "reference_model": "train_heldout_mean_rate",
+        "fold_count": 5,
+        "repeats": 5,
+        "behavior_source": "hand_pos",
+        "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+        "recommended_reporting_mode": "stratified_cross_validation",
+        "current_window_name": "from_start_1p28s",
+        "current_window_still_supported": False,
+        "current_window_is_early_window_diagnostic": False,
+        "factor_latent_best_window_mean": 0.0301,
+        "factor_latent_current_window_mean": 0.0254,
+        "factor_latent_best_window_ci95_low": 0.0240,
+        "factor_latent_best_window_ci95_high": 0.0362,
+        "split_mean_invalid_best_window_mean": 0.0790,
+        "invalid_control_gap_best_window": 0.0489,
+        "endpoint_direction_entropy_by_window": {
+            "from_start_1p28s": 0.846,
+            "behavior_speed_peak_centered_1p28s": 1.72,
+        },
+        "moving_bin_fraction_by_window": {
+            "from_start_1p28s": 0.11,
+            "behavior_speed_peak_centered_1p28s": 0.94,
+        },
+        "behavior_coverage_warning": "none",
+        "eligible_windows": ["behavior_speed_peak_centered_1p28s", "from_start_1p28s"],
+        "window_selection_rationale": "challenger carries more reach diversity",
+        "invalid_controls_excluded_from_window_selection": True,
+    }
+
+
+def _window_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "window_name": "from_start_1p28s",
+                "report_label": "Current accepted early window",
+                "crop_policy": "from_start",
+                "endpoint_direction_entropy": 0.846,
+                "moving_bin_fraction": 0.11,
+                "fold_balance_warning": "none",
+            },
+            {
+                "window_name": "behavior_speed_peak_centered_1p28s",
+                "report_label": "Centered on peak hand speed",
+                "crop_policy": "behavior_speed_peak_centered",
+                "endpoint_direction_entropy": 1.72,
+                "moving_bin_fraction": 0.94,
+                "fold_balance_warning": "none",
+            },
+        ]
+    )
+
+
+def _window_method_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "window_name": "behavior_speed_peak_centered_1p28s",
+                "method_name": "factor_latent",
+                "valid_model": True,
+                "reportable_as_model_performance": True,
+                "mean_unified_bits_per_spike": 0.0301,
+            },
+            {
+                "window_name": "behavior_speed_peak_centered_1p28s",
+                "method_name": "split_mean_rate_invalid",
+                "valid_model": False,
+                "reportable_as_model_performance": False,
+                "mean_unified_bits_per_spike": 0.0790,
+            },
+        ]
+    )
+
+
+def test_window_audit_report_includes_candidates_entropy_and_recommendation(tmp_path: Path) -> None:
+    recommendations = {
+        "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+        "recommended_reporting_mode": "stratified_cross_validation",
+        "official_benchmark_claim": False,
+    }
+
+    paths = write_window_audit_outputs(
+        tmp_path,
+        _window_audit_summary(),
+        pd.DataFrame([{"window_name": "from_start_1p28s"}]),
+        pd.DataFrame([{"window_name": "from_start_1p28s", "trial_index": 0}]),
+        pd.DataFrame([{"window_name": "from_start_1p28s", "fold_index": 0}]),
+        _window_table(),
+        _window_method_summary(),
+        recommendations,
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert paths["recommendations"].exists()
+    assert paths["behavior_statistics"].exists()
+
+    assert "## Candidate windows" in text
+    assert "from_start_1p28s" in text
+    assert "behavior_speed_peak_centered_1p28s" in text
+
+    assert "## Endpoint direction entropy by window" in text
+    assert "0.846" in text
+    assert "1.72" in text
+
+    assert "Recommended window: behavior_speed_peak_centered_1p28s" in text
+    assert "Current window still supported: False" in text
+    assert "Movement coverage by window" in text
+
+    assert (
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance."
+        in text
+    )
+    assert "never on invalid-control gains" in text
+    # Cross-window scores must never read as a performance comparison.
+    assert "not comparable across windows as performance" in text
+    assert "peak hand speed of the whole recording" in text
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+    assert "not an official NLB leaderboard result" in text
+
+
+def test_unified_scoreboard_report_exposes_window_audit_fields(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "reference_model": "train_heldout_mean_rate",
+        "generalization_risk": "high",
+        "window_audit_available": True,
+        "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+        "current_window_still_supported": False,
+    }
+
+    path = write_unified_scoreboard_report(
+        tmp_path / "report.md", summary, pd.DataFrame(), pd.DataFrame()
+    )
+    text = path.read_text(encoding="utf-8")
+
+    assert "Window audit available: True" in text
+    assert "Recommended window: behavior_speed_peak_centered_1p28s" in text
+    assert "Current window still supported: False" in text

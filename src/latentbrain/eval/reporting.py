@@ -1303,6 +1303,9 @@ def write_unified_scoreboard_report(
         f"- Factor-latent stratified CV mean: {summary.get('factor_latent_stratified_cv_mean')}",
         "- Factor-latent stratified CV CI95 low: "
         f"{summary.get('factor_latent_stratified_cv_ci95_low')}",
+        f"- Window audit available: {summary.get('window_audit_available')}",
+        f"- Recommended window: {summary.get('recommended_window_name')}",
+        f"- Current window still supported: {summary.get('current_window_still_supported')}",
         "- Best LFADS-family source summary path: "
         f"{summary.get('best_lfads_family_source_summary_path')}",
         "- Oracle diagnostic score: "
@@ -2741,4 +2744,162 @@ def write_stratified_cv_outputs(
     comparisons.to_csv(paths["comparisons"], index=False)
     method_summary.to_csv(paths["method_summary"], index=False)
     write_stratified_cv_report(paths["report"], summary, method_summary, fold_balance, comparisons)
+    return paths
+
+
+def write_window_audit_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    window_table: pd.DataFrame,
+    method_summary: pd.DataFrame,
+    recommendations: dict[str, Any],
+) -> Path:
+    """Write a Markdown report for the local movement-window and alignment audit."""
+    valid = (
+        method_summary[method_summary["reportable_as_model_performance"].astype(bool)]
+        if not method_summary.empty
+        else method_summary
+    )
+    invalid = (
+        method_summary[~method_summary["valid_model"].astype(bool)]
+        if not method_summary.empty
+        else method_summary
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} movement-window and alignment audit",
+        "",
+        "This is local movement-window audit work, not an official NLB leaderboard result.",
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and protocol",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        f"- Fold count: {summary.get('fold_count')}",
+        f"- Repeats: {summary.get('repeats')}",
+        f"- Reporting mode: {summary.get('recommended_reporting_mode')}",
+        f"- Behavior feature source: {summary.get('behavior_source')}",
+        "",
+        "## Candidate windows",
+        "",
+        *_format_table(window_table),
+        "",
+        "## Endpoint direction entropy by window",
+        "",
+        *[
+            f"- {name}: {value}"
+            for name, value in dict(summary.get("endpoint_direction_entropy_by_window", {})).items()
+        ],
+        "",
+        "## Movement coverage by window",
+        "",
+        *[
+            f"- {name}: moving_bin_fraction {value}"
+            for name, value in dict(summary.get("moving_bin_fraction_by_window", {})).items()
+        ],
+        f"- Behavior coverage warning: {summary.get('behavior_coverage_warning')}",
+        "",
+        "## Factor-latent score by window",
+        "",
+        *(_format_table(valid) if not valid.empty else ["(no reportable valid models)"]),
+        "",
+        "## Invalid split-mean diagnostic by window",
+        "",
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance.",
+        "",
+        *(_format_table(invalid) if not invalid.empty else ["(no invalid controls scored)"]),
+        "",
+        "- Split-mean invalid mean on the recommended window: "
+        f"{summary.get('split_mean_invalid_best_window_mean')}",
+        f"- Invalid-control gap: {summary.get('invalid_control_gap_best_window')}",
+        "- Invalid controls excluded from window selection: "
+        f"{summary.get('invalid_controls_excluded_from_window_selection')}",
+        "",
+        "## Fold balance warnings",
+        "",
+        *[f"- {row.window_name}: {row.fold_balance_warning}" for row in window_table.itertuples()],
+        "",
+        "## Recommendation",
+        f"- Recommended window: {summary.get('recommended_window_name')}",
+        f"- Current window: {summary.get('current_window_name')}",
+        f"- Current window still supported: {summary.get('current_window_still_supported')}",
+        "- Current window is an early-window diagnostic: "
+        f"{summary.get('current_window_is_early_window_diagnostic')}",
+        "- Factor-latent mean on the recommended window: "
+        f"{summary.get('factor_latent_best_window_mean')}",
+        "- Factor-latent mean on the current window: "
+        f"{summary.get('factor_latent_current_window_mean')}",
+        "- Factor-latent CI95 on the recommended window: "
+        f"[{summary.get('factor_latent_best_window_ci95_low')}, "
+        f"{summary.get('factor_latent_best_window_ci95_high')}]",
+        f"- Eligible windows: {summary.get('eligible_windows')}",
+        f"- Rationale: {summary.get('window_selection_rationale')}",
+        "",
+        "## Interpretation",
+        (
+            "Factor-latent means are not comparable across windows as performance: each window "
+            "defines a different prediction problem, over different spikes and a different "
+            "held-out target distribution. The score is used only as a guard that a candidate "
+            "window does not degrade the valid model, never as evidence that one window yields "
+            "better performance than another."
+        ),
+        (
+            "Movement coverage is thresholded against the peak hand speed of the whole recording, "
+            "not each window's own peak. A per-window threshold is scale-free and would make a "
+            "pre-movement window look just as active as a reach window."
+        ),
+        (
+            "- The current `from_start` window may capture mostly early or pre-movement activity "
+            "rather than the full reach."
+        ),
+        (
+            "- Behavior-aligned windows test whether reach dynamics are better captured when the "
+            "crop follows peak speed or movement onset."
+        ),
+        "- Invalid controls remain leakage diagnostics only.",
+        (
+            "- The window recommendation is based only on valid-model performance and behavior "
+            "coverage, never on invalid-control gains."
+        ),
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_window_audit_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    scores: pd.DataFrame,
+    behavior_statistics: pd.DataFrame,
+    balance_statistics: pd.DataFrame,
+    window_table: pd.DataFrame,
+    method_summary: pd.DataFrame,
+    recommendations: dict[str, Any],
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "window_audit_summary.json",
+        "scores": output_dir / "window_candidate_scores.csv",
+        "behavior_statistics": output_dir / "window_behavior_statistics.csv",
+        "balance_statistics": output_dir / "window_balance_statistics.csv",
+        "recommendations": output_dir / "window_recommendations.json",
+        "report": output_dir / "window_audit_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["recommendations"].write_text(
+        json.dumps(recommendations, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    scores.to_csv(paths["scores"], index=False)
+    behavior_statistics.to_csv(paths["behavior_statistics"], index=False)
+    balance_statistics.to_csv(paths["balance_statistics"], index=False)
+    write_window_audit_report(
+        paths["report"], summary, window_table, method_summary, recommendations
+    )
     return paths

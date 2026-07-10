@@ -530,3 +530,27 @@ cross-validation mean with its spread and confidence interval, never as a single
 leakage diagnostic only, is never model performance, and never competes for best valid model.
 Generated outputs and figures remain ignored under `results/mc_maze_small/stratified_cv/` and are not
 official NLB leaderboard results.
+
+## MC_Maze Small movement-window status
+
+Run the CPU-only movement-window and alignment audit with:
+
+```powershell
+python scripts/run_window_audit.py --config configs/mc_maze_small_window_audit.yaml
+```
+
+Behavior-stratified cross-validation remains the preferred reporting protocol for MC_Maze Small,
+but the choice of evaluation window remains a diagnostic factor rather than a settled one. The
+current `from_start` 1.28-second crop shows endpoint directions concentrated in a small number of
+sectors, which is what a window that ends before or early in the reach looks like.
+
+This audit compares that window against a longer early window, peak-speed-centred windows, and a
+movement-onset-aligned window, rebuilding behavior features and stratified folds inside each one.
+It reports reach-direction entropy and moving-bin fraction per window alongside factor-latent's
+cross-validated score.
+
+The window recommendation is made from valid models and behavior coverage only. The invalid
+`split_mean_rate_invalid` control is reported per window as a leakage diagnostic and is excluded from
+the decision. Additional behavior-aligned windows should be audited before any further modeling work
+is done on this dataset. Generated outputs and figures remain ignored under
+`results/mc_maze_small/window_audit/` and are not official NLB leaderboard results.

@@ -1,0 +1,111 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+binning:
+  target_bin_size_ms: 20
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_metric: unified_bits_per_spike
+
+cross_validation:
+  fold_count: 5
+  repeats: 5
+  base_seed: 2027
+  heldout_neuron_fraction: 0.25
+  assignment_method: greedy_balanced
+  min_trials_per_stratum: 2
+
+window_candidates:
+  - name: from_start_1p28s
+    crop_policy: from_start
+    duration_seconds: 1.28
+    start_seconds: 0.0
+    report_label: "Current accepted early window"
+
+  - name: from_start_2p56s
+    crop_policy: from_start
+    duration_seconds: 2.56
+    start_seconds: 0.0
+    report_label: "Longer early window"
+
+  - name: behavior_speed_peak_centered_1p28s
+    crop_policy: behavior_speed_peak_centered
+    duration_seconds: 1.28
+    report_label: "Centered on peak hand speed"
+
+  - name: behavior_speed_peak_centered_2p56s
+    crop_policy: behavior_speed_peak_centered
+    duration_seconds: 2.56
+    report_label: "Longer window centered on peak hand speed"
+
+  - name: behavior_movement_onset_1p28s
+    crop_policy: behavior_movement_onset
+    duration_seconds: 1.28
+    pre_event_seconds: 0.20
+    speed_threshold_quantile: 0.70
+    report_label: "Movement-onset aligned window"
+
+methods:
+  - name: train_mean_rate
+    type: rate_control
+    valid_model: false
+    reportable_as_model_performance: false
+    notes: "Canonical reference; not a competitor."
+
+  - name: factor_latent
+    type: factor_latent
+    valid_model: true
+    reportable_as_model_performance: true
+    latent_dim: 8
+    smoothing_sigma_ms: 200.0
+    heldout_decoder_alpha: 10000.0
+    standardize_features: true
+    fit_intercept: true
+    factor_analysis_random_state: 0
+    notes: "Carried-forward valid baseline."
+
+  - name: split_mean_rate_invalid
+    type: invalid_control
+    valid_model: false
+    reportable_as_model_performance: false
+    invalid_reason: "Uses evaluation fold target counts."
+    notes: "Leakage diagnostic only."
+
+stratification:
+  use_endpoint_direction: true
+  endpoint_direction_bins: 8
+  use_endpoint_distance: true
+  endpoint_distance_bins: 3
+  use_mean_speed: true
+  mean_speed_bins: 3
+  use_population_rate: true
+  population_rate_bins: 3
+  use_heldout_rate: true
+  heldout_rate_bins: 3
+  fallback_when_behavior_missing: rate_only
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+
+inputs:
+  diagnostic_report_summary_path: reports/mc_maze_small_diagnostic/mc_maze_small_diagnostic_summary.json
+  stratified_cv_summary_path: results/mc_maze_small/stratified_cv/stratified_cv_summary.json
+
+references:
+  current_from_start_factor_latent_mean: 0.025451255848470376
+  current_from_start_factor_latent_ci95_low: 0.019451259375811707
+  current_from_start_factor_latent_ci95_high: 0.031522772774802636
+  current_from_start_split_mean_invalid_mean: 0.08033688880462543
+  train_mean_validation_bits_per_spike: 0.0
+
+reporting:
+  output_dir: results/mc_maze_small/window_audit

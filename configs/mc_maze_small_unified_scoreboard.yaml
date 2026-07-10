@@ -42,6 +42,7 @@ inputs:
   split_audit_summary_path: results/mc_maze_small/split_audit/split_audit_summary.json
   cv_rate_audit_summary_path: results/mc_maze_small/cv_rate_audit/cv_rate_audit_summary.json
   stratified_cv_summary_path: results/mc_maze_small/stratified_cv/stratified_cv_summary.json
+  window_audit_summary_path: results/mc_maze_small/window_audit/window_audit_summary.json
 
 known_unified_values:
   train_mean_as_model_validation_bits_per_spike: 0.0
