@@ -1130,3 +1130,48 @@ inner-training folds, and the forbidden old protocols (`from_start_1p28s`, `sing
 
 Controlled neural-model reevaluation: prepare and approve the reevaluation manifest, then reevaluate
 LFADS-style and deterministic neural-ODE models under this exact frozen protocol.
+
+## MC_Maze Large LFADS feasibility pilot
+
+Command:
+
+```powershell
+python scripts/run_lfads_pilot.py --config configs/mc_maze_large_lfads_pilot.yaml
+```
+
+The pilot is restricted to outer repeat 0, all five accepted folds, and initialization seeds
+`2027-2031`, giving 25 LFADS-style runs under one fixed held-out-neuron mask. Each run receives only
+the 122 held-in neurons and predicts positive rates for all 162 neurons; the 40 held-out neurons are
+targets only. Event-centered inputs are extracted from the trial-aware 5 ms source before rebinning to
+the accepted 20 ms, 64-bin movement window.
+
+Checkpoint selection maximizes inner-validation unified bits/spike. The inner split is built only from
+the 400 outer-training trials; no outer-evaluation trial enters checkpoint selection, early stopping,
+normalization, calibration, or hyperparameter selection. The outer reference is recomputed from all
+400 outer-training trials. The comparison target remains `factor_latent_train_selected`; fold-paired
+differences are descriptive diagnostics, not a final superiority test.
+
+Generated score, seed-stability, fold-stability, checkpoint, runtime, memory, recommendation, report,
+figure, and checkpoint artifacts live under ignored `results/mc_maze_large/lfads_pilot/`. The generated
+report records observed seed variation, paired baseline difference, compute, peak CUDA memory, and the
+full-evaluation recommendation. This one-repeat pilot cannot support a final model claim and is not an
+official NLB leaderboard result.
+
+### Pilot result
+
+All 25 runs completed with finite scores and losses. Mean unified bits/spike across fold-seed runs was
+`0.02925965290281923` (run-level standard deviation `0.003563618625820026`). The five seed means ranged
+from `0.02787411504791416` to `0.030709969818508542`; their standard deviation was
+`0.001022292447963269`, and every seed mean was positive. The pilot-repeat
+`factor_latent_train_selected` mean was `0.17392712874670385`, giving a descriptive mean paired
+difference of `-0.1446674758438845`. No fold-seed run beat the baseline.
+
+Training took 23.8 minutes in aggregate on the local RTX 4070 Laptop GPU. Individual runs averaged
+57.1 seconds and allocated at most 54.3 MiB of CUDA memory; the observed-pilot estimate for 125 full
+evaluation runs is about 1.98 hours, not a completion-time promise. Every selected checkpoint came
+from inner validation and all explicit leakage checks passed.
+
+Full evaluation is **not recommended** because the mean paired difference is worse than the
+predeclared `-0.02` margin. The corrected movement window produced positive, initialization-stable
+LFADS-style scores, but it did not resolve the earlier failure mode of trailing the valid
+factor-latent baseline. Later neural-model phases were not started.

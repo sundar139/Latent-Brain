@@ -832,3 +832,58 @@ def load_baseline_suite_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "invalid_controls_excluded": True,
         "baseline_suite_summary_path": str(path),
     }
+
+
+LFADS_PILOT_KEYS = (
+    "completed_runs",
+    "failed_runs",
+    "mean_unified_bits_per_spike",
+    "seed_level_std",
+    "positive_seed_fraction",
+    "mean_paired_difference_vs_baseline",
+    "full_evaluation_recommended",
+    "pilot_final_claim_allowed",
+)
+
+
+def load_lfads_pilot_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Optional one-repeat LFADS feasibility fields; never a ranked baseline candidate."""
+    path = _summary_path(config.get("inputs", {}).get("lfads_pilot_summary_path"))
+    fallback = {
+        "lfads_pilot_available": False,
+        "lfads_pilot_complete": False,
+        "lfads_pilot_mean": None,
+        "lfads_pilot_seed_std": None,
+        "lfads_pilot_positive_seed_fraction": None,
+        "lfads_pilot_mean_difference_vs_baseline": None,
+        "lfads_full_evaluation_recommended": False,
+        "lfads_pilot_final_claim_allowed": False,
+    }
+    if path is None or not path.exists():
+        return fallback
+    label = "LFADS pilot"
+    summary = _load_summary(path, label)
+    for key in LFADS_PILOT_KEYS:
+        if key not in summary:
+            msg = f"malformed LFADS pilot summary: missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["pilot_final_claim_allowed"]):
+        msg = f"malformed LFADS pilot summary: final claim must remain false at {path}"
+        raise ValueError(msg)
+    completed = int(summary["completed_runs"])
+    failed = int(summary["failed_runs"])
+    return {
+        "lfads_pilot_available": True,
+        "lfads_pilot_complete": completed == 25 and failed == 0,
+        "lfads_pilot_mean": _required_float(summary, "mean_unified_bits_per_spike", path, label),
+        "lfads_pilot_seed_std": _required_float(summary, "seed_level_std", path, label),
+        "lfads_pilot_positive_seed_fraction": _required_float(
+            summary, "positive_seed_fraction", path, label
+        ),
+        "lfads_pilot_mean_difference_vs_baseline": _required_float(
+            summary, "mean_paired_difference_vs_baseline", path, label
+        ),
+        "lfads_full_evaluation_recommended": bool(summary["full_evaluation_recommended"]),
+        "lfads_pilot_final_claim_allowed": False,
+        "lfads_pilot_summary_path": str(path),
+    }

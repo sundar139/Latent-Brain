@@ -3431,6 +3431,16 @@ def write_dataset_scoreboard_outputs(
         f"{summary.get('factor_latent_beats_invalid_control_mean')}",
         f"- leakage dominance persists: {summary.get('leakage_dominance_persists')}",
         f"- best valid method: {summary.get('best_valid_method')}",
+        f"- LFADS pilot available: {summary.get('lfads_pilot_available')}",
+        f"- LFADS pilot complete: {summary.get('lfads_pilot_complete')}",
+        f"- LFADS pilot mean: {summary.get('lfads_pilot_mean')}",
+        f"- LFADS pilot seed std: {summary.get('lfads_pilot_seed_std')}",
+        f"- LFADS pilot positive seed fraction: "
+        f"{summary.get('lfads_pilot_positive_seed_fraction')}",
+        f"- LFADS pilot mean difference vs baseline: "
+        f"{summary.get('lfads_pilot_mean_difference_vs_baseline')}",
+        f"- full LFADS evaluation recommended: {summary.get('lfads_full_evaluation_recommended')}",
+        f"- LFADS pilot final claim allowed: {summary.get('lfads_pilot_final_claim_allowed')}",
         f"- single-split results reportable: {summary.get('single_split_results_reportable')}",
         f"- official leaderboard claim: {summary.get('official_leaderboard_claim')}",
         "",
@@ -3626,3 +3636,125 @@ def write_baseline_suite_report(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
+
+
+def write_lfads_pilot_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tables: dict[str, pd.DataFrame],
+    protocol: dict[str, Any],
+    recommendation: dict[str, Any],
+) -> dict[str, Path]:
+    """Write claim-safe LFADS feasibility outputs; generated artifacts remain ignored."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "lfads_pilot_summary.json",
+        "lfads_pilot_runs": output_dir / "lfads_pilot_runs.csv",
+        "fold_seed_scores": output_dir / "fold_seed_scores.csv",
+        "seed_summary": output_dir / "seed_summary.csv",
+        "fold_summary": output_dir / "fold_summary.csv",
+        "paired_baseline_comparison": output_dir / "paired_baseline_comparison.csv",
+        "checkpoint_manifest": output_dir / "checkpoint_manifest.csv",
+        "training_resource_summary": output_dir / "training_resource_summary.csv",
+        "protocol": output_dir / "lfads_pilot_protocol.yaml",
+        "recommendation": output_dir / "full_evaluation_recommendation.json",
+        "report": output_dir / "lfads_pilot_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["recommendation"].write_text(
+        json.dumps(recommendation, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["protocol"].write_text(yaml.safe_dump(protocol, sort_keys=False), encoding="utf-8")
+    for key in (
+        "lfads_pilot_runs",
+        "fold_seed_scores",
+        "seed_summary",
+        "fold_summary",
+        "paired_baseline_comparison",
+        "checkpoint_manifest",
+        "training_resource_summary",
+    ):
+        tables[key].to_csv(paths[key], index=False)
+
+    lines = [
+        "# MC_Maze Large LFADS Feasibility Pilot",
+        "",
+        "## Scope",
+        "",
+        "Controlled repeat-0 feasibility and seed-stability analysis. The pilot evaluates "
+        "feasibility and seed stability on one held-out-neuron mask. It is not a final "
+        "multi-repeat model comparison.",
+        "",
+        "## Frozen evaluation protocol",
+        "",
+        "Event-centered inputs were extracted from the trial-aware source before rebinning.",
+        f"Shape: {summary.get('data_shape')}; repeat: {summary.get('repeat_index')}; "
+        f"seeds: {summary.get('initialization_seeds')}",
+        "",
+        "## Model configuration",
+        "",
+        "Existing LFADS-style GRU; held-in inputs; all-neuron positive-rate output; no controller.",
+        "",
+        "## Leakage prevention",
+        "",
+        "Outer-evaluation data were not used for checkpoint selection, early stopping, "
+        "normalization, calibration, or hyperparameter selection.",
+        f"Leakage checks passed: {summary.get('leakage_checks_passed')}",
+        "",
+        "## Checkpoint selection",
+        "",
+        "Every selected checkpoint must maximize unified bits/spike on inner_validation. "
+        "Outer-evaluation checkpoint selection is forbidden.",
+        f"Checkpoint selection valid: {summary.get('checkpoint_selection_valid')}",
+        "",
+        "## Pilot execution",
+        "",
+        f"Completed runs: {summary.get('completed_runs')}; "
+        f"failed runs: {summary.get('failed_runs')}",
+        f"Mean unified bits/spike: {summary.get('mean_unified_bits_per_spike')}",
+        "",
+        "## Seed sensitivity",
+        "",
+        _markdown_table(tables["seed_summary"]),
+        "",
+        "## Comparison with the valid baseline",
+        "",
+        "The baseline to beat is factor_latent_train_selected.",
+        f"Pilot-repeat baseline mean: {summary.get('pilot_repeat_baseline_mean')}",
+        f"Mean paired difference: {summary.get('mean_paired_difference_vs_baseline')}",
+        "Paired fold differences are descriptive diagnostics only; no final superiority test is "
+        "reported.",
+        "The corrected movement window produced stable positive LFADS-style scores, but it did not "
+        "resolve the earlier failure mode of trailing the valid factor-latent baseline: no pilot "
+        "fold-seed run beat that baseline.",
+        "",
+        "## Compute and memory",
+        "",
+        f"Estimated full-evaluation runtime hours: "
+        f"{recommendation.get('runtime_estimate_full_evaluation_hours')}",
+        f"Estimated peak CUDA memory MB: {recommendation.get('estimated_peak_cuda_memory_mb')}",
+        "Runtime is an observed-pilot estimate, not an exact completion-time promise.",
+        "",
+        "## Full-evaluation gate",
+        "",
+        f"Proceed: {recommendation.get('proceed')}",
+        f"Reasons: {recommendation.get('reasons')}",
+        "",
+        "## Limitations",
+        "",
+        "The pilot uses one held-out-neuron mask and is not a final multi-repeat comparison.",
+        "MC_Maze Small and MC_Maze Large scores are not treated as directly comparable "
+        "model-performance measurements.",
+        "This is local research analysis, not an official NLB leaderboard result.",
+        "",
+        "## Next research action",
+        "",
+        "Run full five-repeat LFADS evaluation only if the predeclared gate passes.",
+        "",
+    ]
+    paths["report"].write_text("\n".join(lines), encoding="utf-8")
+    return paths

@@ -15,6 +15,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_unified_score_row,
     load_cv_rate_audit_warning,
     load_lfads_family_candidates,
+    load_lfads_pilot_scoreboard,
     load_recommended_window_cv_warning,
     load_seed_robustness_candidates,
     load_split_audit_warning,
@@ -951,3 +952,76 @@ def test_malformed_recommended_window_cv_summary_fails_clearly(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="malformed"):
         load_recommended_window_cv_warning(config)
+
+
+def _write_lfads_pilot_summary(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "completed_runs": 25,
+                "failed_runs": 0,
+                "mean_unified_bits_per_spike": 0.12,
+                "seed_level_std": 0.01,
+                "positive_seed_fraction": 0.8,
+                "mean_paired_difference_vs_baseline": -0.01,
+                "full_evaluation_recommended": True,
+                "pilot_final_claim_allowed": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_lfads_pilot_scoreboard_fields_load_without_replacing_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "lfads_pilot.json"
+    _write_lfads_pilot_summary(path)
+
+    loaded = load_lfads_pilot_scoreboard({"inputs": {"lfads_pilot_summary_path": str(path)}})
+
+    assert loaded == {
+        "lfads_pilot_available": True,
+        "lfads_pilot_complete": True,
+        "lfads_pilot_mean": 0.12,
+        "lfads_pilot_seed_std": 0.01,
+        "lfads_pilot_positive_seed_fraction": 0.8,
+        "lfads_pilot_mean_difference_vs_baseline": -0.01,
+        "lfads_full_evaluation_recommended": True,
+        "lfads_pilot_final_claim_allowed": False,
+        "lfads_pilot_summary_path": str(path.resolve()),
+    }
+    assert "baseline_to_beat" not in loaded
+
+
+def test_missing_lfads_pilot_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    loaded = load_lfads_pilot_scoreboard(
+        {"inputs": {"lfads_pilot_summary_path": str(tmp_path / "missing.json")}}
+    )
+
+    assert loaded["lfads_pilot_available"] is False
+    assert loaded["lfads_pilot_final_claim_allowed"] is False
+
+
+def test_small_scoreboard_without_pilot_input_remains_unchanged() -> None:
+    loaded = load_lfads_pilot_scoreboard({"inputs": {}})
+
+    assert loaded["lfads_pilot_available"] is False
+    assert loaded["lfads_pilot_final_claim_allowed"] is False
+
+
+def test_malformed_lfads_pilot_summary_fails_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "lfads_pilot.json"
+    path.write_text(json.dumps({"completed_runs": 25}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed LFADS pilot summary"):
+        load_lfads_pilot_scoreboard({"inputs": {"lfads_pilot_summary_path": str(path)}})
+
+
+def test_lfads_pilot_can_never_enable_final_claim(tmp_path: Path) -> None:
+    path = tmp_path / "lfads_pilot.json"
+    _write_lfads_pilot_summary(path)
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    summary["pilot_final_claim_allowed"] = True
+    path.write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="final claim"):
+        load_lfads_pilot_scoreboard({"inputs": {"lfads_pilot_summary_path": str(path)}})

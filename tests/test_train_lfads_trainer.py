@@ -201,3 +201,46 @@ def test_loss_uses_masked_input_but_original_targets() -> None:
 
     assert torch.equal(batch["heldin_spikes"], original_heldin)
     assert torch.isfinite(loss["heldin_reconstruction_loss"])
+
+
+def test_trainer_selects_callback_metric_and_stops_after_patience(tmp_path: Path) -> None:
+    model = LFADSGRU(LFADSGRUConfig(3, 4, 8, 8, 3, 4, 0.0, 1.0e-4, 500.0))
+    values = iter([0.2, 0.1, 0.0, -0.1])
+    state = train_lfads_gru(
+        model,
+        _loaders(),
+        config={
+            "dataset": {"bin_size_ms": 10},
+            "model": {"output_dim": "all"},
+            "training": {
+                "epochs": 10,
+                "learning_rate": 1.0e-3,
+                "weight_decay": 0.0,
+                "gradient_clip_norm": 5.0,
+                "kl_warmup_epochs": 1,
+                "heldin_loss_weight": 1.0,
+                "heldout_loss_weight": 1.0,
+                "loss_normalization": "mean",
+                "checkpoint_metric": "inner_validation_unified_bits_per_spike",
+                "checkpoint_mode": "max",
+                "minimum_epochs": 2,
+                "early_stopping_patience": 2,
+                "scheduler": "cosine",
+                "mixed_precision": False,
+            },
+            "evaluation": {"evaluate_splits": ["train", "validation"]},
+        },
+        output_dir=tmp_path,
+        device=torch.device("cpu"),
+        checkpoint_scorer=lambda _model: next(values),
+    )
+
+    assert state.early_stopping_triggered is True
+    assert state.best_epoch == 0
+    assert len(state.history) == 3
+    checkpoint = torch.load(
+        tmp_path / "checkpoints" / "best_validation.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    assert checkpoint["epoch"] == 0

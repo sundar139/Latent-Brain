@@ -604,3 +604,23 @@ LatentBrain uses validated configuration, explicit random seeds, isolated enviro
 ## Safety warning
 
 Do not commit `.env`, raw data, checkpoints, generated results, W&B keys, cloud credentials, API tokens, private absolute paths, or local experiment artifacts.
+
+## MC_Maze Large LFADS feasibility pilot
+
+Run the one-repeat controlled pilot with:
+
+```powershell
+python scripts/run_lfads_pilot.py --config configs/mc_maze_large_lfads_pilot.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+The pilot reuses outer repeat 0, folds 0-4, and its fixed 122/40 held-in/held-out neuron mask from the
+frozen Large movement-window protocol. It trains the existing LFADS-style GRU at initialization seeds
+`2027`, `2028`, `2029`, `2030`, and `2031`, once per fold: 25 fixed runs, no hyperparameter sweep and
+no `seed + run_index` derivation. The baseline to beat is `factor_latent_train_selected`.
+
+Checkpoint selection and early stopping use only a stratified inner split of each outer-training set.
+Outer-evaluation trials are never used for checkpoint selection, normalization, calibration, or
+hyperparameter selection. Full five-repeat LFADS evaluation is permitted only if every predeclared
+gate passes. This pilot is feasibility and seed-stability evidence from one held-out-neuron mask; it
+cannot support a final model-performance claim or replace the frozen baseline.

@@ -630,3 +630,37 @@ inconclusive rather than reporting the nominally higher mean as a win. Invalid c
 train-mean reference are excluded from the comparison entirely: they are filtered by
 `reportable_as_model_performance` before any ranking or superiority test runs, so a target-reading
 control can never become the baseline that neural models are asked to beat.
+
+## LFADS feasibility pilot: nested checkpoint selection
+
+The MC_Maze Large LFADS pilot adds an inner split for checkpoint selection inside each accepted outer
+fold. For outer fold `k`, the other four folds provide 400 outer-training trials. A deterministic,
+stratified 85/15 split yields 340 gradient-training trials and 60 inner-validation trials. The model
+checkpoint maximizes canonical unified bits/spike on those 60 inner-validation trials, and early
+stopping reads the same metric. The 100 outer-evaluation trials are unavailable until the checkpoint
+has been selected. They never fit normalization, calibration, a reference, or a hyperparameter.
+
+The outer train-heldout mean-rate reference is recomputed from all 400 outer-training trials after
+selection. Held-out target counts never enter the model input: 122 held-in neurons form the input and
+all 162 neurons form the rate output, with the accepted 40-neuron mask used for scoring. Checkpoint
+records carry repeat, fold, initialization seed, epoch, selection split, selection metric, path, and
+SHA-256. Any selected checkpoint whose split is not `inner_validation` invalidates the run.
+
+## LFADS feasibility pilot: seed control and evidence limit
+
+Initialization seeds are exactly `2027`, `2028`, `2029`, `2030`, and `2031` on every pilot fold. They
+are never offset by fold or run index. This separates initialization sensitivity from the fixed trial
+assignments and fixed repeat-0 neuron mask. Seeds remain five separate observations; outer scores do
+not select a preferred seed.
+
+A one-repeat pilot precedes full evaluation because 25 full neural fits are enough to expose training,
+checkpoint, runtime, memory, and initialization failures without spending five-repeat compute. Its
+five outer folds share one neuron mask and overlapping training sets, so they do not constitute five
+independent masks and cannot support a final model comparison. Fold-paired baseline differences are
+descriptive only.
+
+Full five-repeat evaluation is recommended only when all 25 runs complete with finite scores and
+losses, every selected checkpoint comes from inner validation, leakage checks pass, mean unified
+bits/spike is non-negative, at least 60 percent of seed means are positive, seed-mean standard
+deviation is at most 0.05, and mean paired difference from `factor_latent_train_selected` is no worse
+than -0.02. Failure of any gate stops progression; the pilot never permits a final performance claim.
