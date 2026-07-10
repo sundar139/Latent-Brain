@@ -941,7 +941,9 @@ def build_recommended_window_protocol(
     summary: dict[str, Any],
 ) -> dict[str, Any]:
     """Serializable protocol contract for carried-forward recommended-window reporting."""
-    optional = {
+    # Annotated so the comprehension's keys widen to str; a Literal key type cannot be unpacked
+    # into dict[str, Any].
+    optional: dict[str, Any] = {
         key: dict(config[key])
         for key in ("trial_source", "factor_analysis_sensitivity")
         if key in config

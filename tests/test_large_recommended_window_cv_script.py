@@ -106,6 +106,7 @@ def test_large_script_writes_every_output_and_prints_required_fields(
 
     protocol = yaml.safe_load((out / "recommended_window_protocol.yaml").read_text("utf-8"))
     assert protocol["trial_source"]["allow_global_crop_to_min"] is False
+    assert protocol["factor_analysis_sensitivity"]["random_states"] == [0, 2027]
     assert protocol["binning"]["extract_before_rebin"] is True
     assert protocol["claim_safety"]["official_leaderboard_claim"] is False
     assert protocol["protocol_frozen"] is True
