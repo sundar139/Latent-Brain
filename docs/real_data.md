@@ -1011,3 +1011,122 @@ claim-safety flags (`single_split_results_reportable: false`,
 
 Valid Large baseline expansion, then reevaluation of the LFADS-style, neural-ODE, and neural-SDE
 models under this frozen protocol. No neural model has been run on Large.
+
+## MC_Maze Large valid baseline suite
+
+Run with:
+
+```powershell
+python scripts/run_baseline_suite.py --config configs/mc_maze_large_baseline_suite.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+Status: complete, baseline frozen. **No neural model was trained, tuned, or scored.** No official NLB
+leaderboard result is claimed. Outputs are local ignored artifacts under
+`results/mc_maze_large/baseline_suite/`.
+
+### Protocol reuse and nested selection
+
+The 25 accepted outer folds were read verbatim from
+`recommended_window_fold_assignments.csv`, and each repeat's held-out neuron mask was recreated from
+the frozen base seed `2027 + repeat_index`. Folds were never regenerated. Hyperparameters were chosen
+by 3 inner folds cut only from each outer fold's 400 training trials; the winner was refit on those
+400 trials and the outer-evaluation fold was scored exactly once. 2475 inner evaluations ran in total
+(12, 12 and 9 configurations for the three train-selected methods).
+
+`factor_latent_fixed` reproduced the accepted recommended-window mean exactly:
+
+```text
+reproduced mean: 0.12271672423988657
+accepted mean:   0.12271672423988657
+difference:      0.0
+```
+
+That exact reproduction is the evidence that the folds and masks are the accepted ones.
+
+### Valid baselines
+
+| method | family | mean | std | CI95 | positive fraction | between-repeat std | within-repeat std |
+|---|---|---|---|---|---|---|---|
+| factor_latent_train_selected | factor_latent | 0.135545 | 0.026166 | [0.125743, 0.146088] | 1.0 | 0.027284 | 0.008189 |
+| factor_latent_fixed | factor_latent | 0.122717 | 0.025405 | [0.113239, 0.132794] | 1.0 | 0.026885 | 0.006735 |
+| smoothed_cosmoothing_ridge | ridge | 0.121562 | 0.025822 | [0.111850, 0.131790] | 1.0 | 0.027718 | 0.005434 |
+| reduced_rank_cosmoothing | reduced_rank | 0.087901 | 0.023851 | [0.078951, 0.097026] | 1.0 | 0.019528 | 0.016032 |
+
+`reduced_rank_cosmoothing` is linear reduced-rank ridge regression. It carries no temporal or
+dynamical assumptions and is neither GPFA nor a latent dynamical model.
+
+Selected hyperparameters were identical on all 25 outer folds for every train-selected method, which
+is itself a stability result:
+
+```text
+factor_latent_train_selected: latent_dim 16, smoothing_sigma_ms 200.0, heldout_decoder_alpha 10000.0
+smoothed_cosmoothing_ridge:   smoothing_sigma_ms 240.0, alpha 100000.0
+reduced_rank_cosmoothing:     smoothing_sigma_ms 160.0, alpha 10000.0, rank 8
+```
+
+Both co-smoothing families selected the heaviest smoothing and the strongest regularization offered,
+which suggests the grids sit at their conservative edge rather than at an interior optimum.
+
+### Paired comparisons against factor_latent_fixed
+
+Comparison unit is the repeat, with a hierarchical paired bootstrap over repeats and folds. The 25
+folds are not independent.
+
+| comparison | mean paired difference | CI95 | positive repeat fraction | supported |
+|---|---|---|---|---|
+| factor_latent_train_selected | +0.012828 | [0.011205, 0.014242] | 1.0 | yes |
+| smoothed_cosmoothing_ridge | -0.001155 | [-0.003228, 0.000951] | 0.2 | no |
+| reduced_rank_cosmoothing | -0.034816 | [-0.044943, -0.026459] | 0.0 | no |
+
+Answering the milestone questions directly: a direct co-smoothing ridge does **not** outperform
+factor-latent (its interval straddles zero and it wins on one repeat in five); a reduced-rank model
+does **not** outperform full-rank ridge; and train-only nested selection **does** improve
+factor-latent, by a small but perfectly consistent margin.
+
+### Invalid leakage control
+
+`split_mean_rate_invalid` scored 0.008967 mean (std 0.002695). It reads each evaluation fold's own
+held-out targets, is excluded from selection, ranking and superiority testing, and never appears in
+`paired_method_comparisons.csv`. It cannot become the baseline to beat. `train_mean_rate` scored
+exactly 0.0 on all 25 folds, as the reference must.
+
+### Baseline to beat
+
+```text
+baseline_to_beat:                factor_latent_train_selected
+baseline_replaced:              true
+baseline_replacement_supported: true
+baseline mean:                  0.13554470127397905
+baseline CI95:                  [0.12574272544462758, 0.14608796822823822]
+```
+
+`factor_latent_train_selected` cleared every declared gate: positive paired mean, bootstrap interval
+excluding zero, and 100 percent positive repeats. Neural models must beat this, not the previous
+`factor_latent_fixed` value.
+
+### A leakage defect the real run exposed
+
+The first real run reported `smoothed_cosmoothing_ridge` at 0.9459 bits/spike and replaced the
+baseline. That was wrong. The smoothing cache in the baseline suite keyed on the held-in set's size
+and first index rather than the set itself. Repeats 1 through 4 all produce a mask whose first
+held-in index is 0 and whose size is 122, so they collided; repeats 2, 3 and 4 silently reused repeat
+1's held-in columns, 29 of which are their own held-out target neurons. Only the co-smoothing
+families used that cache, which is exactly why factor-latent still reproduced its accepted mean and
+why the corruption was confined to three repeats. The cache now keys on the full held-in index array,
+and a regression test constructs two same-size masks sharing a first index and asserts their features
+differ. Every number above is from the corrected run.
+
+### Neural reevaluation readiness
+
+`neural_reevaluation_readiness.json` reports `ready: true` with no blockers. It is a plan artifact:
+no neural experiment was run during this milestone. It fixes the dataset hash, window, bin size, fold
+and mask sources, the baseline to beat and its interval, the repeat-level comparison unit, at least
+five controlled neural seeds, five outer repeats, the claim-safety rules, checkpoint selection on
+inner-training folds, and the forbidden old protocols (`from_start_1p28s`, `single_70_15_15_split`,
+`seed_plus_run_index`, `evaluation_target_calibration`, `invalid_split_mean_as_model`).
+
+### Next phase
+
+Controlled neural-model reevaluation: prepare and approve the reevaluation manifest, then reevaluate
+LFADS-style and deterministic neural-ODE models under this exact frozen protocol.

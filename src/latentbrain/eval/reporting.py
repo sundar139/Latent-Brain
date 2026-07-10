@@ -3437,3 +3437,192 @@ def write_dataset_scoreboard_outputs(
     ]
     paths["report"].write_text("\n".join(lines), encoding="utf-8")
     return paths
+
+
+def write_baseline_suite_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    tables: dict[str, pd.DataFrame],
+    protocol: dict[str, Any],
+    readiness: dict[str, Any],
+) -> dict[str, Path]:
+    """Write the valid baseline suite outputs. No neural model is trained in this workflow."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "baseline_suite_summary.json",
+        "outer_fold_scores": output_dir / "outer_fold_scores.csv",
+        "inner_selection": output_dir / "inner_selection_results.csv",
+        "selected_hyperparameters": output_dir / "selected_hyperparameters.csv",
+        "method_summary": output_dir / "method_summary.csv",
+        "paired_method_comparisons": output_dir / "paired_method_comparisons.csv",
+        "repeat_level_scores": output_dir / "repeat_level_scores.csv",
+        "protocol": output_dir / "baseline_protocol.yaml",
+        "readiness": output_dir / "neural_reevaluation_readiness.json",
+        "report": output_dir / "baseline_suite_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["readiness"].write_text(
+        json.dumps(readiness, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    for key in (
+        "outer_fold_scores",
+        "inner_selection",
+        "selected_hyperparameters",
+        "method_summary",
+        "paired_method_comparisons",
+        "repeat_level_scores",
+    ):
+        tables[key].to_csv(paths[key], index=False)
+    paths["protocol"].write_text(yaml.safe_dump(protocol, sort_keys=False), encoding="utf-8")
+    write_baseline_suite_report(
+        paths["report"],
+        summary,
+        tables["method_summary"],
+        tables["paired_method_comparisons"],
+        tables["selected_hyperparameters"],
+        readiness,
+    )
+    return paths
+
+
+def write_baseline_suite_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    method_summary: pd.DataFrame,
+    comparisons: pd.DataFrame,
+    selected: pd.DataFrame,
+    readiness: dict[str, Any],
+) -> Path:
+    """Claim-safe Markdown report for the valid baseline suite."""
+    valid = method_summary[method_summary["reportable_as_model_performance"].astype(bool)]
+    invalid = method_summary[~method_summary["reportable_as_model_performance"].astype(bool)]
+    patterns = (
+        selected.groupby(["method_name", "selected_hyperparameters_json"])
+        .size()
+        .reset_index(name="outer_folds")
+        .sort_values(["method_name", "outer_folds"], ascending=[True, False])
+        if not selected.empty
+        else selected
+    )
+    replaced = bool(summary.get("baseline_replaced"))
+    lines = [
+        f"# {summary.get('dataset_name')} Valid Baseline Suite",
+        "",
+        "All event-centered arrays were extracted from the trial-aware source before rebinning.",
+        "Hyperparameters were selected using only outer-training data.",
+        "Outer folds within a repeat are not treated as statistically independent.",
+        "Invalid controls use evaluation targets and cannot be reported as model performance.",
+        "MC_Maze Small and MC_Maze Large scores are not interpreted as directly comparable "
+        "performance measurements.",
+        "This is local cross-validation analysis, not an official NLB leaderboard result.",
+        "",
+        "## Frozen evaluation protocol",
+        "",
+        f"- dataset hash: {summary.get('dataset_hash')}",
+        f"- window: {summary.get('window_name')}",
+        f"- target bin size: {summary.get('target_bin_size_ms')} ms",
+        f"- protocol source: {summary.get('protocol_source')}",
+        f"- outer fold assignments reused verbatim: {summary.get('outer_assignments_reused')}",
+        f"- held-out neuron masks reused verbatim: {summary.get('neuron_masks_reused')}",
+        f"- outer folds x repeats: {summary.get('outer_fold_count')} x "
+        f"{summary.get('outer_repeats')} = {summary.get('total_outer_evaluations')} evaluations",
+        "",
+        "## Nested selection design",
+        "",
+        f"- inner selection enabled: {summary.get('inner_selection_enabled')}",
+        f"- inner folds: {summary.get('inner_fold_count')}, built only from outer-training trials",
+        "- every selected configuration comes from the declared finite grid.",
+        "- smoothing, standardization, dimensionality reduction, and decoders are fit inside the "
+        "training partition only.",
+        "- outer-evaluation counts never enter selection or calibration.",
+        "",
+        "## Valid baseline methods",
+        "",
+        _markdown_table(valid),
+        "",
+        "## Inner-selection results",
+        "",
+        "Most frequently selected configuration per method:",
+        "",
+        _markdown_table(patterns),
+        "",
+        "## Outer-fold results",
+        "",
+        f"- factor_latent_fixed mean: {summary.get('factor_latent_fixed_mean')}",
+        f"- accepted recommended-window mean: {summary.get('factor_latent_accepted_mean')}",
+        f"- reproduction difference: {summary.get('factor_latent_reproduction_difference')}",
+        f"- reproduced within tolerance: {summary.get('factor_latent_reproduced')}",
+        f"- train_mean_rate mean: {summary.get('train_mean_rate_mean')} (reference, scores zero)",
+        "",
+        "## Held-out-neuron-mask variability",
+        "",
+        "Each repeat uses one held-out neuron mask, fixed across that repeat's folds. "
+        "Between-repeat standard deviation therefore measures neuron-mask sensitivity, and "
+        "within-repeat standard deviation measures trial-fold noise.",
+        "",
+        "## Paired method comparisons",
+        "",
+        f"- comparison unit: {summary.get('comparison_unit')}",
+        f"- hierarchical paired bootstrap: {summary.get('hierarchical_bootstrap')}",
+        f"- naive fold-independent significance test used: "
+        f"{summary.get('naive_independent_fold_test_used')}",
+        "",
+        _markdown_table(comparisons),
+        "",
+        "## Invalid leakage control",
+        "",
+        f"- split_mean_rate_invalid mean: {summary.get('split_mean_invalid_mean')}",
+        "- the split-mean control reads each evaluation fold's own held-out targets.",
+        "- it never enters hyperparameter selection, superiority testing, or baseline ranking.",
+        "",
+        _markdown_table(invalid),
+        "",
+        "## Baseline to beat",
+        "",
+        f"- baseline to beat: {summary.get('baseline_to_beat')}",
+        f"- baseline replaced: {replaced}",
+        f"- replacement statistically supported: {summary.get('baseline_replacement_supported')}",
+        f"- best valid method by mean: {summary.get('best_valid_method')} "
+        f"({summary.get('best_valid_method_mean')})",
+        f"- paired difference against factor_latent_fixed: "
+        f"{summary.get('paired_difference_against_factor_latent')}",
+        f"- paired CI95: {summary.get('paired_ci_against_factor_latent')}",
+        f"- positive repeat fraction: "
+        f"{summary.get('positive_repeat_fraction_against_factor_latent')}",
+        "",
+        "A method replaces the incumbent only when the paired mean difference is positive, the "
+        "paired bootstrap interval excludes zero, and it wins on at least 80 percent of repeats.",
+        "",
+        "## Neural reevaluation readiness",
+        "",
+        f"- ready: {readiness.get('ready')}",
+        f"- blockers: {readiness.get('blockers')}",
+        f"- required neural seeds: {readiness.get('required_neural_seeds')}",
+        f"- forbidden old protocols: {readiness.get('forbidden_old_protocols')}",
+        f"- neural experiment run during this milestone: "
+        f"{readiness.get('neural_experiment_run_during_this_milestone')}",
+        "",
+        "## Limitations",
+        "",
+        "- every baseline here is linear or factor-analysis based; none is a neural or dynamical "
+        "model, and the reduced-rank method carries no temporal assumptions.",
+        "- no LFADS-style, neural-ODE, neural-SDE, switching, controller, or VAE model was trained "
+        "or tuned in this milestone.",
+        "- 25 outer folds are correlated within repeats; the reported intervals account for that "
+        "and are wider than a naive fold-level interval would be.",
+        "- results are local ignored artifacts.",
+        "",
+        "## Next research actions",
+        "",
+        "- freeze the baseline to beat and the readiness artifact.",
+        "- prepare and approve the neural-model reevaluation manifest.",
+        "- reevaluate LFADS-style and deterministic neural-ODE models under this exact protocol.",
+        "",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path

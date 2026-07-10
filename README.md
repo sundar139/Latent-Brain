@@ -320,6 +320,20 @@ The frozen Large window is `behavior_speed_peak_centered_1p28s` at 20 ms bins, g
 
 Under 5 folds × 5 repeats (400 train / 100 evaluation trials per fold, held-out neuron mask fixed within each repeat), factor-latent is the first valid MC_Maze Large baseline: mean `0.1227` unified bits/spike, CI95 `[0.1132, 0.1328]`, positive on 25 of 25 folds, against a train-mean reference that scores exactly `0.0`. FactorAnalysis random-state spread is `0.0010`, well inside tolerance. The invalid split-mean control (mean `0.0090`) reads evaluation-fold targets, remains a leakage diagnostic, is excluded from model selection, and is beaten on every fold, so leakage dominance does not persist. Small and Large scores are not directly comparable; only protocol stability is compared. Results are local ignored artifacts, not official NLB leaderboard results.
 
+### MC_Maze Large valid baseline suite
+
+```powershell
+python scripts/run_baseline_suite.py --config configs/mc_maze_large_baseline_suite.yaml
+```
+
+The suite establishes the non-neural baseline that neural models must beat, before any neural model is reevaluated. **No neural model is trained, tuned, or scored in this milestone.**
+
+It reuses the frozen Large protocol exactly: the same 25 outer folds are read from the accepted assignments file, and the same per-repeat held-out neuron masks are recreated from the frozen base seed. Folds are never regenerated. Hyperparameters are chosen by nested train-only selection: inner folds are cut only from each outer fold's 400 training trials, the winner is refit on those 400 trials, and the outer-evaluation fold is scored exactly once. Smoothing, standardization, the factor-analysis basis, the reduced-rank projection, and the ridge decoder are all fit inside the training partition; evaluation counts enter only the final score.
+
+Valid baselines: `factor_latent_fixed` (the accepted incumbent, reproduced to verify the protocol), `factor_latent_train_selected`, `smoothed_cosmoothing_ridge`, and `reduced_rank_cosmoothing` (linear reduced-rank regression — not GPFA, and not a dynamical model). The invalid `split_mean_rate_invalid` control reads evaluation-fold targets, stays a leakage diagnostic, and is excluded from selection, ranking, and superiority testing; it can never become the baseline to beat.
+
+The 25 folds are not independent — five share each repeat's neuron mask and 300 of 400 training trials — so comparisons are made per repeat with a hierarchical paired bootstrap, never a naive 25-sample test. A method replaces the incumbent only if its paired mean difference is positive, the bootstrap interval excludes zero, and it wins on at least 80% of repeats; otherwise `factor_latent_fixed` is retained. Results are local ignored artifacts under `results/mc_maze_large/baseline_suite/`, not official NLB leaderboard results.
+
 Large begins as protocol transfer, not model tuning. This ingestion milestone is ingestion only: no factor-latent, neural model, stratified cross-validation, window selection, or benchmark comparison is run. Later Large reporting inherits the frozen MC_Maze Small protocol — 20 ms bins, the peak-speed-centered 1.28-second window candidate, stratified cross-validation, and the same claim-safety enforcement. Nothing here is an official NLB leaderboard result.
 
 ## Data validation report

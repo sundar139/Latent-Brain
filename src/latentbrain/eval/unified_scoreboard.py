@@ -768,3 +768,67 @@ def load_dataset_cv_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         "official_leaderboard_claim": False,
         "recommended_window_cv_summary_path": str(path),
     }
+
+
+BASELINE_SUITE_KEYS = (
+    "baseline_to_beat",
+    "baseline_replaced",
+    "baseline_replacement_supported",
+    "neural_reevaluation_ready",
+    "invalid_controls_excluded",
+    "official_leaderboard_claim",
+)
+
+
+def load_baseline_suite_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Baseline suite fields. Missing falls back cleanly; malformed fails clearly."""
+    path = _summary_path(config["inputs"].get("baseline_suite_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "baseline_suite_available": False,
+            "baseline_to_beat": None,
+            "baseline_to_beat_mean": None,
+            "baseline_to_beat_ci95_low": None,
+            "baseline_to_beat_ci95_high": None,
+            "baseline_replaced": None,
+            "baseline_replacement_supported": None,
+            "neural_reevaluation_ready": False,
+            "invalid_controls_excluded": True,
+        }
+    label = "baseline suite"
+    summary = _load_summary(path, label)
+    for key in BASELINE_SUITE_KEYS:
+        if key not in summary:
+            msg = f"malformed baseline suite summary ({label}): missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["official_leaderboard_claim"]):
+        msg = f"malformed baseline suite summary ({label}): no leaderboard claim is allowed"
+        raise ValueError(msg)
+    if not bool(summary["invalid_controls_excluded"]):
+        msg = f"malformed baseline suite summary ({label}): invalid controls must be excluded"
+        raise ValueError(msg)
+    baseline = str(summary["baseline_to_beat"])
+    invalid_names = {"split_mean_rate_invalid", "train_mean_rate"}
+    if baseline in invalid_names:
+        msg = (
+            f"malformed baseline suite summary ({label}): an invalid control or reference "
+            f"cannot be the baseline to beat ({baseline})"
+        )
+        raise ValueError(msg)
+    mean = (
+        summary.get("best_valid_method_mean")
+        if bool(summary["baseline_replaced"])
+        else summary.get("factor_latent_fixed_mean")
+    )
+    return {
+        "baseline_suite_available": True,
+        "baseline_to_beat": baseline,
+        "baseline_to_beat_mean": None if mean is None else float(mean),
+        "baseline_to_beat_ci95_low": _optional_float(summary, "baseline_to_beat_ci95_low"),
+        "baseline_to_beat_ci95_high": _optional_float(summary, "baseline_to_beat_ci95_high"),
+        "baseline_replaced": bool(summary["baseline_replaced"]),
+        "baseline_replacement_supported": bool(summary["baseline_replacement_supported"]),
+        "neural_reevaluation_ready": bool(summary["neural_reevaluation_ready"]),
+        "invalid_controls_excluded": True,
+        "baseline_suite_summary_path": str(path),
+    }

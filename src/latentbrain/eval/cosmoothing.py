@@ -117,6 +117,54 @@ def fit_cosmoothing_ridge(
     return {**decoder, "feature_stats": feature_stats, "bin_size_ms": np.array(bin_size_ms)}
 
 
+def fit_reduced_rank_cosmoothing(
+    train_input_rates_hz: np.ndarray,
+    train_target_counts: np.ndarray,
+    bin_size_ms: int,
+    alpha: float,
+    rank: int,
+    min_rate_hz: float,
+    max_rate_hz: float,
+    standardize_features: bool = True,
+    fit_intercept: bool = True,
+) -> dict[str, Any]:
+    """Reduced-rank ridge from held-in rates to held-out rates, fit on training samples only.
+
+    This is linear reduced-rank regression: ridge coefficients projected onto the top `rank`
+    right-singular directions of the fitted training predictions. It carries no temporal or
+    dynamical assumptions, so it is not GPFA and not a latent dynamical model.
+    """
+    model = fit_cosmoothing_ridge(
+        train_input_rates_hz,
+        train_target_counts,
+        bin_size_ms,
+        alpha,
+        min_rate_hz,
+        max_rate_hz,
+        standardize_features=standardize_features,
+        fit_intercept=fit_intercept,
+    )
+    coefficients = np.asarray(model["coefficients"], dtype=np.float64)
+    max_rank = int(min(coefficients.shape))
+    if rank <= 0:
+        msg = "rank must be positive"
+        raise ValueError(msg)
+    if rank > max_rank:
+        msg = f"rank {rank} exceeds the maximum rank {max_rank} of the coefficient matrix"
+        raise ValueError(msg)
+
+    x = np.asarray(train_input_rates_hz, dtype=np.float64)
+    stats = model.get("feature_stats", {})
+    if stats:
+        x = (x - stats["mean"]) / stats["std"]
+    # Truncate in the output basis of the fitted training predictions, which is the standard
+    # reduced-rank-regression projection and keeps the intercept unconstrained.
+    centered = x @ coefficients
+    _, _, right = np.linalg.svd(centered - centered.mean(axis=0), full_matrices=False)
+    projection = right[:rank].T @ right[:rank]
+    return {**model, "coefficients": coefficients @ projection, "rank": np.array(rank)}
+
+
 def predict_cosmoothing_rates(
     input_rates_hz: np.ndarray,
     model: dict[str, Any],

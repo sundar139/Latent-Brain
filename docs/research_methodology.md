@@ -570,3 +570,63 @@ Cross-dataset comparison is therefore restricted to protocol stability and leaka
 variance, positive-fold fraction, whether leakage dominance persists, and behavior coverage. The
 comparison generator emits only those statements. Asserting that Large factor-latent performance is
 better or worse than Small's is forbidden, and the report says so explicitly.
+
+## Nested outer/inner evaluation
+
+Selecting a hyperparameter on the same fold that reports the score inflates that score, because the
+fold has then been used twice: once to choose the model and once to judge it. The baseline suite
+therefore nests the two. The 25 accepted outer folds are loaded verbatim from the frozen
+recommended-window protocol and are never regenerated. Inside each outer fold, inner folds are cut
+only from that fold's 400 outer-training trials, hyperparameters are chosen by mean inner score,
+the winning configuration is refit on all 400 outer-training trials, and the outer-evaluation fold
+is scored exactly once.
+
+Every preprocessing step is fit inside the partition that is allowed to see it. Smoothing carries no
+learned target statistics but is still applied only to permitted samples; feature standardization,
+the factor-analysis basis, the reduced-rank projection, and the ridge decoder are all fit on training
+observations alone. The evaluation fold's held-out-neuron counts enter exactly one computation: the
+final score. The train-heldout mean-rate reference is recomputed from the fold's training trials, so
+even the reference never sees evaluation targets.
+
+## Outer folds within a repeat are correlated
+
+The 25 outer folds are not 25 independent samples. Five folds share one repeat, and within a repeat
+they share the same held-out neuron mask and overlap in 300 of their 400 training trials. A naive
+25-sample independent test would therefore treat correlated observations as independent and produce
+an interval that is too narrow, making a marginal difference look significant.
+
+Comparisons are made at the repeat level instead. Fold scores are averaged within each repeat, and
+the paired difference against the incumbent baseline is taken per repeat. The configuration declares
+`comparison_unit: repeat` and the runner refuses any other value.
+
+## Hierarchical paired bootstrap
+
+The confidence interval on a paired difference resamples both levels of the design: first draw five
+repeats with replacement, then draw folds with replacement inside each chosen repeat, and average.
+Repeating that many times gives a distribution of the paired mean that honours the nesting. The
+result is deterministic given the configured seed. It is wider than a fold-level bootstrap of the
+same data, which is the point: a method that wins only because one neuron mask happened to favour it
+should not clear the interval.
+
+## Held-out-neuron-mask variability
+
+Each repeat draws one held-out neuron mask and fixes it across that repeat's five folds. This makes
+the two variance components separable. Within-repeat standard deviation measures trial-fold noise
+under a fixed mask; between-repeat standard deviation measures how much the answer depends on which
+40 of the 162 neurons were held out. A baseline whose advantage is real should hold across masks, not
+only across trial folds, which is why the positive-repeat-fraction gate is stated over repeats.
+
+## Baseline replacement criteria
+
+The incumbent baseline is replaced only when a valid method clears every gate at once:
+
+1. the paired mean difference over repeats is positive,
+2. the hierarchical paired bootstrap interval excludes zero from below,
+3. the method wins on at least 80 percent of repeats,
+4. no leakage or protocol violation is present.
+
+If no method clears all four, the incumbent is retained and the report says the comparison was
+inconclusive rather than reporting the nominally higher mean as a win. Invalid controls and the
+train-mean reference are excluded from the comparison entirely: they are filtered by
+`reportable_as_model_performance` before any ranking or superiority test runs, so a target-reading
+control can never become the baseline that neural models are asked to beat.

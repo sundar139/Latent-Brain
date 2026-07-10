@@ -33,6 +33,7 @@ from latentbrain.eval.scoring import (
 from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
     build_unified_score_row,
+    load_baseline_suite_scoreboard,
     load_cv_rate_audit_warning,
     load_dataset_cv_scoreboard,
     load_lfads_family_candidates,
@@ -245,7 +246,7 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 
 def run_dataset_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
-    summary = load_dataset_cv_scoreboard(config)
+    summary = {**load_dataset_cv_scoreboard(config), **load_baseline_suite_scoreboard(config)}
     output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
     write_dataset_scoreboard_outputs(output_dir, summary)
     return {"summary": summary, "output_dir": output_dir}
@@ -493,6 +494,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "factor_latent_beats_invalid_control_mean",
             "leakage_dominance_persists",
             "best_valid_method",
+            "baseline_suite_available",
+            "baseline_to_beat",
+            "baseline_to_beat_mean",
+            "baseline_to_beat_ci95_low",
+            "baseline_to_beat_ci95_high",
+            "baseline_replaced",
+            "baseline_replacement_supported",
+            "neural_reevaluation_ready",
+            "invalid_controls_excluded",
             "single_split_results_reportable",
             "official_leaderboard_claim",
         ):
