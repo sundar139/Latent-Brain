@@ -278,11 +278,26 @@ The generated files are local validation artifacts, not benchmark results. Real 
 LatentBrain includes a local MC_Maze Small ingestion path:
 
 ```powershell
-python scripts/inspect_nlb_files.py --root data/raw/nlb/mc_maze_small
+python scripts/inspect_nlb_files.py --config configs/nlb_mc_maze_small.yaml
 python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
 ```
 
 The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. The real NWB train file loads as a continuous `NWBDataset.data` pandas dataframe; LatentBrain uses NLB trial metadata to trialize it into `spikes: [trials, time, neurons]`, concatenating `heldout_spikes` after `spikes` when available. When train-file behavior columns are available, `hand_pos` and `cursor_pos` are trialized with the same trial IDs and cropped time window into `behavior: [trials, time, behavior_dims]` with named dimensions. The initial policy crops variable-length trials to the minimum trial length for a clean validation tensor. This is validation-oriented preprocessing, not final benchmark preprocessing. If files are missing, the script exits with guidance and creates no fake data. No trained model, benchmark score, EvalAI submission, or leaderboard claim exists. Behavior is stored for validation and future decoding work; velocity decoding is not implemented yet.
+
+## MC_Maze Large ingestion
+
+MC_Maze Large reuses the same ingestion layer with a variant-specific config:
+
+```powershell
+python scripts/inspect_nlb_files.py --config configs/nlb_mc_maze_large.yaml
+python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_large.yaml
+```
+
+The source is DANDI dandiset `000138`, version `0.220113.0407` (`https://gui.dandiarchive.org/#/dandiset/000138`), verified against the DANDI API and recorded in `configs/nlb_mc_maze_large.yaml`. The two expected assets total about 142.5 MB. Nothing is downloaded automatically: when `data/raw/nlb/mc_maze_large` is empty both scripts print `status: missing_raw_data`, the verified identifiers, the expected assets, `automatic_download_performed: false`, and the manual `dandi download DANDI:000138/0.220113.0407` command, then exit with code 2 without creating files. Raw and processed Large data stay uncommitted and gitignored.
+
+Inspection reports one record per candidate file with the detected dataset and variant, NWB identifier, session description, subject, acquisition series, processing modules, trial table presence and count, unit count, and behavior series candidates. Variant detection reads NWB metadata first and falls back to the filename only when metadata is unavailable, so a Small file under a Large config is rejected, as is a mix of incompatible sessions.
+
+Large begins as protocol transfer, not model tuning. This milestone is ingestion only: no factor-latent, neural model, stratified cross-validation, window selection, or benchmark comparison is run. Later Large reporting inherits the frozen MC_Maze Small protocol — 20 ms bins, the peak-speed-centered 1.28-second window candidate, stratified cross-validation, and the same claim-safety enforcement. Nothing here is an official NLB leaderboard result.
 
 ## Data validation report
 

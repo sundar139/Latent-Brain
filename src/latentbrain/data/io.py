@@ -22,7 +22,9 @@ def compute_array_hash(array: np.ndarray) -> str:
 
 
 def _stable_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    excluded = {"dataset_hash", "generated_at_utc", "provenance"}
+    # ingestion_summary holds derived, non-identifying descriptions of the same arrays,
+    # so it stays out of the hash payload and never invalidates an expected_hash.
+    excluded = {"dataset_hash", "generated_at_utc", "provenance", "ingestion_summary"}
     return {key: value for key, value in metadata.items() if key not in excluded}
 
 
@@ -46,8 +48,13 @@ def save_neural_dataset(
     dataset: NeuralDataset,
     output_path: Path,
     metadata_path: Path | None = None,
+    extra_arrays: dict[str, np.ndarray] | None = None,
 ) -> None:
-    """Validate and save a neural dataset as compressed NumPy arrays."""
+    """Validate and save a neural dataset as compressed NumPy arrays.
+
+    extra_arrays are stored alongside the dataset (e.g. split and mask indices) and
+    are not part of the dataset hash payload.
+    """
     validate_neural_dataset(dataset)
     if dataset.behavior is not None:
         dataset.metadata["dataset_hash_includes_behavior"] = True
@@ -67,6 +74,12 @@ def save_neural_dataset(
     if dataset.behavior is not None:
         arrays["behavior"] = dataset.behavior
         arrays["behavior_names"] = np.asarray(dataset.behavior_names, dtype=np.str_)
+    if extra_arrays:
+        conflicts = sorted(set(extra_arrays) & set(arrays))
+        if conflicts:
+            msg = f"extra_arrays must not override dataset arrays: {conflicts}"
+            raise ValueError(msg)
+        arrays.update(extra_arrays)
     np.savez_compressed(output_path, **arrays)
     if metadata_path is not None:
         metadata_path.parent.mkdir(parents=True, exist_ok=True)

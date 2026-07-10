@@ -7,6 +7,7 @@ from latentbrain.data.schemas import NeuralDataset, NeuronMask, TrialSplit
 from latentbrain.data.validation import (
     validate_neural_dataset,
     validate_neuron_mask,
+    validate_source_bin_size,
     validate_trial_split,
 )
 
@@ -102,3 +103,20 @@ def test_validate_neuron_mask_rejects_overlap() -> None:
 
     with pytest.raises(ValueError, match="overlap"):
         validate_neuron_mask(mask, 2)
+
+
+def test_validate_source_bin_size_accepts_matching_bin_size() -> None:
+    validate_source_bin_size(_dataset(), 20)
+
+
+def test_validate_source_bin_size_rejects_mismatched_bin_size() -> None:
+    with pytest.raises(ValueError, match="config expects 5"):
+        validate_source_bin_size(_dataset(), 5)
+
+
+def test_validate_source_bin_size_rejects_inconsistent_time_axis() -> None:
+    dataset = _dataset()
+    dataset.time_ms = np.array([0.0, 20.0, 100.0], dtype=np.float64)
+
+    with pytest.raises(ValueError, match="time_ms spacing does not match"):
+        validate_source_bin_size(dataset, 20)

@@ -199,3 +199,69 @@ def test_missing_optional_behavior_returns_none() -> None:
     assert behavior is None
     assert names is None
     assert metadata["present"] is False
+
+
+def _equal_length_dataframe() -> pd.DataFrame:
+    trial_ids = [10, 10, 10, 20, 20, 20]
+    trial_times = [pd.Timedelta(milliseconds=value) for value in [0, 5, 10, 0, 5, 10]]
+    data: dict[tuple[str, str | int], list[object]] = {
+        ("trial_id", ""): trial_ids,
+        ("trial_time", ""): trial_times,
+        ("spikes", 1): [1.0, 0.0, 2.0, 0.0, 1.0, 3.0],
+        ("spikes", 2): [0.0, 1.0, 0.0, 2.0, 0.0, 1.0],
+    }
+    return pd.DataFrame(data, columns=pd.MultiIndex.from_tuples(data.keys()))
+
+
+def test_spike_conservation_holds_for_equal_length_trials() -> None:
+    spikes, _, _, metadata = dataframe_to_trial_tensor(
+        _equal_length_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        variable_length_policy="crop_to_min",
+        bin_size_ms=5,
+    )
+    conservation = metadata["ingestion_summary"]["spike_conservation"]
+
+    assert conservation["conserved"] is True
+    assert conservation["raw_spike_count"] == int(spikes.sum()) == 11
+    assert conservation["excluded_spike_count"] == 0
+    assert conservation["excluded_bins"] == 0
+
+
+def test_spike_conservation_quantifies_cropped_bins() -> None:
+    _, _, _, metadata = dataframe_to_trial_tensor(
+        _trial_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        variable_length_policy="crop_to_min",
+        bin_size_ms=5,
+    )
+    conservation = metadata["ingestion_summary"]["spike_conservation"]
+
+    assert conservation["conserved"] is False
+    assert conservation["excluded_bins"] == 1
+    assert conservation["raw_spike_count"] == 9
+    assert conservation["trialized_spike_count"] == 8
+    assert conservation["excluded_spike_count"] == 1
+    assert conservation["exclusion_reason"] == "crop_to_min"
+
+
+def test_trialization_is_deterministic_across_repeated_calls() -> None:
+    first = dataframe_to_trial_tensor(
+        _equal_length_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        variable_length_policy="crop_to_min",
+        bin_size_ms=5,
+    )
+    second = dataframe_to_trial_tensor(
+        _equal_length_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        variable_length_policy="crop_to_min",
+        bin_size_ms=5,
+    )
+
+    np.testing.assert_array_equal(first[0], second[0])
+    np.testing.assert_array_equal(first[1], second[1])

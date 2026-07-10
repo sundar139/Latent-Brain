@@ -575,3 +575,99 @@ Every earlier `from_start_1p28s` score remains an early/pre-movement diagnostic.
 directly comparable as performance improvements because the prediction target changed. Single-split
 results remain unreportable, and there is no official leaderboard claim. The next major move is
 transfer of this frozen protocol to MC_Maze Large, not additional MC_Maze Small model tuning.
+
+## MC_Maze Large ingestion
+
+The frozen MC_Maze Small protocol above is unchanged. MC_Maze Large is a separate ingestion target
+that reuses the same adapter, trialization, validation, provenance, and serialization code with a
+variant-specific config, `configs/nlb_mc_maze_large.yaml`.
+
+Verified source identifiers, read from the DANDI API on 2026-07-10 rather than assumed:
+
+```text
+provider: dandi
+dandiset_id: 000138
+dandiset_version: 0.220113.0407
+doi: 10.48324/dandi.000138/0.220113.0407
+name: MC_Maze_Large: macaque primary motor and dorsal premotor cortex spiking activity during delayed reaching
+web: https://gui.dandiarchive.org/#/dandiset/000138
+```
+
+Verified assets:
+
+```text
+sub-Jenkins/sub-Jenkins_ses-large_desc-train_behavior+ecephys.nwb  148590536 bytes
+  sha256 1188ddf5b822dd9ac49afb8916f4b42a85867613cf7f169d0b04a1d1aeecd700
+sub-Jenkins/sub-Jenkins_ses-large_desc-test_ecephys.nwb              802352 bytes
+  sha256 c65e12e9f484653ec8d85b265fc7e0e93789fd5f760c6adddd54759ac48974f1
+```
+
+Local paths, both gitignored:
+
+```text
+data/raw/nlb/mc_maze_large
+data/processed/nlb/mc_maze_large
+```
+
+Nothing is downloaded automatically; `source.automatic_download` is validated to be false. When the
+raw directory is empty, `scripts/inspect_nlb_files.py` and `scripts/prepare_nlb_data.py` both print
+`status: missing_raw_data` with the expected raw directory, the verified source metadata, the
+candidate assets, `automatic_download_performed: false`, the expected 142.5 MB download size, and the
+manual command `dandi download DANDI:000138/0.220113.0407`. Both exit with code 2 and create nothing.
+
+### Variant detection
+
+`describe_nwb_file` reads NWB/HDF5 header metadata directly with `h5py` (no pynwb, no nlb_tools):
+identifier, session description, subject, acquisition series, processing modules, trial table and
+trial count, unit count, and behavior series candidates. `detect_variant` matches
+`mc_maze_<variant>` or `ses-<variant>` in NWB metadata first and only falls back to the filename when
+metadata is unreadable, recording which evidence was used. `enforce_dataset_variant` then rejects a
+Small file requested under the Large config, and rejects a directory that mixes incompatible
+sessions. Detection is skipped for configs whose variant is not one of `small`, `medium`, `large`.
+
+### Behavior mapping
+
+Required canonical behavior channels are `hand_pos_x`, `hand_pos_y`, `cursor_pos_x`, `cursor_pos_y`,
+declared in `behavior.required_names`. `behavior.aliases` maps a differently named source channel to
+a canonical name, and the resulting source-to-canonical mapping is recorded in metadata under
+`ingestion_summary.behavior_mapping`. Missing required channels are a hard error. Missing behavior
+channels are never fabricated.
+
+### Spike conservation
+
+Trialization records a conservation report in `ingestion_summary.spike_conservation`: raw spike
+count over the trialized dataframe, retained count, excluded count, excluded bins, and the exclusion
+reason. Exact conservation only holds when all trials share a length. Under the documented
+`crop_to_min` policy, variable-length trials lose their tail bins, and the report quantifies exactly
+how many bins and spikes were excluded. For reference, MC_Maze Small excludes 36288 of 131669 spikes
+across 82610 cropped bins under this policy. This is a documented, quantified exclusion, not silent
+data loss.
+
+### Determinism and hashing
+
+Trial splits and held-in/held-out neuron masks are generated deterministically from `splits.seed`
+and are validated as disjoint and exhaustive. Split and mask indices are written into the processed
+`.npz` as `train_indices`, `validation_indices`, `test_indices`, `heldin_indices`, and
+`heldout_indices`. Derived, non-identifying descriptions live in the `ingestion_summary` metadata
+key, which is excluded from the dataset hash payload; the MC_Maze Small hash
+`7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f` is therefore unchanged and still
+reproduces exactly through the updated ingestion path. Provenance records the source provider,
+verified DANDI identifiers, asset paths, sizes, raw file hashes, package version, git commit, config
+path, config digest, processed dataset hash, and the creation command.
+
+### Expected dimensional differences
+
+MC_Maze Small trializes to `spikes [100, 2051, 142]` and `behavior [100, 2051, 4]` at a 5 ms source
+bin. Large is a longer session with more trials and units, so trial count, time bins, and neuron
+count are not assumed to match Small and are only reported after real ingestion. No Large trial,
+time, neuron, or behavior dimension is claimed in this document until the verified assets are
+present locally and `scripts/prepare_nlb_data.py` has run.
+
+### Status and next phase
+
+At the time of writing, the verified Large assets are not present locally, so the ingestion path,
+detection, validation, and missing-data behavior are implemented and tested, but no real Large
+ingestion has been performed and no Large dimensions or hash are claimed. No model is trained here.
+The next phase is MC_Maze Large movement-window validation, which reuses the frozen Small protocol
+(20 ms bins, peak-speed-centered 1.28 s window candidate, stratified cross-validation, claim-safety
+enforcement) without changing this ingestion layer. No official benchmark claim is made.

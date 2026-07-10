@@ -1,0 +1,74 @@
+dataset:
+  name: mc_maze_large
+  source: neural_latents_benchmark
+  variant: large
+  bin_size_ms: 5
+  alignment_event: movement
+  expected_format: nlb
+  dataset_root: data/raw/nlb/mc_maze_large
+  processed_root: data/processed/nlb/mc_maze_large
+  output_filename: mc_maze_large_processed.npz
+  metadata_filename: mc_maze_large_metadata.json
+  provenance_filename: mc_maze_large_provenance.json
+
+# Verified against the DANDI API on 2026-07-10. Never used to download automatically.
+source:
+  provider: dandi
+  dandiset_id: "000138"
+  dandiset_version: 0.220113.0407
+  doi: 10.48324/dandi.000138/0.220113.0407
+  automatic_download: false
+  expected_assets:
+    - path: sub-Jenkins/sub-Jenkins_ses-large_desc-train_behavior+ecephys.nwb
+      size_bytes: 148590536
+      sha256: 1188ddf5b822dd9ac49afb8916f4b42a85867613cf7f169d0b04a1d1aeecd700
+    - path: sub-Jenkins/sub-Jenkins_ses-large_desc-test_ecephys.nwb
+      size_bytes: 802352
+      sha256: c65e12e9f484653ec8d85b265fc7e0e93789fd5f760c6adddd54759ac48974f1
+
+validation:
+  require_behavior: true
+  require_rates: false
+  allow_missing_behavior: false
+  min_trials: 1
+  min_neurons: 1
+  min_time_bins: 1
+
+splits:
+  seed: 2027
+  train_fraction: 0.7
+  validation_fraction: 0.15
+  test_fraction: 0.15
+  heldout_neuron_fraction: 0.25
+
+trialization:
+  train_file_pattern: "*desc-train_behavior+ecephys.nwb"
+  test_file_pattern: "*desc-test_ecephys.nwb"
+  start_field: start_time
+  end_field: end_time
+  align_field:
+  align_range_ms:
+  margin_ms: 0
+  allow_nans: false
+  signal_types:
+    - spikes
+    - heldout_spikes
+  combine_heldout_spikes: true
+  variable_length_policy: crop_to_min
+  behavior_signal_types:
+    - hand_pos
+    - cursor_pos
+  require_behavior: true
+  behavior_variable_length_policy: crop_to_spike_window
+  allow_behavior_nans: false
+
+behavior:
+  aliases: {}
+  required_names:
+    - hand_pos_x
+    - hand_pos_y
+    - cursor_pos_x
+    - cursor_pos_y
+
+provenance:
+  hash_size_limit_mb: 256

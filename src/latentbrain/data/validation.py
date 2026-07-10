@@ -126,6 +126,20 @@ def validate_neural_dataset_minimums(
         raise ValueError(msg)
 
 
+def validate_source_bin_size(dataset: NeuralDataset, expected_bin_size_ms: int) -> None:
+    """Validate that an ingested dataset carries the configured source bin size."""
+    if dataset.bin_size_ms != expected_bin_size_ms:
+        msg = (
+            f"dataset bin_size_ms is {dataset.bin_size_ms}, but the config expects "
+            f"{expected_bin_size_ms}"
+        )
+        raise ValueError(msg)
+    spacing = np.diff(dataset.time_ms)
+    if spacing.size and not np.allclose(spacing, float(expected_bin_size_ms)):
+        msg = f"time_ms spacing does not match bin_size_ms {expected_bin_size_ms}"
+        raise ValueError(msg)
+
+
 def validate_trial_split(split: TrialSplit, trial_ids: np.ndarray) -> None:
     """Validate split coverage and leakage against known trial identifiers."""
     for name, values in (

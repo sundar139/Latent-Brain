@@ -91,6 +91,12 @@ def _dandiset_id(dataset_root: Path, manifest: list[dict[str, str | int]]) -> st
     return None
 
 
+def compute_config_digest(config: dict[str, Any]) -> str:
+    """Compute a stable SHA-256 digest over a config mapping."""
+    encoded = json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def write_provenance(
     dataset_name: str,
     dataset_root: Path,
@@ -98,6 +104,9 @@ def write_provenance(
     config: dict[str, Any],
     max_hash_size_bytes: int = DEFAULT_HASH_SIZE_LIMIT_BYTES,
     dataset_metadata: dict[str, Any] | None = None,
+    config_path: str | Path | None = None,
+    dataset_hash: str | None = None,
+    creation_command: str | None = None,
 ) -> dict[str, Any]:
     """Write a provenance JSON document for a local dataset preparation run."""
     manifest = collect_file_manifest(dataset_root, max_hash_size_bytes=max_hash_size_bytes)
@@ -105,11 +114,22 @@ def write_provenance(
     split_config = _split_config(config)
     trialization_config = _trialization_config(config)
     dataset_metadata = dataset_metadata or {}
+    source_config = config.get("source") if isinstance(config.get("source"), dict) else None
     provenance: dict[str, Any] = {
         "dataset_name": dataset_name,
         "variant": dataset_config.get("variant"),
         "source": dataset_config.get("source"),
-        "dandiset_id": _dandiset_id(dataset_root, manifest),
+        "source_provider": (source_config or {}).get("provider"),
+        "verified_source": source_config,
+        "config_path": None if config_path is None else str(config_path),
+        "config_digest": compute_config_digest(config),
+        "processed_dataset_hash": dataset_hash,
+        "creation_command": creation_command,
+        "dandiset_id": (source_config or {}).get("dandiset_id")
+        or _dandiset_id(dataset_root, manifest),
+        "dandiset_version": (source_config or {}).get("dandiset_version"),
+        "doi": (source_config or {}).get("doi"),
+        "automatic_download_performed": False,
         "dataset_root": str(dataset_root.expanduser().resolve()),
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "file_count": len(manifest),

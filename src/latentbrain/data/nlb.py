@@ -19,6 +19,8 @@ CANDIDATE_FILE_SUFFIXES = {".h5", ".hdf5", ".mat", ".npz", ".nwb"}
 LOADABLE_FILE_SUFFIXES = {".h5", ".hdf5", ".nwb"}
 OFFICIAL_NLB_DATASETS_URL = "https://neurallatents.github.io/datasets"
 MC_MAZE_SMALL_DANDI_URL = "https://gui.dandiarchive.org/#/dandiset/000140"
+MC_MAZE_LARGE_DANDI_URL = "https://gui.dandiarchive.org/#/dandiset/000138"
+KNOWN_VARIANTS = ("small", "medium", "large")
 OPTIONAL_INSTALL_MESSAGE = (
     "NLB loading requires optional neurodata dependencies. Install them with "
     '`python -m pip install -e ".[dev,neurodata]"`. If `nlb-tools` is unavailable '
@@ -147,6 +149,42 @@ class NLBTrializationSection(BaseModel):
         return value
 
 
+class NLBSourceAsset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    size_bytes: int = Field(gt=0)
+    sha256: str | None = None
+
+
+class NLBSourceSection(BaseModel):
+    """Verified upstream identity of a dataset variant. Never used to download."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1)
+    dandiset_id: str | None = None
+    dandiset_version: str | None = None
+    doi: str | None = None
+    expected_assets: list[NLBSourceAsset] = Field(default_factory=list)
+    automatic_download: bool = False
+
+    @field_validator("automatic_download")
+    @classmethod
+    def automatic_download_must_be_disabled(cls, value: bool) -> bool:
+        if value:
+            msg = "source.automatic_download must be false; LatentBrain never downloads raw data"
+            raise ValueError(msg)
+        return value
+
+
+class NLBBehaviorSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    aliases: dict[str, str] = Field(default_factory=dict)
+    required_names: list[str] = Field(default_factory=list)
+
+
 class NLBConfig(BaseModel):
     """Validated configuration for local NLB-style dataset preparation."""
 
@@ -157,6 +195,28 @@ class NLBConfig(BaseModel):
     splits: NLBSplitSection
     provenance: NLBProvenanceSection = Field(default_factory=NLBProvenanceSection)
     trialization: NLBTrializationSection = Field(default_factory=NLBTrializationSection)
+    source: NLBSourceSection | None = None
+    behavior: NLBBehaviorSection | None = None
+
+    @model_validator(mode="after")
+    def source_assets_must_match_variant(self) -> NLBConfig:
+        source = self.source
+        if source is None:
+            return self
+        if source.provider == "dandi" and not source.dandiset_id:
+            msg = "source.dandiset_id is required when source.provider is 'dandi'"
+            raise ValueError(msg)
+        variant = self.dataset.variant
+        if variant not in KNOWN_VARIANTS:
+            return self
+        for asset in source.expected_assets:
+            if f"ses-{variant}" not in asset.path:
+                msg = (
+                    f"source asset {asset.path!r} does not belong to the configured "
+                    f"variant {variant!r}"
+                )
+                raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def split_fractions_must_sum_to_one(self) -> NLBConfig:
@@ -235,6 +295,140 @@ def select_train_nwb_file(candidate_files: list[Path], pattern: str) -> Path:
 def select_test_nwb_files(candidate_files: list[Path], pattern: str) -> list[Path]:
     """Select test NWB files for metadata/provenance only, not target extraction."""
     return _matched_files(candidate_files, pattern)
+
+
+def _h5_text(handle: Any, key: str) -> str | None:
+    node = handle.get(key)
+    if node is None:
+        return None
+    with suppress(AttributeError, TypeError, ValueError, IndexError):
+        value = node[()]
+        if isinstance(value, np.ndarray):
+            value = value.ravel()[0] if value.size else None
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        if value is not None:
+            return str(value)
+    return None
+
+
+def describe_nwb_file(path: Path) -> dict[str, Any]:
+    """Read NWB/HDF5 header metadata without pynwb or nlb_tools."""
+    info: dict[str, Any] = {
+        "nwb_identifier": None,
+        "session_description": None,
+        "subject_id": None,
+        "available_acquisition_series": [],
+        "available_processing_modules": [],
+        "trial_table_present": False,
+        "trial_count_if_available": None,
+        "unit_count_if_available": None,
+        "behavior_series_candidates": [],
+        "metadata_read": False,
+        "metadata_error": None,
+    }
+    if path.suffix.lower() not in LOADABLE_FILE_SUFFIXES:
+        info["metadata_error"] = "unsupported_suffix"
+        return info
+    try:
+        h5py = importlib.import_module("h5py")
+    except ImportError:
+        info["metadata_error"] = "h5py_unavailable"
+        return info
+
+    try:
+        with h5py.File(path, "r") as handle:
+            info["metadata_read"] = True
+            info["nwb_identifier"] = _h5_text(handle, "identifier")
+            info["session_description"] = _h5_text(handle, "session_description")
+            info["subject_id"] = _h5_text(handle, "general/subject/subject_id")
+            acquisition = handle.get("acquisition")
+            if acquisition is not None:
+                info["available_acquisition_series"] = sorted(acquisition)
+            processing = handle.get("processing")
+            if processing is not None:
+                info["available_processing_modules"] = sorted(processing)
+            trials = handle.get("intervals/trials")
+            if trials is not None:
+                info["trial_table_present"] = True
+                start_time = trials.get("start_time")
+                if start_time is not None:
+                    info["trial_count_if_available"] = int(start_time.shape[0])
+            units = handle.get("units/id")
+            if units is not None:
+                info["unit_count_if_available"] = int(units.shape[0])
+            behavior = handle.get("processing/behavior")
+            if behavior is not None:
+                info["behavior_series_candidates"] = sorted(
+                    f"{module}/{series}"
+                    for module in behavior
+                    for series in (behavior[module] if hasattr(behavior[module], "keys") else [])
+                )
+    except (OSError, KeyError, ValueError, TypeError) as exc:
+        info["metadata_error"] = str(exc)
+    return info
+
+
+def detect_variant(info: dict[str, Any], path: Path) -> tuple[str | None, str]:
+    """Detect the MC_Maze variant from NWB metadata first, filename only as fallback."""
+    for field in ("session_description", "nwb_identifier"):
+        text = str(info.get(field) or "").lower()
+        for variant in KNOWN_VARIANTS:
+            if f"mc_maze_{variant}" in text or f"ses-{variant}" in text:
+                return variant, "nwb_metadata"
+    name = path.name.lower()
+    for variant in KNOWN_VARIANTS:
+        if f"ses-{variant}" in name or f"mc_maze_{variant}" in name:
+            return variant, "filename"
+    return None, "unknown"
+
+
+def inspect_nlb_candidates(dataset_root: Path, config: NLBConfig) -> list[dict[str, Any]]:
+    """Describe each local candidate file for the configured dataset variant."""
+    records: list[dict[str, Any]] = []
+    for path in find_candidate_nlb_files(dataset_root):
+        info = describe_nwb_file(path)
+        variant, evidence = detect_variant(info, path)
+        records.append(
+            {
+                "dataset_candidate": f"mc_maze_{variant}" if variant else "unknown",
+                "configured_dataset": config.dataset.name,
+                "variant_candidate": variant,
+                "variant_evidence": evidence,
+                "path": str(path),
+                "filename": path.name,
+                "size_bytes": path.stat().st_size,
+                **info,
+            }
+        )
+    return records
+
+
+def enforce_dataset_variant(files: list[Path], config: NLBConfig) -> dict[str, str]:
+    """Reject files from another MC_Maze variant, or a mix of incompatible sessions."""
+    expected = config.dataset.variant
+    if expected not in KNOWN_VARIANTS:
+        return {}
+    detected: dict[str, str] = {}
+    for path in files:
+        if path.suffix.lower() not in LOADABLE_FILE_SUFFIXES:
+            continue
+        variant, _ = detect_variant(describe_nwb_file(path), path)
+        if variant is not None:
+            detected[path.name] = variant
+    variants = sorted(set(detected.values()))
+    if not variants:
+        return detected
+    if len(variants) > 1:
+        msg = f"multiple incompatible MC_Maze sessions detected: {detected}"
+        raise ValueError(msg)
+    if variants[0] != expected:
+        msg = (
+            f"configured dataset variant is {expected!r}, but the local files belong to "
+            f"variant {variants[0]!r}: {sorted(detected)}"
+        )
+        raise ValueError(msg)
+    return detected
 
 
 class NLBDataAdapter:
@@ -483,7 +677,20 @@ def dataframe_to_trial_tensor(
         raise ValueError(msg)
     time_ms = np.arange(min_length, dtype=np.float64) * bin_size_ms
 
+    raw_total = int(np.nansum(combined_spikes.to_numpy(dtype=np.float64)))
+    kept_total = int(spikes.sum())
+    conservation = {
+        "raw_spike_count": raw_total,
+        "trialized_spike_count": kept_total,
+        "excluded_spike_count": raw_total - kept_total,
+        "excluded_bins": int(sum(trial_lengths) - len(trial_lengths) * min_length),
+        "conserved": raw_total == kept_total,
+        "exclusion_reason": None if raw_total == kept_total else variable_length_policy,
+    }
+
     metadata: dict[str, Any] = {
+        # ingestion_summary is excluded from the dataset hash payload; see data/io.py.
+        "ingestion_summary": {"spike_conservation": conservation},
         "available_signal_types": available_signal_types,
         "signal_types_requested": signal_types,
         "spike_column_counts": spike_column_counts,
@@ -623,6 +830,28 @@ def dataframe_to_behavior_tensor(
     return behavior, unique_names, metadata
 
 
+def apply_behavior_aliases(
+    names: list[str],
+    behavior: NLBBehaviorSection | None,
+) -> tuple[list[str], dict[str, str]]:
+    """Rename source behavior channels to canonical names and enforce required channels."""
+    if behavior is None:
+        return names, {name: name for name in names}
+    mapping = {name: behavior.aliases.get(name, name) for name in names}
+    canonical = list(mapping.values())
+    if len(set(canonical)) != len(canonical):
+        msg = f"behavior aliases produced duplicate canonical names: {canonical}"
+        raise ValueError(msg)
+    missing = [name for name in behavior.required_names if name not in canonical]
+    if missing:
+        msg = (
+            f"required behavior channels are missing after alias mapping: {missing}. "
+            f"Available channels: {canonical}"
+        )
+        raise ValueError(msg)
+    return canonical, mapping
+
+
 def _dataset_from_mapping_or_object(
     source: object,
     config: NLBConfig,
@@ -742,7 +971,16 @@ def _load_with_nlb_tools(
         allow_behavior_nans=config.trialization.allow_behavior_nans,
         behavior_variable_length_policy=config.trialization.behavior_variable_length_policy,
     )
+    behavior_mapping: dict[str, str] = {}
+    if behavior_names is not None:
+        behavior_names, behavior_mapping = apply_behavior_aliases(behavior_names, config.behavior)
+        behavior_metadata["behavior_names"] = behavior_names
+    elif config.behavior is not None and config.behavior.required_names:
+        msg = f"required behavior channels are missing: {config.behavior.required_names}"
+        raise ValueError(msg)
+
     trial_metadata["behavior"] = behavior_metadata
+    trial_metadata["ingestion_summary"]["behavior_mapping"] = behavior_mapping
     metadata: dict[str, Any] = {
         "dataset_name": config.dataset.name,
         "source": config.dataset.source,
@@ -799,9 +1037,12 @@ def load_nlb_dataset(dataset_root: Path, config: NLBConfig) -> NeuralDataset:
         )
         raise ValueError(msg)
 
+    detected_variants = enforce_dataset_variant(loadable_files, config)
     train_file = select_train_nwb_file(loadable_files, config.trialization.train_file_pattern)
     test_files = select_test_nwb_files(files, config.trialization.test_file_pattern)
     dataset = _load_with_nlb_tools(train_file, config, files)
+    summary = dataset.metadata.setdefault("ingestion_summary", {})
+    summary["detected_variants"] = detected_variants
     dataset.metadata["test_source_files"] = [path.name for path in test_files]
     dataset.metadata["test_files_used_for_targets"] = False
     validate_neural_dataset_minimums(
