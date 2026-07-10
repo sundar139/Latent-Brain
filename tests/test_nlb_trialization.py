@@ -8,10 +8,12 @@ import pytest
 
 from latentbrain.data.nlb import (
     dataframe_to_behavior_tensor,
+    dataframe_to_trial_sequences,
     dataframe_to_trial_tensor,
     select_test_nwb_files,
     select_train_nwb_file,
 )
+from latentbrain.data.validation import validate_trial_sequences
 
 
 def _trial_dataframe(
@@ -265,3 +267,65 @@ def test_trialization_is_deterministic_across_repeated_calls() -> None:
 
     np.testing.assert_array_equal(first[0], second[0])
     np.testing.assert_array_equal(first[1], second[1])
+
+
+def test_trial_sequences_preserve_variable_lengths_without_global_crop() -> None:
+    sequences = dataframe_to_trial_sequences(
+        _trial_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        behavior_signal_types=["hand_pos", "cursor_pos"],
+        bin_size_ms=5,
+    )
+    validate_trial_sequences(sequences)
+
+    assert [trial.shape[0] for trial in sequences.spikes] == [4, 3]
+    assert sequences.metadata["global_crop_applied"] is False
+    np.testing.assert_array_equal(sequences.trial_lengths, np.array([4, 3]))
+    np.testing.assert_array_equal(sequences.trial_ids, np.array([10, 20]))
+
+
+def test_trial_sequences_conserve_every_raw_spike() -> None:
+    sequences = dataframe_to_trial_sequences(
+        _trial_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        behavior_signal_types=[],
+        bin_size_ms=5,
+    )
+
+    # dataframe_to_trial_tensor drops 1 spike to crop_to_min; the ragged view drops none.
+    assert sequences.metadata["raw_spike_count"] == 9
+    assert sequences.metadata["sequence_spike_count"] == 9
+    assert sequences.metadata["excluded_spike_count"] == 0
+    assert sequences.metadata["spikes_conserved"] is True
+
+
+def test_trial_sequences_keep_behavior_aligned_with_spikes() -> None:
+    sequences = dataframe_to_trial_sequences(
+        _trial_dataframe(),
+        signal_types=["spikes"],
+        combine_heldout_spikes=False,
+        behavior_signal_types=["cursor_pos", "hand_pos"],
+        bin_size_ms=5,
+    )
+
+    assert sequences.behavior is not None
+    assert sequences.behavior_names == ["cursor_pos_x", "hand_pos_y"]
+    for spikes, behavior in zip(sequences.spikes, sequences.behavior, strict=True):
+        assert spikes.shape[0] == behavior.shape[0]
+
+
+def test_trial_sequences_are_deterministic() -> None:
+    kwargs = {
+        "signal_types": ["spikes"],
+        "combine_heldout_spikes": False,
+        "behavior_signal_types": ["hand_pos"],
+        "bin_size_ms": 5,
+    }
+    first = dataframe_to_trial_sequences(_trial_dataframe(), **kwargs)
+    second = dataframe_to_trial_sequences(_trial_dataframe(), **kwargs)
+
+    np.testing.assert_array_equal(first.trial_ids, second.trial_ids)
+    for left, right in zip(first.spikes, second.spikes, strict=True):
+        np.testing.assert_array_equal(left, right)

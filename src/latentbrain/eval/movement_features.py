@@ -87,15 +87,27 @@ def find_peak_speed_index(speed: np.ndarray) -> np.ndarray:
     return np.asarray(np.argmax(values, axis=1))
 
 
-def find_movement_onset_index(speed: np.ndarray, threshold_quantile: float) -> np.ndarray:
+def find_movement_onset_index(
+    speed: np.ndarray,
+    threshold_quantile: float,
+    min_peak_fraction: float = 0.0,
+) -> np.ndarray:
     """First bin whose speed reaches the trial's own speed quantile.
 
     On a trial that is static and then moves, the quantile can equal the minimum speed, which
     would place onset at the first bin. Fall back to a fraction of the trial's peak speed so
     onset always lands where movement actually begins.
+
+    A time quantile is only meaningful when movement occupies a fair share of the trial. On a
+    long trial that is mostly static, the quantile falls inside the resting jitter and onset
+    collapses to bin 0. Pass `min_peak_fraction` to floor the threshold at that fraction of the
+    trial's speed range. The default of 0.0 leaves the pure-quantile behaviour untouched.
     """
     if not 0.0 <= threshold_quantile <= 1.0:
         msg = "threshold_quantile must be in [0, 1]"
+        raise ValueError(msg)
+    if not 0.0 <= min_peak_fraction <= 1.0:
+        msg = "min_peak_fraction must be in [0, 1]"
         raise ValueError(msg)
     values = np.asarray(speed, dtype=np.float64)
     if values.ndim != 2:
@@ -106,6 +118,9 @@ def find_movement_onset_index(speed: np.ndarray, threshold_quantile: float) -> n
     peaks = values.max(axis=1, keepdims=True)
     degenerate = thresholds <= minima
     thresholds = np.where(degenerate, minima + MOVING_SPEED_FRACTION * (peaks - minima), thresholds)
+    if min_peak_fraction > 0.0:
+        floor = minima + min_peak_fraction * (peaks - minima)
+        thresholds = np.maximum(thresholds, floor)
     reached = values >= thresholds
     # Every trial reaches its own threshold at the peak, so argmax is always defined.
     return np.asarray(np.argmax(reached, axis=1))

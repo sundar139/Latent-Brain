@@ -746,8 +746,128 @@ identified from NWB metadata, spikes and behavior trialized and aligned, splits 
 deterministic, hash reproducible across two runs, and the frozen MC_Maze Small hash
 `7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f` still reproducing unchanged.
 
-No model was trained. No cross-validation was run. No movement window was selected. No official
-benchmark claim is made; these are local ignored artifacts. The next phase is MC_Maze Large
-movement-window validation, which reuses the frozen Small protocol (20 ms bins, peak-speed-centered
-1.28 s window candidate, stratified cross-validation, claim-safety enforcement) without changing this
-ingestion layer.
+No model was trained. No cross-validation was run. No official benchmark claim is made; these are
+local ignored artifacts. Movement-window validation followed and is recorded below; it confirmed
+that this globally cropped artifact must not supply event-centered windows, while leaving the
+artifact and its hash unchanged as the model-input contract.
+
+## MC_Maze Large movement-window audit
+
+Run with:
+
+```powershell
+python scripts/run_window_audit.py --config configs/mc_maze_large_window_audit.yaml
+```
+
+Status: complete. No model was trained, scored, or cross-validated, no window was frozen into a
+reporting protocol yet, and no official NLB leaderboard result is claimed. Outputs and figures are
+local ignored artifacts under `results/mc_maze_large/window_audit/`.
+
+### Trial-aware source
+
+The audit does not read event-centered windows out of the globally cropped processed artifact. It
+rebuilds trials from the verified raw train asset using the ingestion config recorded in the
+processed provenance, producing a ragged `list[np.ndarray]` per trial with exact lengths, aligned
+behavior, and deterministic trial identifiers. The representation conserves every raw spike.
+
+```text
+trial count:            500
+neuron count:           162
+trial length range:     2006 to 4141 source bins (10.03 s to 20.71 s at 5 ms)
+source bin size:        5 ms
+reporting bin size:     20 ms
+behavior source:        hand_pos
+behavior alias mapping: identity for hand_pos_x, hand_pos_y, cursor_pos_x, cursor_pos_y
+raw spikes conserved:   true
+```
+
+### Crop-to-min impact on behavioral events
+
+```text
+raw spike count:                          916892
+global crop retained spike count:         620097
+fraction of raw spikes excluded:          0.3237
+fraction of raw bins excluded:            0.3099
+trials whose peak speed is inside crop:   0.600
+trials whose movement onset is inside:    0.764
+global crop suitable for window audit:    false
+```
+
+The global `crop_to_min` keeps the first 2006 bins of every trial. Median peak-speed time is 9.63 s
+and median movement-onset time is 8.97 s, while the retained prefix ends at 10.03 s. The crop
+therefore removes the peak-speed bin for 40% of trials and the movement-onset bin for 23.6% of
+trials. It does **not** merely discard post-event tail data: it deletes the alignment events
+themselves on a large minority of trials. Windows were extracted from the trial-aware
+representation, so this audit does not depend on the global crop being adequate.
+
+This is the concrete reason the accepted `[500, 2006, 162]` array must not be used as the source of
+event-centered windows. It remains valid as the frozen model-input contract and its hash is
+unchanged.
+
+### Candidate windows
+
+Behavior coverage only. No model score contributed to any column.
+
+| window | duration | clipped | moving-bin | peak coverage | onset coverage | direction entropy | usable |
+|---|---|---|---|---|---|---|---|
+| behavior_speed_peak_centered_1p28s | 1.28 s | 0.000 | 0.856 | 1.000 | 0.756 | 1.819 | yes |
+| behavior_speed_peak_centered_2p56s | 2.56 s | 0.000 | 0.534 | 1.000 | 0.948 | 1.578 | yes |
+| behavior_movement_onset_1p28s | 1.28 s | 0.004 | 0.792 | 0.922 | 1.000 | 1.859 | no |
+| behavior_movement_onset_2p56s | 2.56 s | 0.004 | 0.548 | 0.996 | 1.000 | 1.539 | yes |
+| from_start_1p28s | 1.28 s | 0.000 | 0.0001 | 0.000 | 0.004 | 1.029 | no |
+
+No candidate required padding on any trial. `behavior_movement_onset_1p28s` was rejected because it
+misses the peak-speed bin on 7.8% of trials: 1.28 s after onset is not always long enough to reach
+the peak. `from_start_1p28s` was rejected as a pre-movement window: it contains essentially no
+moving bins and never contains the peak. It remains an early-window diagnostic, exactly as on Small.
+
+### Recommended window
+
+```text
+recommended window:            behavior_speed_peak_centered_1p28s
+duration:                      1.28 s
+clipped trial fraction:        0.000
+moving bin fraction:           0.8555625
+peak speed coverage:           1.000
+movement onset coverage:       0.756
+endpoint direction entropy:    1.819469420007445 nats
+reporting mode:                recommended_window_stratified_cross_validation
+selection used model scores:   false
+```
+
+### Transfer from MC_Maze Small
+
+The frozen MC_Maze Small window `behavior_speed_peak_centered_1p28s` **transfers to Large**. It
+passes every behavior gate: zero clipped trials, moving-bin fraction 0.856 against a 0.25 floor,
+peak-speed coverage 1.000 against a 0.95 floor, and direction entropy 1.819 nats against a
+1.456-nat floor. Because the transferred window satisfies the gates, it is preferred over the
+longer peak-centered window and over the longer onset window, both of which are also usable but
+neither shorter nor better aligned.
+
+Differences from Small worth recording: Large's moving-bin fraction inside the recommended window is
+higher (0.856 versus 0.577) and its endpoint-direction entropy is lower (1.819 versus 2.028 nats),
+so Large reaches occupy more of the window while covering reach directions slightly less evenly.
+
+### Movement-onset detection correction
+
+On full-length Large trials the reach occupies a small minority of bins, so a pure 70th-percentile
+speed threshold falls inside the resting jitter and movement onset collapsed to bin 0 for more than
+75% of trials, even though hand speed at trial start is about 2.5% of peak. The onset threshold is
+now floored at a fraction of each trial's speed range, the same criterion that defines a moving bin.
+The floor defaults to zero, so MC_Maze Small's validated behavior is unchanged.
+
+### Warnings
+
+```text
+global crop_to_min excludes peak speed or movement onset for at least one trial;
+  event-centered windows were taken from the trial-aware representation
+behavior_movement_onset_1p28s rejected: peak_speed_coverage_fraction=0.9220 below 0.95
+from_start_1p28s rejected: moving_bin_fraction_mean=0.0001 below 0.25;
+  endpoint_direction_entropy=1.0286 below 1.4556; peak_speed_coverage_fraction=0.0000 below 0.95
+```
+
+### Next phase
+
+Recommended-window stratified cross-validation on MC_Maze Large, carrying
+`behavior_speed_peak_centered_1p28s` forward at 20 ms bins. Single-split results remain
+unreportable. No model has been run on Large and no benchmark claim is made.

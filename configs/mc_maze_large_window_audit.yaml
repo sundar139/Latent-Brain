@@ -1,0 +1,76 @@
+dataset:
+  name: mc_maze_large
+  processed_path: data/processed/nlb/mc_maze_large/mc_maze_large_processed.npz
+  metadata_path: data/processed/nlb/mc_maze_large/mc_maze_large_metadata.json
+  provenance_path: data/processed/nlb/mc_maze_large/mc_maze_large_provenance.json
+  raw_dir: data/raw/nlb/mc_maze_large
+  expected_hash: 074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+  original_bin_size_ms: 5
+
+binning:
+  target_bin_size_ms: 20
+
+behavior:
+  preferred_source: hand
+  fallback_source: cursor
+  required_channels:
+    - hand_pos_x
+    - hand_pos_y
+    - cursor_pos_x
+    - cursor_pos_y
+
+trial_source:
+  prefer_trial_aware_raw_extraction: true
+  allow_global_crop_to_min_fallback: false
+  compare_against_processed_crop_to_min: true
+
+window_candidates:
+  - name: behavior_speed_peak_centered_1p28s
+    crop_policy: behavior_speed_peak_centered
+    duration_seconds: 1.28
+    report_label: "Small transferred window"
+
+  - name: behavior_speed_peak_centered_2p56s
+    crop_policy: behavior_speed_peak_centered
+    duration_seconds: 2.56
+    report_label: "Longer peak-centered window"
+
+  - name: behavior_movement_onset_1p28s
+    crop_policy: behavior_movement_onset
+    duration_seconds: 1.28
+    pre_event_seconds: 0.20
+    speed_threshold_quantile: 0.70
+    report_label: "Movement-onset aligned window"
+
+  - name: behavior_movement_onset_2p56s
+    crop_policy: behavior_movement_onset
+    duration_seconds: 2.56
+    pre_event_seconds: 0.40
+    speed_threshold_quantile: 0.70
+    report_label: "Longer movement-onset window"
+
+  - name: from_start_1p28s
+    crop_policy: from_start
+    duration_seconds: 1.28
+    start_seconds: 0.0
+    report_label: "Early-window diagnostic"
+
+selection:
+  maximum_clipped_trial_fraction: 0.05
+  minimum_moving_bin_fraction: 0.25
+  minimum_endpoint_direction_entropy_fraction: 0.70
+  prioritize_behavior_coverage: true
+  use_model_scores_for_selection: false
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+
+references:
+  small_recommended_window: behavior_speed_peak_centered_1p28s
+  small_moving_bin_fraction: 0.576875
+  small_endpoint_direction_entropy: 2.0283893834346562
+
+reporting:
+  output_dir: results/mc_maze_large/window_audit

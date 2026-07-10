@@ -25,6 +25,23 @@ class NeuralDataset:
 
 
 @dataclass(slots=True)
+class TrialSequences:
+    """Variable-length trials, kept ragged so event-centered windows are not pre-cropped.
+
+    Unlike NeuralDataset this never applies crop_to_min: each trial keeps its own length.
+    Audit-only; the frozen processed artifact remains the model-input contract.
+    """
+
+    spikes: list[np.ndarray]
+    behavior: list[np.ndarray] | None
+    behavior_names: list[str] | None
+    trial_ids: np.ndarray
+    trial_lengths: np.ndarray
+    bin_size_ms: int
+    metadata: dict[str, Any]
+
+
+@dataclass(slots=True)
 class TrialSplit:
     """Leakage-safe trial identifiers for train, validation, and test use."""
 

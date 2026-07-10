@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -15,15 +16,23 @@ from latentbrain.data.rebinning import rebin_neural_dataset, validate_rebin_fact
 from latentbrain.data.schemas import NeuralDataset
 from latentbrain.data.validation import validate_neural_dataset
 from latentbrain.eval.movement_features import resolve_behavior_source
-from latentbrain.eval.reporting import write_window_audit_outputs
+from latentbrain.eval.reporting import (
+    write_movement_window_audit_outputs,
+    write_window_audit_outputs,
+)
 from latentbrain.eval.stratified_cv import FACTOR_LATENT, SPLIT_MEAN_RATE_INVALID
 from latentbrain.eval.window_audit import (
     BEHAVIOR_ALIGNED_POLICIES,
     CROP_POLICIES,
     build_window_recommendations,
+    crop_to_min_impact,
     evaluate_window_candidate,
+    evaluate_window_coverage,
+    recommend_movement_window,
+    reference_peak_speed,
     speed_profiles,
     summarize_window_candidates,
+    trial_movement_table,
     window_entropy_table,
     window_method_summary,
 )
@@ -57,7 +66,12 @@ def _load_config(path: Path) -> dict[str, Any]:
     return raw
 
 
-def _validate_config(config: dict[str, Any]) -> None:
+def _is_movement_window_config(config: dict[str, Any]) -> bool:
+    """Trial-aware behavior-only audits declare a trial_source and score no models."""
+    return "trial_source" in config
+
+
+def _validate_common_config(config: dict[str, Any]) -> None:
     validate_rebin_factor(
         int(config["dataset"]["original_bin_size_ms"]),
         int(config["binning"]["target_bin_size_ms"]),
@@ -77,6 +91,50 @@ def _validate_config(config: dict[str, Any]) -> None:
         if str(candidate["crop_policy"]) not in CROP_POLICIES:
             msg = f"window {candidate['name']!r} crop_policy must be one of {CROP_POLICIES}"
             raise ValueError(msg)
+    if int(config["statistics"]["bootstrap_repeats"]) <= 0:
+        msg = "statistics.bootstrap_repeats must be positive"
+        raise ValueError(msg)
+
+
+def _validate_movement_config(config: dict[str, Any]) -> None:
+    _validate_common_config(config)
+    if not list(config["behavior"]["required_channels"]):
+        msg = "behavior.required_channels must not be empty"
+        raise ValueError(msg)
+    trial_source = config["trial_source"]
+    if not bool(trial_source["prefer_trial_aware_raw_extraction"]):
+        msg = "trial_source.prefer_trial_aware_raw_extraction must be true for this audit"
+        raise ValueError(msg)
+    if bool(trial_source["allow_global_crop_to_min_fallback"]):
+        msg = (
+            "trial_source.allow_global_crop_to_min_fallback must be false; the globally cropped "
+            "artifact must never silently supply event-centered windows"
+        )
+        raise ValueError(msg)
+    selection = config["selection"]
+    if bool(selection["use_model_scores_for_selection"]):
+        msg = "selection.use_model_scores_for_selection must be false"
+        raise ValueError(msg)
+    for key in ("maximum_clipped_trial_fraction", "minimum_moving_bin_fraction"):
+        value = float(selection[key])
+        if not 0.0 <= value <= 1.0:
+            msg = f"selection.{key} must be in [0, 1]"
+            raise ValueError(msg)
+    quantiles = {
+        float(candidate["speed_threshold_quantile"])
+        for candidate in config["window_candidates"]
+        if "speed_threshold_quantile" in candidate
+    }
+    if len(quantiles) > 1:
+        msg = f"movement-onset candidates must share one speed_threshold_quantile; got {quantiles}"
+        raise ValueError(msg)
+
+
+def _validate_config(config: dict[str, Any]) -> None:
+    if _is_movement_window_config(config):
+        _validate_movement_config(config)
+        return
+    _validate_common_config(config)
     if int(config["statistics"]["bootstrap_repeats"]) <= 0:
         msg = "statistics.bootstrap_repeats must be positive"
         raise ValueError(msg)
@@ -290,6 +348,245 @@ def run_window_audit(config: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def _trial_sequences(config: dict[str, Any], global_time_bins: int) -> Any:
+    """Rebuild the ragged trials from the raw assets, using the ingestion config in provenance."""
+    from latentbrain.data.nlb import NLBConfig, load_trial_sequences  # noqa: PLC0415
+    from latentbrain.data.validation import validate_trial_sequences  # noqa: PLC0415
+
+    repo_root = get_repo_root()
+    raw_dir = resolve_configured_path(str(config["dataset"]["raw_dir"]), repo_root)
+    if not raw_dir.exists():
+        msg = (
+            f"Raw dataset directory is missing: {raw_dir}. Trial-aware extraction requires the "
+            "verified raw assets; the globally cropped artifact must not be used instead."
+        )
+        raise FileNotFoundError(msg)
+    provenance_path = resolve_configured_path(str(config["dataset"]["provenance_path"]), repo_root)
+    if not provenance_path.exists():
+        msg = f"Provenance file is missing: {provenance_path}"
+        raise FileNotFoundError(msg)
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    nlb_config = NLBConfig.model_validate(provenance["config"])
+    sequences = load_trial_sequences(raw_dir, nlb_config)
+    validate_trial_sequences(sequences)
+    if int(sequences.trial_lengths.min()) != int(global_time_bins):
+        msg = (
+            f"trial-aware minimum length {int(sequences.trial_lengths.min())} does not match the "
+            f"processed artifact's global crop of {global_time_bins} bins"
+        )
+        raise ValueError(msg)
+    return sequences
+
+
+def _write_movement_figures(
+    output_dir: Path,
+    movement: pd.DataFrame,
+    candidate_statistics: pd.DataFrame,
+    profiles: dict[str, np.ndarray],
+    target_bin_size_ms: int,
+) -> None:
+    import matplotlib  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    figures = output_dir / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    bin_size_seconds = float(target_bin_size_ms) / 1000.0
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    for name, profile in profiles.items():
+        ax.plot(np.arange(profile.size) * bin_size_seconds, profile, label=name)
+    ax.set_xlabel("Time within window (s)")
+    ax.set_ylabel("Mean speed")
+    ax.legend(fontsize=6)
+    fig.tight_layout()
+    fig.savefig(figures / "movement_speed_profile.png", dpi=150)
+    plt.close(fig)
+
+    for column, filename, label in (
+        ("peak_speed_time_seconds", "peak_speed_time_distribution.png", "Peak speed time (s)"),
+        (
+            "movement_onset_time_seconds",
+            "movement_onset_time_distribution.png",
+            "Movement onset time (s)",
+        ),
+    ):
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.hist(movement[column].to_numpy(dtype=float), bins=40)
+        ax.set_xlabel(label)
+        ax.set_ylabel("Trials")
+        fig.tight_layout()
+        fig.savefig(figures / filename, dpi=150)
+        plt.close(fig)
+
+    for column, filename, label in (
+        ("moving_bin_fraction_mean", "movement_coverage_by_window.png", "Moving bin fraction"),
+        ("clipped_trial_fraction", "clipping_fraction_by_window.png", "Clipped trial fraction"),
+        (
+            "endpoint_direction_entropy",
+            "endpoint_direction_entropy_by_window.png",
+            "Endpoint direction entropy (nats)",
+        ),
+    ):
+        fig, ax = plt.subplots(figsize=(9, 4))
+        ax.bar(candidate_statistics["window_name"], candidate_statistics[column])
+        ax.set_ylabel(label)
+        ax.tick_params(axis="x", rotation=25)
+        fig.tight_layout()
+        fig.savefig(figures / filename, dpi=150)
+        plt.close(fig)
+
+
+def run_movement_window_audit(config: dict[str, Any]) -> dict[str, Any]:
+    """Trial-aware, behavior-only movement-window audit. No model is trained or scored."""
+    repo_root = get_repo_root()
+    processed_path = resolve_configured_path(str(config["dataset"]["processed_path"]), repo_root)
+    if not processed_path.exists():
+        msg = f"Processed dataset is missing: {processed_path}"
+        raise FileNotFoundError(msg)
+    dataset = load_neural_dataset(processed_path)
+    validate_neural_dataset(dataset)
+    dataset_hash = compute_dataset_hash(dataset)
+    expected = str(config["dataset"].get("expected_hash", ""))
+    if expected and dataset_hash != expected:
+        msg = f"Dataset hash mismatch: expected {expected}, got {dataset_hash}"
+        raise ValueError(msg)
+    names = list(dataset.behavior_names or [])
+    missing = [name for name in config["behavior"]["required_channels"] if name not in names]
+    if missing:
+        msg = f"processed dataset is missing required behavior channels: {missing}"
+        raise ValueError(msg)
+
+    global_time_bins = int(dataset.spikes.shape[1])
+    sequences = _trial_sequences(config, global_time_bins)
+
+    quantiles = [
+        float(candidate["speed_threshold_quantile"])
+        for candidate in config["window_candidates"]
+        if "speed_threshold_quantile" in candidate
+    ]
+    movement = trial_movement_table(sequences, quantiles[0] if quantiles else 0.7)
+    crop_impact, crop_summary = crop_to_min_impact(sequences, movement, global_time_bins)
+
+    target_bin_size_ms = int(config["binning"]["target_bin_size_ms"])
+    reference_peak = reference_peak_speed(sequences, target_bin_size_ms)
+    summaries: list[dict[str, Any]] = []
+    coverage_frames: list[pd.DataFrame] = []
+    profiles: dict[str, np.ndarray] = {}
+    for candidate in config["window_candidates"]:
+        coverage, candidate_summary, extras = evaluate_window_coverage(
+            sequences, movement, dict(candidate), target_bin_size_ms, reference_peak
+        )
+        coverage_frames.append(coverage)
+        summaries.append(candidate_summary)
+        profiles[str(candidate["name"])] = extras["speed_profile"]
+
+    recommendations = recommend_movement_window(
+        summaries, dict(config["selection"]), dict(config["references"])
+    )
+    candidate_statistics = pd.DataFrame(recommendations["candidate_summaries"])
+    trial_coverage = pd.concat(coverage_frames, ignore_index=True)
+
+    warnings: list[str] = []
+    if not crop_summary["global_crop_suitable_for_movement_window_audit"]:
+        warnings.append(
+            "global crop_to_min excludes peak speed or movement onset for at least one trial; "
+            "event-centered windows were taken from the trial-aware representation"
+        )
+    if not recommendations["small_window_transfers"]:
+        warnings.append("the MC_Maze Small recommended window does not transfer to Large")
+    for name, reason in recommendations["rejected_windows"].items():
+        warnings.append(f"{name} rejected: {reason}")
+
+    summary: dict[str, Any] = {
+        "dataset_name": str(config["dataset"]["name"]),
+        "dataset_hash": dataset_hash,
+        "trial_source_file": sequences.metadata.get("source_file"),
+        "trial_representation": "ragged list[np.ndarray] per trial (no global crop)",
+        "trial_count": int(len(sequences.spikes)),
+        "neuron_count": int(sequences.spikes[0].shape[1]),
+        "trial_length_min": int(sequences.trial_lengths.min()),
+        "trial_length_max": int(sequences.trial_lengths.max()),
+        "trial_aware_spikes_conserved": bool(sequences.metadata["spikes_conserved"]),
+        "source_bin_size_ms": int(sequences.bin_size_ms),
+        "target_bin_size_ms": target_bin_size_ms,
+        "global_crop_time_bins": global_time_bins,
+        "behavior_source": str(movement.iloc[0]["behavior_source"]),
+        "behavior_mapping": sequences.metadata.get("behavior_mapping", {}),
+        "median_peak_speed_time_seconds": float(movement["peak_speed_time_seconds"].median()),
+        "median_movement_onset_time_seconds": float(
+            movement["movement_onset_time_seconds"].median()
+        ),
+        "reference_peak_speed": reference_peak,
+        "candidate_windows": [str(row["window_name"]) for row in summaries],
+        "moving_bin_fraction_by_window": {
+            row["window_name"]: row["moving_bin_fraction_mean"] for row in summaries
+        },
+        "endpoint_direction_entropy_by_window": {
+            row["window_name"]: row["endpoint_direction_entropy"] for row in summaries
+        },
+        "clipped_trial_fraction_by_window": {
+            row["window_name"]: row["clipped_trial_fraction"] for row in summaries
+        },
+        "small_moving_bin_fraction": float(config["references"]["small_moving_bin_fraction"]),
+        "small_endpoint_direction_entropy": float(
+            config["references"]["small_endpoint_direction_entropy"]
+        ),
+        "global_crop_used_for_event_centered_windows": False,
+        "models_trained": False,
+        "models_scored": False,
+        "cross_validation_run": False,
+        "official_benchmark_claim": False,
+        "warnings": warnings,
+        **crop_summary,
+        **{key: value for key, value in recommendations.items() if key != "candidate_summaries"},
+    }
+
+    output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), repo_root)
+    write_movement_window_audit_outputs(
+        output_dir,
+        summary,
+        candidate_statistics,
+        movement,
+        trial_coverage,
+        crop_impact,
+        recommendations,
+    )
+    _write_movement_figures(
+        output_dir, movement, candidate_statistics, profiles, target_bin_size_ms
+    )
+    summary["output_dir"] = str(output_dir)
+    return summary
+
+
+MOVEMENT_SUMMARY_KEYS = (
+    "dataset_name",
+    "dataset_hash",
+    "trial_count",
+    "neuron_count",
+    "source_bin_size_ms",
+    "target_bin_size_ms",
+    "raw_spike_count",
+    "global_crop_retained_spike_count",
+    "fraction_raw_spikes_excluded",
+    "fraction_trials_peak_inside_global_crop",
+    "fraction_trials_onset_inside_global_crop",
+    "candidate_windows",
+    "recommended_window_name",
+    "recommended_duration_seconds",
+    "recommended_clipped_trial_fraction",
+    "recommended_moving_bin_fraction",
+    "recommended_peak_speed_coverage",
+    "recommended_movement_onset_coverage",
+    "recommended_endpoint_direction_entropy",
+    "small_window_transfers",
+    "global_crop_suitable_for_movement_window_audit",
+    "output_dir",
+    "warnings",
+)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     repo_root = get_repo_root()
     args = _parse_args(argv)
@@ -299,8 +596,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     try:
         config = _load_config(config_path)
+        if _is_movement_window_config(config):
+            summary = run_movement_window_audit(config)
+            for key in MOVEMENT_SUMMARY_KEYS:
+                console.print(f"{key}: {summary.get(key)}")
+            return 0
         summary = run_window_audit(config)
-    except (OSError, ValueError, FileNotFoundError) as exc:
+    except (OSError, ValueError, FileNotFoundError, ImportError) as exc:
         console.print(f"Window audit failed: {exc}")
         return 2
     for key in (

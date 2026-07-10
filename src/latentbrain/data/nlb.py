@@ -12,8 +12,11 @@ import pandas as pd  # type: ignore[import-untyped]
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from latentbrain.data.schemas import NeuralDataset
-from latentbrain.data.validation import validate_neural_dataset, validate_neural_dataset_minimums
+from latentbrain.data.schemas import NeuralDataset, TrialSequences
+from latentbrain.data.validation import (
+    validate_neural_dataset,
+    validate_neural_dataset_minimums,
+)
 
 CANDIDATE_FILE_SUFFIXES = {".h5", ".hdf5", ".mat", ".npz", ".nwb"}
 LOADABLE_FILE_SUFFIXES = {".h5", ".hdf5", ".nwb"}
@@ -716,6 +719,120 @@ def dataframe_to_trial_tensor(
         },
     }
     return spikes, trial_ids.astype(np.int64, copy=False), time_ms, metadata
+
+
+def _ordered_trial_rows(trial_data: Any, trial_id_values: np.ndarray, trial_id: Any) -> np.ndarray:
+    mask = trial_id_values == trial_id
+    with suppress(ValueError):
+        key = _column_key(trial_data, "trial_time")
+        times = trial_data.loc[mask, key]
+        if isinstance(times, pd.DataFrame):
+            times = times.iloc[:, 0]
+        return np.asarray(np.flatnonzero(mask)[np.argsort(np.asarray(times))])
+    return np.asarray(np.flatnonzero(mask))
+
+
+def dataframe_to_trial_sequences(
+    trial_data: Any,
+    signal_types: list[str],
+    combine_heldout_spikes: bool,
+    behavior_signal_types: list[str],
+    bin_size_ms: int,
+) -> TrialSequences:
+    """Trialize a long NLB dataframe without any global crop_to_min.
+
+    Each trial keeps its own length, so movement events near a long trial's tail survive.
+    """
+    spike_frame = _signal_frame(trial_data, "spikes")
+    if spike_frame is None:
+        msg = f"spikes signal is missing; available: {_top_level_columns(trial_data)}"
+        raise ValueError(msg)
+    frames = [spike_frame]
+    heldout_frame = _signal_frame(trial_data, "heldout_spikes")
+    if combine_heldout_spikes and "heldout_spikes" in signal_types and heldout_frame is not None:
+        frames.append(heldout_frame)
+    combined = pd.concat(frames, axis=1).to_numpy(dtype=np.float64)
+
+    behavior_frames: list[Any] = []
+    behavior_names: list[str] = []
+    for signal_type in behavior_signal_types:
+        frame = _signal_frame(trial_data, signal_type)
+        if frame is None:
+            continue
+        behavior_frames.append(frame)
+        behavior_names.extend(
+            _behavior_name(signal_type, column, index) for index, column in enumerate(frame.columns)
+        )
+    behavior_values = (
+        pd.concat(behavior_frames, axis=1).to_numpy(dtype=np.float64) if behavior_frames else None
+    )
+
+    trial_id_values = _column_values(trial_data, "trial_id")
+    unique_trial_ids = pd.unique(trial_id_values)
+    spikes: list[np.ndarray] = []
+    behavior: list[np.ndarray] | None = None if behavior_values is None else []
+    for trial_id in unique_trial_ids:
+        rows = _ordered_trial_rows(trial_data, trial_id_values, trial_id)
+        if rows.size == 0:
+            msg = f"trial {trial_id} has no time bins"
+            raise ValueError(msg)
+        spikes.append(_integer_spikes(combined[rows]))
+        if behavior_values is not None and behavior is not None:
+            behavior.append(behavior_values[rows])
+
+    lengths = np.asarray([matrix.shape[0] for matrix in spikes], dtype=np.int64)
+    raw_total = int(np.nansum(combined))
+    kept_total = int(sum(int(matrix.sum()) for matrix in spikes))
+    metadata: dict[str, Any] = {
+        "trial_count": len(spikes),
+        "min_trial_length": int(lengths.min()),
+        "max_trial_length": int(lengths.max()),
+        "raw_spike_count": raw_total,
+        "sequence_spike_count": kept_total,
+        "excluded_spike_count": raw_total - kept_total,
+        "spikes_conserved": raw_total == kept_total,
+        "global_crop_applied": False,
+        "source_trial_intervals": [
+            {"trial_id": int(trial_id), "time_bins": int(length)}
+            for trial_id, length in zip(unique_trial_ids, lengths, strict=True)
+        ],
+    }
+    return TrialSequences(
+        spikes=spikes,
+        behavior=behavior,
+        behavior_names=_unique_names(behavior_names) if behavior_names else None,
+        trial_ids=np.asarray(unique_trial_ids, dtype=np.int64),
+        trial_lengths=lengths,
+        bin_size_ms=bin_size_ms,
+        metadata=metadata,
+    )
+
+
+def load_trial_sequences(dataset_root: Path, config: NLBConfig) -> TrialSequences:
+    """Build the ragged trial-aware representation from the same raw assets as ingestion."""
+    files = _require_candidate_files(dataset_root)
+    loadable = [path for path in files if path.suffix.lower() in LOADABLE_FILE_SUFFIXES]
+    enforce_dataset_variant(loadable, config)
+    train_file = select_train_nwb_file(loadable, config.trialization.train_file_pattern)
+    try:
+        from nlb_tools.nwb_interface import NWBDataset
+    except ImportError as exc:
+        raise ImportError(OPTIONAL_INSTALL_MESSAGE) from exc
+    nwb_dataset = NWBDataset(str(train_file))
+    trial_data = make_trial_dataframe(nwb_dataset, config)
+    sequences = dataframe_to_trial_sequences(
+        trial_data,
+        signal_types=config.trialization.signal_types,
+        combine_heldout_spikes=config.trialization.combine_heldout_spikes,
+        behavior_signal_types=config.trialization.behavior_signal_types,
+        bin_size_ms=config.dataset.bin_size_ms,
+    )
+    sequences.metadata["source_file"] = train_file.name
+    if config.behavior is not None and sequences.behavior_names is not None:
+        names, mapping = apply_behavior_aliases(sequences.behavior_names, config.behavior)
+        sequences.behavior_names = names
+        sequences.metadata["behavior_mapping"] = mapping
+    return sequences
 
 
 def _behavior_name(signal_type: str, column: object, index: int) -> str:

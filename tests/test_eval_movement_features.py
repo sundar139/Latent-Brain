@@ -207,3 +207,36 @@ def test_reference_peak_speed_makes_coverage_comparable_across_windows() -> None
     assert static["moving_bin_fraction"] == pytest.approx(0.0)
     assert reach["moving_bin_fraction"] == pytest.approx(1.0)
     assert static["reference_peak_speed"] == pytest.approx(reference)
+
+
+def test_onset_quantile_collapses_to_first_bin_on_mostly_static_long_trials() -> None:
+    generator = np.random.default_rng(0)
+    speed = np.abs(generator.normal(0.0, 0.01, size=(1, 1000)))
+    speed[0, 800:850] = np.linspace(0.0, 1.0, 50)
+
+    # The pure time quantile sits inside the resting jitter, so onset lands at the start.
+    assert int(find_movement_onset_index(speed, 0.7)[0]) < 100
+
+
+def test_min_peak_fraction_floors_onset_at_real_movement() -> None:
+    generator = np.random.default_rng(0)
+    speed = np.abs(generator.normal(0.0, 0.01, size=(1, 1000)))
+    speed[0, 800:850] = np.linspace(0.0, 1.0, 50)
+
+    onset = int(find_movement_onset_index(speed, 0.7, min_peak_fraction=0.2)[0])
+
+    assert 800 <= onset < 850
+
+
+def test_min_peak_fraction_default_leaves_quantile_behaviour_unchanged() -> None:
+    speed = np.array([[0.0, 0.1, 0.5, 1.0, 0.2]])
+
+    baseline = find_movement_onset_index(speed, 0.7)
+    explicit = find_movement_onset_index(speed, 0.7, min_peak_fraction=0.0)
+
+    np.testing.assert_array_equal(baseline, explicit)
+
+
+def test_min_peak_fraction_is_validated() -> None:
+    with pytest.raises(ValueError, match="min_peak_fraction must be in"):
+        find_movement_onset_index(np.array([[0.0, 1.0]]), 0.7, min_peak_fraction=1.5)

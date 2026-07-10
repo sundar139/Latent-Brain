@@ -3,11 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from latentbrain.data.schemas import NeuralDataset, NeuronMask, TrialSplit
+from latentbrain.data.schemas import NeuralDataset, NeuronMask, TrialSequences, TrialSplit
 from latentbrain.data.validation import (
     validate_neural_dataset,
     validate_neuron_mask,
     validate_source_bin_size,
+    validate_trial_sequences,
     validate_trial_split,
 )
 
@@ -120,3 +121,43 @@ def test_validate_source_bin_size_rejects_inconsistent_time_axis() -> None:
 
     with pytest.raises(ValueError, match="time_ms spacing does not match"):
         validate_source_bin_size(dataset, 20)
+
+
+def _sequences() -> TrialSequences:
+    return TrialSequences(
+        spikes=[np.zeros((4, 3), dtype=np.int64), np.zeros((6, 3), dtype=np.int64)],
+        behavior=[np.zeros((4, 2)), np.zeros((6, 2))],
+        behavior_names=["hand_pos_x", "hand_pos_y"],
+        trial_ids=np.array([0, 1], dtype=np.int64),
+        trial_lengths=np.array([4, 6], dtype=np.int64),
+        bin_size_ms=5,
+        metadata={},
+    )
+
+
+def test_validate_trial_sequences_accepts_variable_lengths() -> None:
+    validate_trial_sequences(_sequences())
+
+
+def test_validate_trial_sequences_rejects_inconsistent_neuron_count() -> None:
+    sequences = _sequences()
+    sequences.spikes[1] = np.zeros((6, 4), dtype=np.int64)
+
+    with pytest.raises(ValueError, match="same neuron count"):
+        validate_trial_sequences(sequences)
+
+
+def test_validate_trial_sequences_rejects_length_mismatch() -> None:
+    sequences = _sequences()
+    sequences.trial_lengths = np.array([4, 5], dtype=np.int64)
+
+    with pytest.raises(ValueError, match="does not match trial_lengths"):
+        validate_trial_sequences(sequences)
+
+
+def test_validate_trial_sequences_rejects_negative_spikes() -> None:
+    sequences = _sequences()
+    sequences.spikes[0][0, 0] = -1
+
+    with pytest.raises(ValueError, match="non-negative"):
+        validate_trial_sequences(sequences)

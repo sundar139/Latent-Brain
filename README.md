@@ -299,7 +299,17 @@ Inspection reports one record per candidate file with the detected dataset and v
 
 MC_Maze Large real ingestion is verified: `spikes [500, 2006, 162]`, `behavior [500, 2006, 4]` at a 5 ms source bin, 350/75/75 train/validation/test trials, 122 held-in and 40 held-out neurons, dataset hash `074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84`, reproducible across repeated preparations. Under `crop_to_min`, 296795 of 916892 raw spikes across 450340 bins are excluded and reported as warnings. See `docs/real_data.md` for the full record. Next: movement-window protocol validation.
 
-Large begins as protocol transfer, not model tuning. This milestone is ingestion only: no factor-latent, neural model, stratified cross-validation, window selection, or benchmark comparison is run. Later Large reporting inherits the frozen MC_Maze Small protocol — 20 ms bins, the peak-speed-centered 1.28-second window candidate, stratified cross-validation, and the same claim-safety enforcement. Nothing here is an official NLB leaderboard result.
+### MC_Maze Large movement-window audit
+
+```powershell
+python scripts/run_window_audit.py --config configs/mc_maze_large_window_audit.yaml
+```
+
+The audit rebuilds trials from the raw assets without `crop_to_min`, so event-centered windows are never taken from the globally cropped artifact. It quantifies what the global crop removes, evaluates five candidate windows on behavior coverage and alignment alone, and recommends a window. No model is trained, scored, or cross-validated here, and window selection cannot use model performance.
+
+Result: the global crop excludes the peak-speed bin for 40% of Large trials, so it is **not** suitable as the source of event-centered windows. The frozen MC_Maze Small window `behavior_speed_peak_centered_1p28s` transfers to Large: zero clipped trials, 0.856 moving-bin fraction, 1.000 peak-speed coverage, endpoint-direction entropy 1.819 nats. Outputs and figures are local ignored artifacts under `results/mc_maze_large/window_audit/`, not official NLB leaderboard results. Next: recommended-window stratified cross-validation on Large.
+
+Large begins as protocol transfer, not model tuning. This ingestion milestone is ingestion only: no factor-latent, neural model, stratified cross-validation, window selection, or benchmark comparison is run. Later Large reporting inherits the frozen MC_Maze Small protocol — 20 ms bins, the peak-speed-centered 1.28-second window candidate, stratified cross-validation, and the same claim-safety enforcement. Nothing here is an official NLB leaderboard result.
 
 ## Data validation report
 

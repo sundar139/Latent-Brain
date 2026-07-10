@@ -13,6 +13,8 @@ from latentbrain.eval.fold_balance import (
     summarize_fold_balance,
 )
 from latentbrain.eval.movement_features import (
+    DIRECTION_BINS,
+    MOVING_SPEED_FRACTION,
     compute_endpoint_features,
     compute_hand_speed,
     compute_window_behavior_coverage,
@@ -540,17 +542,502 @@ def window_entropy_table(diagnostics: list[dict[str, Any]]) -> pd.DataFrame:
     )
 
 
+# --- Trial-aware movement-window audit (behavior only; no model is ever scored here) ---
+
+CROP_IMPACT_COLUMNS = [
+    "trial_index",
+    "original_time_bins",
+    "global_cropped_time_bins",
+    "excluded_time_bins",
+    "original_spike_count",
+    "retained_spike_count",
+    "excluded_spike_count",
+    "peak_speed_bin_original",
+    "peak_speed_inside_global_crop",
+    "movement_onset_bin_original",
+    "movement_onset_inside_global_crop",
+]
+
+TRIAL_MOVEMENT_COLUMNS = [
+    "trial_index",
+    "trial_length_bins",
+    "trial_duration_seconds",
+    "peak_speed",
+    "peak_speed_bin",
+    "peak_speed_time_seconds",
+    "movement_onset_bin",
+    "movement_onset_time_seconds",
+    "endpoint_dx",
+    "endpoint_dy",
+    "endpoint_angle_rad",
+    "endpoint_distance",
+    "behavior_source",
+]
+
+WINDOW_COVERAGE_COLUMNS = [
+    "window_name",
+    "trial_index",
+    "original_time_bins",
+    "start_bin",
+    "end_bin",
+    "requested_bins",
+    "available_bins",
+    "left_clipped",
+    "right_clipped",
+    "padded_bins",
+    "moving_bin_fraction",
+    "peak_speed_in_window",
+    "movement_onset_in_window",
+    "endpoint_distance",
+    "endpoint_angle_rad",
+    "mean_speed",
+    "peak_speed",
+]
+
+
+def _sequence_speed(
+    trial_behavior: np.ndarray, behavior_names: list[str], bin_size_seconds: float
+) -> np.ndarray:
+    return compute_hand_speed(trial_behavior[None, :, :], behavior_names, bin_size_seconds)
+
+
+def trial_movement_table(
+    sequences: Any,
+    threshold_quantile: float = 0.7,
+    min_peak_fraction: float = MOVING_SPEED_FRACTION,
+) -> pd.DataFrame:
+    """Per-trial movement timing on ragged trials, in the trials' own source bins.
+
+    Full-length trials are mostly static, so the speed quantile alone lands inside resting
+    jitter. The threshold is floored at `min_peak_fraction` of each trial's speed range, the
+    same criterion that defines a "moving" bin for coverage.
+    """
+    if sequences.behavior is None or not sequences.behavior_names:
+        msg = "movement features require behavior in the trial-aware representation"
+        raise ValueError(msg)
+    names = list(sequences.behavior_names)
+    bin_size_seconds = float(sequences.bin_size_ms) / 1000.0
+    rows: list[dict[str, Any]] = []
+    for index, trial_behavior in enumerate(sequences.behavior):
+        speed = _sequence_speed(trial_behavior, names, bin_size_seconds)
+        peak_bin = int(find_peak_speed_index(speed)[0])
+        onset_bin = int(find_movement_onset_index(speed, threshold_quantile, min_peak_fraction)[0])
+        features = compute_endpoint_features(
+            trial_behavior[None, :, :], names, bin_size_seconds, threshold_quantile
+        ).iloc[0]
+        length = int(trial_behavior.shape[0])
+        rows.append(
+            {
+                "trial_index": index,
+                "trial_length_bins": length,
+                "trial_duration_seconds": length * bin_size_seconds,
+                "peak_speed": float(features["peak_speed"]),
+                "peak_speed_bin": peak_bin,
+                "peak_speed_time_seconds": peak_bin * bin_size_seconds,
+                "movement_onset_bin": onset_bin,
+                "movement_onset_time_seconds": onset_bin * bin_size_seconds,
+                "endpoint_dx": float(features["endpoint_dx"]),
+                "endpoint_dy": float(features["endpoint_dy"]),
+                "endpoint_angle_rad": float(features["endpoint_angle_rad"]),
+                "endpoint_distance": float(features["endpoint_distance"]),
+                "behavior_source": str(features["behavior_source"]),
+            }
+        )
+    return pd.DataFrame(rows, columns=TRIAL_MOVEMENT_COLUMNS)
+
+
+def crop_to_min_impact(
+    sequences: Any,
+    movement: pd.DataFrame,
+    global_time_bins: int,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Quantify what the frozen artifact's global crop_to_min removed, per trial.
+
+    A large excluded-spike count alone does not disqualify the global crop. What matters is
+    whether peak speed and movement onset survive inside the retained interval.
+    """
+    rows: list[dict[str, Any]] = []
+    for index, trial_spikes in enumerate(sequences.spikes):
+        length = int(trial_spikes.shape[0])
+        kept = min(length, int(global_time_bins))
+        peak_bin = int(movement.iloc[index]["peak_speed_bin"])
+        onset_bin = int(movement.iloc[index]["movement_onset_bin"])
+        original_count = int(trial_spikes.sum())
+        retained_count = int(trial_spikes[:kept].sum())
+        rows.append(
+            {
+                "trial_index": index,
+                "original_time_bins": length,
+                "global_cropped_time_bins": kept,
+                "excluded_time_bins": length - kept,
+                "original_spike_count": original_count,
+                "retained_spike_count": retained_count,
+                "excluded_spike_count": original_count - retained_count,
+                "peak_speed_bin_original": peak_bin,
+                "peak_speed_inside_global_crop": bool(peak_bin < kept),
+                "movement_onset_bin_original": onset_bin,
+                "movement_onset_inside_global_crop": bool(onset_bin < kept),
+            }
+        )
+    table = pd.DataFrame(rows, columns=CROP_IMPACT_COLUMNS)
+    raw_spikes = int(table["original_spike_count"].sum())
+    retained_spikes = int(table["retained_spike_count"].sum())
+    raw_bins = int(table["original_time_bins"].sum())
+    excluded_bins = int(table["excluded_time_bins"].sum())
+    peak_inside = float(table["peak_speed_inside_global_crop"].mean())
+    onset_inside = float(table["movement_onset_inside_global_crop"].mean())
+    summary = {
+        "raw_spike_count": raw_spikes,
+        "global_crop_retained_spike_count": retained_spikes,
+        "fraction_raw_spikes_excluded": float((raw_spikes - retained_spikes) / raw_spikes)
+        if raw_spikes
+        else float("nan"),
+        "fraction_raw_bins_excluded": float(excluded_bins / raw_bins) if raw_bins else float("nan"),
+        "fraction_trials_peak_inside_global_crop": peak_inside,
+        "fraction_trials_onset_inside_global_crop": onset_inside,
+        "crop_to_min_removes_peak_for_any_trial": bool(peak_inside < 1.0),
+        "crop_to_min_removes_onset_for_any_trial": bool(onset_inside < 1.0),
+        "global_crop_suitable_for_movement_window_audit": bool(
+            peak_inside >= 1.0 and onset_inside >= 1.0
+        ),
+    }
+    return table, summary
+
+
+def window_bounds(
+    policy: str,
+    trial_length: int,
+    width: int,
+    peak_bin: int,
+    onset_bin: int,
+    pre_bins: int,
+    start_bin: int,
+) -> dict[str, int | bool]:
+    """Resolve one trial's window, distinguishing left from right clipping."""
+    if policy == FROM_START:
+        start = start_bin
+    elif policy == PEAK_SPEED_CENTERED:
+        start = peak_bin - width // 2
+    elif policy == MOVEMENT_ONSET:
+        start = onset_bin - pre_bins
+    else:
+        msg = f"crop_policy must be one of {CROP_POLICIES}"
+        raise ValueError(msg)
+    left_clipped = start < 0
+    right_clipped = start + width > trial_length
+    start = int(np.clip(start, 0, max(0, trial_length - width)))
+    end = min(start + width, trial_length)
+    available = end - start
+    return {
+        "start_bin": start,
+        "end_bin": end,
+        "requested_bins": width,
+        "available_bins": available,
+        "left_clipped": bool(left_clipped),
+        "right_clipped": bool(right_clipped),
+        "padded_bins": width - available,
+    }
+
+
+def _extract_trial(
+    trial_spikes: np.ndarray,
+    trial_behavior: np.ndarray,
+    bounds: dict[str, int | bool],
+) -> tuple[np.ndarray, np.ndarray]:
+    start, end = int(bounds["start_bin"]), int(bounds["end_bin"])
+    padded = int(bounds["padded_bins"])
+    spikes = trial_spikes[start:end]
+    behavior = trial_behavior[start:end]
+    if padded:
+        # Pad spikes with zeros and hold the final behavior sample, so a padded tail adds no
+        # spurious spikes and no spurious movement.
+        spikes = np.concatenate([spikes, np.zeros((padded, spikes.shape[1]), spikes.dtype)])
+        behavior = np.concatenate([behavior, np.repeat(behavior[-1:], padded, axis=0)])
+    return spikes, behavior
+
+
+def reference_peak_speed(sequences: Any, target_bin_size_ms: int) -> float:
+    """Peak speed over whole trials at the reporting bin size, as a window-independent scale."""
+    from latentbrain.data.rebinning import rebin_behavior, validate_rebin_factor  # noqa: PLC0415
+
+    names = list(sequences.behavior_names)
+    factor = validate_rebin_factor(sequences.bin_size_ms, target_bin_size_ms)
+    bin_size_seconds = float(target_bin_size_ms) / 1000.0
+    peaks = [
+        float(
+            _sequence_speed(
+                rebin_behavior(trial[None, :, :], factor)[0], names, bin_size_seconds
+            ).max()
+        )
+        for trial in sequences.behavior
+    ]
+    return float(max(peaks)) if peaks else float("nan")
+
+
+def evaluate_window_coverage(
+    sequences: Any,
+    movement: pd.DataFrame,
+    candidate: dict[str, Any],
+    target_bin_size_ms: int,
+    reference_peak: float,
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, np.ndarray]]:
+    """Extract one candidate window per trial, then rebin. Behavior coverage only."""
+    from latentbrain.data.rebinning import (  # noqa: PLC0415
+        rebin_behavior,
+        rebin_spike_counts,
+        validate_rebin_factor,
+    )
+
+    names = list(sequences.behavior_names)
+    source_seconds = float(sequences.bin_size_ms) / 1000.0
+    factor = validate_rebin_factor(sequences.bin_size_ms, target_bin_size_ms)
+    width = _window_bins(float(candidate["duration_seconds"]), source_seconds)
+    if width % factor:
+        msg = (
+            f"window {candidate['name']!r} width {width} is not divisible by rebin factor {factor}"
+        )
+        raise ValueError(msg)
+    policy = str(candidate["crop_policy"])
+    pre_bins = (
+        _window_bins(float(candidate.get("pre_event_seconds", 0.0)), source_seconds)
+        if float(candidate.get("pre_event_seconds", 0.0)) > 0.0
+        else 0
+    )
+    start_bin = (
+        _window_bins(float(candidate.get("start_seconds", 0.0)), source_seconds)
+        if float(candidate.get("start_seconds", 0.0)) > 0.0
+        else 0
+    )
+
+    spike_windows: list[np.ndarray] = []
+    behavior_windows: list[np.ndarray] = []
+    bounds_rows: list[dict[str, Any]] = []
+    for index, trial_spikes in enumerate(sequences.spikes):
+        row = movement.iloc[index]
+        bounds = window_bounds(
+            policy,
+            int(trial_spikes.shape[0]),
+            width,
+            int(row["peak_speed_bin"]),
+            int(row["movement_onset_bin"]),
+            pre_bins,
+            start_bin,
+        )
+        spikes, behavior = _extract_trial(trial_spikes, sequences.behavior[index], bounds)
+        spike_windows.append(spikes)
+        behavior_windows.append(behavior)
+        bounds_rows.append(bounds)
+
+    # Rebin only after event-centered extraction; summing counts keeps every retained spike.
+    windowed_spikes = rebin_spike_counts(np.stack(spike_windows), factor, trim=False)
+    windowed_behavior = rebin_behavior(np.stack(behavior_windows), factor, trim=False)
+    target_seconds = float(target_bin_size_ms) / 1000.0
+    speed = compute_hand_speed(windowed_behavior, names, target_seconds)
+    features = compute_endpoint_features(windowed_behavior, names, target_seconds)
+    moving = speed >= (MOVING_SPEED_FRACTION * reference_peak)
+
+    window_name = str(candidate["name"])
+    coverage = pd.DataFrame(
+        {
+            "window_name": window_name,
+            "trial_index": movement["trial_index"].to_numpy(),
+            "original_time_bins": movement["trial_length_bins"].to_numpy(),
+            "start_bin": [row["start_bin"] for row in bounds_rows],
+            "end_bin": [row["end_bin"] for row in bounds_rows],
+            "requested_bins": width,
+            "available_bins": [row["available_bins"] for row in bounds_rows],
+            "left_clipped": [row["left_clipped"] for row in bounds_rows],
+            "right_clipped": [row["right_clipped"] for row in bounds_rows],
+            "padded_bins": [row["padded_bins"] for row in bounds_rows],
+            "moving_bin_fraction": moving.mean(axis=1),
+            "peak_speed_in_window": [
+                bool(
+                    row["start_bin"] <= int(movement.iloc[index]["peak_speed_bin"]) < row["end_bin"]
+                )
+                for index, row in enumerate(bounds_rows)
+            ],
+            "movement_onset_in_window": [
+                bool(
+                    row["start_bin"]
+                    <= int(movement.iloc[index]["movement_onset_bin"])
+                    < row["end_bin"]
+                )
+                for index, row in enumerate(bounds_rows)
+            ],
+            "endpoint_distance": features["endpoint_distance"].to_numpy(),
+            "endpoint_angle_rad": features["endpoint_angle_rad"].to_numpy(),
+            "mean_speed": features["mean_speed"].to_numpy(),
+            "peak_speed": features["peak_speed"].to_numpy(),
+        },
+        columns=WINDOW_COVERAGE_COLUMNS,
+    )
+    clipped = coverage["left_clipped"] | coverage["right_clipped"]
+    summary = {
+        "window_name": window_name,
+        "report_label": str(candidate.get("report_label", "")),
+        "crop_policy": policy,
+        "duration_seconds": float(candidate["duration_seconds"]),
+        "trial_count": int(len(coverage)),
+        "clipped_trial_count": int(clipped.sum()),
+        "clipped_trial_fraction": float(clipped.mean()),
+        "mean_padded_bins": float(coverage["padded_bins"].mean()),
+        "moving_bin_fraction_mean": float(coverage["moving_bin_fraction"].mean()),
+        "moving_bin_fraction_median": float(coverage["moving_bin_fraction"].median()),
+        "peak_speed_coverage_fraction": float(coverage["peak_speed_in_window"].mean()),
+        "movement_onset_coverage_fraction": float(coverage["movement_onset_in_window"].mean()),
+        "endpoint_direction_entropy": endpoint_direction_entropy(
+            coverage["endpoint_angle_rad"].to_numpy()
+        ),
+        "endpoint_distance_mean": float(coverage["endpoint_distance"].mean()),
+        "mean_speed": float(coverage["mean_speed"].mean()),
+        "behavior_source": str(features.iloc[0]["behavior_source"]),
+        "reference_peak_speed": float(reference_peak),
+    }
+    extras = {
+        "windowed_spikes": np.asarray(windowed_spikes),
+        "speed_profile": np.asarray(speed.mean(axis=0)),
+    }
+    return coverage, summary, extras
+
+
+def apply_window_gates(summary: dict[str, Any], selection: dict[str, Any]) -> dict[str, Any]:
+    """Mark a candidate usable or not, on behavior and alignment criteria only."""
+    max_clipped = float(selection["maximum_clipped_trial_fraction"])
+    min_moving = float(selection["minimum_moving_bin_fraction"])
+    entropy_floor = float(selection["minimum_endpoint_direction_entropy_fraction"]) * float(
+        np.log(DIRECTION_BINS)
+    )
+    # "Present for nearly all trials" uses the same tolerance as the clipping gate.
+    coverage_floor = 1.0 - max_clipped
+    reasons: list[str] = []
+    if summary["clipped_trial_fraction"] > max_clipped:
+        reasons.append(
+            f"clipped_trial_fraction={summary['clipped_trial_fraction']:.4f} exceeds {max_clipped}"
+        )
+    if summary["moving_bin_fraction_mean"] < min_moving:
+        reasons.append(
+            f"moving_bin_fraction_mean={summary['moving_bin_fraction_mean']:.4f} below {min_moving}"
+        )
+    if summary["endpoint_direction_entropy"] < entropy_floor:
+        reasons.append(
+            f"endpoint_direction_entropy={summary['endpoint_direction_entropy']:.4f} "
+            f"below {entropy_floor:.4f}"
+        )
+    if summary["peak_speed_coverage_fraction"] < coverage_floor:
+        reasons.append(
+            f"peak_speed_coverage_fraction={summary['peak_speed_coverage_fraction']:.4f} "
+            f"below {coverage_floor}"
+        )
+    if summary["crop_policy"] == MOVEMENT_ONSET and (
+        summary["movement_onset_coverage_fraction"] < coverage_floor
+    ):
+        reasons.append(
+            f"movement_onset_coverage_fraction={summary['movement_onset_coverage_fraction']:.4f} "
+            f"below {coverage_floor}"
+        )
+    return {
+        **summary,
+        "usable_for_reporting": not reasons,
+        "rejection_reasons": "; ".join(reasons) if reasons else "none",
+    }
+
+
+def recommend_movement_window(
+    summaries: list[dict[str, Any]],
+    selection: dict[str, Any],
+    references: dict[str, Any],
+) -> dict[str, Any]:
+    """Pick a window from behavior coverage and alignment only. Model scores are forbidden."""
+    if bool(selection.get("use_model_scores_for_selection", False)):
+        msg = (
+            "selection.use_model_scores_for_selection must be false; windows are behavior-selected"
+        )
+        raise ValueError(msg)
+    gated = [apply_window_gates(summary, selection) for summary in summaries]
+    usable = [summary for summary in gated if summary["usable_for_reporting"]]
+    transferred = str(references["small_recommended_window"])
+    by_name = {summary["window_name"]: summary for summary in gated}
+
+    small_transfers = transferred in {summary["window_name"] for summary in usable}
+    if small_transfers:
+        recommended = transferred
+        rationale = (
+            f"{transferred} passes every behavior gate on Large, so the frozen MC_Maze Small "
+            "window transfers unchanged. Selection used behavior and alignment coverage only."
+        )
+    elif usable:
+        # Rule 8: shortest adequate window; ties broken by coverage then direction diversity.
+        recommended = min(
+            usable,
+            key=lambda summary: (
+                summary["duration_seconds"],
+                -summary["moving_bin_fraction_mean"],
+                -summary["endpoint_direction_entropy"],
+            ),
+        )["window_name"]
+        failure = by_name.get(transferred, {}).get("rejection_reasons", "candidate absent")
+        rationale = (
+            f"{transferred} failed transfer ({failure}), so {recommended} is recommended as the "
+            "shortest candidate passing every behavior gate. Selection used behavior and "
+            "alignment coverage only."
+        )
+    else:
+        recommended = ""
+        rationale = (
+            "No candidate window passed the behavior gates; no window is recommended. "
+            "Selection used behavior and alignment coverage only."
+        )
+    best = by_name.get(recommended, {})
+    return {
+        "recommended_window_name": recommended,
+        "recommended_duration_seconds": best.get("duration_seconds", float("nan")),
+        "recommended_clipped_trial_fraction": best.get("clipped_trial_fraction", float("nan")),
+        "recommended_moving_bin_fraction": best.get("moving_bin_fraction_mean", float("nan")),
+        "recommended_peak_speed_coverage": best.get("peak_speed_coverage_fraction", float("nan")),
+        "recommended_movement_onset_coverage": best.get(
+            "movement_onset_coverage_fraction", float("nan")
+        ),
+        "recommended_endpoint_direction_entropy": best.get(
+            "endpoint_direction_entropy", float("nan")
+        ),
+        "small_recommended_window": transferred,
+        "small_window_transfers": bool(small_transfers),
+        "usable_windows": sorted(summary["window_name"] for summary in usable),
+        "rejected_windows": {
+            summary["window_name"]: summary["rejection_reasons"]
+            for summary in gated
+            if not summary["usable_for_reporting"]
+        },
+        "window_selection_rationale": rationale,
+        "selection_used_model_scores": False,
+        "recommended_reporting_mode": "recommended_window_stratified_cross_validation",
+        "single_split_results_reportable": False,
+        "official_benchmark_claim": False,
+        "candidate_summaries": gated,
+    }
+
+
 __all__ = [
     "BEHAVIOR_ALIGNED_POLICIES",
+    "CROP_IMPACT_COLUMNS",
     "CROP_POLICIES",
     "MIN_MOVING_BIN_FRACTION",
+    "TRIAL_MOVEMENT_COLUMNS",
+    "WINDOW_COVERAGE_COLUMNS",
     "apply_window_candidate",
+    "apply_window_gates",
     "build_window_recommendations",
     "build_window_slices",
+    "crop_to_min_impact",
     "endpoint_direction_entropy",
     "evaluate_window_candidate",
+    "evaluate_window_coverage",
+    "recommend_movement_window",
+    "reference_peak_speed",
     "speed_profiles",
     "summarize_window_candidates",
+    "trial_movement_table",
+    "window_bounds",
     "window_entropy_table",
     "window_method_summary",
 ]

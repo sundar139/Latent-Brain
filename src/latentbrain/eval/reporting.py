@@ -3026,3 +3026,178 @@ def write_recommended_window_cv_outputs(
         paths["report"], summary, method_summary, fold_balance, leakage_diagnostics, protocol
     )
     return paths
+
+
+def write_movement_window_audit_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    candidate_statistics: pd.DataFrame,
+    behavior_statistics: pd.DataFrame,
+    trial_coverage: pd.DataFrame,
+    crop_impact: pd.DataFrame,
+    recommendations: dict[str, Any],
+) -> dict[str, Path]:
+    """Write the trial-aware movement-window audit outputs (behavior only, no model scores)."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "window_audit_summary.json",
+        "candidate_statistics": output_dir / "window_candidate_statistics.csv",
+        "behavior_statistics": output_dir / "window_behavior_statistics.csv",
+        "trial_coverage": output_dir / "window_trial_coverage.csv",
+        "crop_impact": output_dir / "crop_to_min_impact.csv",
+        "recommendations": output_dir / "window_recommendations.json",
+        "report": output_dir / "window_audit_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    paths["recommendations"].write_text(
+        json.dumps(recommendations, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    candidate_statistics.to_csv(paths["candidate_statistics"], index=False)
+    behavior_statistics.to_csv(paths["behavior_statistics"], index=False)
+    trial_coverage.to_csv(paths["trial_coverage"], index=False)
+    crop_impact.to_csv(paths["crop_impact"], index=False)
+    write_movement_window_audit_report(
+        paths["report"], summary, candidate_statistics, recommendations
+    )
+    return paths
+
+
+def _markdown_table(frame: pd.DataFrame) -> str:
+    """Render a DataFrame as a Markdown table without the optional tabulate dependency."""
+    if frame.empty:
+        return "_no rows_"
+    columns = [str(column) for column in frame.columns]
+    rows = [
+        "| " + " | ".join(columns) + " |",
+        "|" + "|".join(["---"] * len(columns)) + "|",
+    ]
+    rows.extend(
+        "| " + " | ".join(str(value) for value in record) + " |"
+        for record in frame.itertuples(index=False, name=None)
+    )
+    return "\n".join(rows)
+
+
+def write_movement_window_audit_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    candidate_statistics: pd.DataFrame,
+    recommendations: dict[str, Any],
+) -> Path:
+    """Markdown report for the trial-aware movement-window audit."""
+    crop_removes_events = bool(
+        summary.get("crop_to_min_removes_peak_for_any_trial", False)
+        or summary.get("crop_to_min_removes_onset_for_any_trial", False)
+    )
+    crop_verdict = (
+        "Global crop_to_min removes behavioral events for at least one trial."
+        if crop_removes_events
+        else (
+            "Global crop_to_min removes only post-event and long-duration tail data; peak speed "
+            "and movement onset survive inside the retained interval for every trial."
+        )
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} Movement-Window Audit",
+        "",
+        "This window recommendation is based on behavior and alignment coverage, "
+        "not model performance.",
+        "The globally crop-to-min processed artifact was not silently used as the source of "
+        "event-centered windows.",
+        "No official NLB leaderboard result is claimed.",
+        "",
+        "## Trial-aware source",
+        "",
+        f"- source file: {summary.get('trial_source_file')}",
+        f"- representation: {summary.get('trial_representation')}",
+        f"- trials: {summary.get('trial_count')}",
+        f"- neurons: {summary.get('neuron_count')}",
+        f"- trial length range (source bins): {summary.get('trial_length_min')} "
+        f"to {summary.get('trial_length_max')}",
+        f"- source bin size: {summary.get('source_bin_size_ms')} ms",
+        f"- target bin size: {summary.get('target_bin_size_ms')} ms",
+        f"- trial-aware representation conserves raw spikes: "
+        f"{summary.get('trial_aware_spikes_conserved')}",
+        "",
+        "## Crop-to-min impact",
+        "",
+        f"- raw spike count: {summary.get('raw_spike_count')}",
+        f"- global crop retained spike count: {summary.get('global_crop_retained_spike_count')}",
+        f"- fraction of raw spikes excluded: {summary.get('fraction_raw_spikes_excluded')}",
+        f"- fraction of raw bins excluded: {summary.get('fraction_raw_bins_excluded')}",
+        f"- trials with peak speed inside global crop: "
+        f"{summary.get('fraction_trials_peak_inside_global_crop')}",
+        f"- trials with movement onset inside global crop: "
+        f"{summary.get('fraction_trials_onset_inside_global_crop')}",
+        f"- global crop suitable for movement-window audit: "
+        f"{summary.get('global_crop_suitable_for_movement_window_audit')}",
+        "",
+        crop_verdict,
+        "",
+        "Windows were extracted from the trial-aware representation regardless, so this audit does "
+        "not depend on the global crop being adequate.",
+        "",
+        "## Movement timing",
+        "",
+        f"- behavior source: {summary.get('behavior_source')}",
+        f"- median peak-speed time: {summary.get('median_peak_speed_time_seconds')} s",
+        f"- median movement-onset time: {summary.get('median_movement_onset_time_seconds')} s",
+        f"- reference peak speed: {summary.get('reference_peak_speed')}",
+        "",
+        "## Candidate windows",
+        "",
+        _markdown_table(candidate_statistics),
+        "",
+        "## Behavior coverage",
+        "",
+        f"- moving-bin fraction by window: {summary.get('moving_bin_fraction_by_window')}",
+        f"- endpoint-direction entropy by window: "
+        f"{summary.get('endpoint_direction_entropy_by_window')}",
+        f"- clipped-trial fraction by window: {summary.get('clipped_trial_fraction_by_window')}",
+        "",
+        "## Window recommendation",
+        "",
+        f"- recommended window: {recommendations.get('recommended_window_name')}",
+        f"- duration: {recommendations.get('recommended_duration_seconds')} s",
+        f"- clipped-trial fraction: {recommendations.get('recommended_clipped_trial_fraction')}",
+        f"- moving-bin fraction: {recommendations.get('recommended_moving_bin_fraction')}",
+        f"- peak-speed coverage: {recommendations.get('recommended_peak_speed_coverage')}",
+        f"- movement-onset coverage: {recommendations.get('recommended_movement_onset_coverage')}",
+        f"- endpoint-direction entropy: "
+        f"{recommendations.get('recommended_endpoint_direction_entropy')}",
+        f"- rationale: {recommendations.get('window_selection_rationale')}",
+        f"- rejected windows: {recommendations.get('rejected_windows')}",
+        "",
+        "## Transfer from MC_Maze Small",
+        "",
+        f"- Small recommended window: {recommendations.get('small_recommended_window')}",
+        f"- transfers to Large: {recommendations.get('small_window_transfers')}",
+        f"- Small moving-bin fraction reference: {summary.get('small_moving_bin_fraction')}",
+        f"- Small endpoint-direction entropy reference: "
+        f"{summary.get('small_endpoint_direction_entropy')}",
+        "",
+        "## Limitations",
+        "",
+        "- No model was trained, scored, or cross-validated in this audit.",
+        "- Window selection used behavior and alignment coverage only; model scores are excluded "
+        "by configuration and by construction.",
+        "- The frozen processed artifact is unchanged; trial-aware data is audit-only.",
+        "- Padding, when used, contributes zero spikes and holds the last behavior sample, so it "
+        "adds no spurious movement.",
+        "- These are local ignored artifacts, not official NLB leaderboard results.",
+        "",
+        "## Next evaluation protocol",
+        "",
+        f"- carry {recommendations.get('recommended_window_name')} forward into "
+        "recommended-window stratified cross-validation on MC_Maze Large.",
+        f"- reporting mode: {recommendations.get('recommended_reporting_mode')}",
+        "- single-split results remain unreportable and no benchmark claim is made.",
+        "",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path

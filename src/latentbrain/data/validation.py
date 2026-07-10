@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from latentbrain.data.schemas import NeuralDataset, NeuronMask, TrialSplit
+from latentbrain.data.schemas import NeuralDataset, NeuronMask, TrialSequences, TrialSplit
 
 
 def _require_rank(name: str, array: np.ndarray, rank: int) -> None:
@@ -123,6 +123,54 @@ def validate_neural_dataset_minimums(
         raise ValueError(msg)
     if n_neurons < min_neurons:
         msg = f"dataset has {n_neurons} neurons, fewer than required minimum {min_neurons}"
+        raise ValueError(msg)
+
+
+def validate_trial_sequences(sequences: TrialSequences) -> None:
+    """Validate the ragged trial-aware representation used for movement-window auditing."""
+    n_trials = len(sequences.spikes)
+    if n_trials == 0:
+        msg = "trial sequences must contain at least one trial"
+        raise ValueError(msg)
+    if sequences.trial_ids.shape[0] != n_trials or sequences.trial_lengths.shape[0] != n_trials:
+        msg = "trial_ids and trial_lengths must have one entry per trial"
+        raise ValueError(msg)
+    if sequences.bin_size_ms <= 0:
+        msg = "bin_size_ms must be positive"
+        raise ValueError(msg)
+    neurons = sequences.spikes[0].shape[1]
+    for index, matrix in enumerate(sequences.spikes):
+        if matrix.ndim != 2:
+            msg = f"trial {index} spikes must have shape [time, neurons]; got {matrix.shape}"
+            raise ValueError(msg)
+        if matrix.shape[0] != int(sequences.trial_lengths[index]):
+            msg = f"trial {index} length does not match trial_lengths"
+            raise ValueError(msg)
+        if matrix.shape[1] != neurons:
+            msg = "every trial must have the same neuron count"
+            raise ValueError(msg)
+        if not np.issubdtype(matrix.dtype, np.integer):
+            msg = "trial spikes must have an integer dtype"
+            raise ValueError(msg)
+        if np.any(matrix < 0):
+            msg = "trial spikes must be non-negative"
+            raise ValueError(msg)
+    if sequences.behavior is None:
+        return
+    if len(sequences.behavior) != n_trials:
+        msg = "behavior must have one entry per trial"
+        raise ValueError(msg)
+    for index, matrix in enumerate(sequences.behavior):
+        if matrix.ndim != 2:
+            msg = f"trial {index} behavior must have shape [time, variables]"
+            raise ValueError(msg)
+        if matrix.shape[0] != sequences.spikes[index].shape[0]:
+            msg = f"trial {index} behavior and spikes are misaligned"
+            raise ValueError(msg)
+    if sequences.behavior_names is not None and sequences.behavior[0].shape[1] != len(
+        sequences.behavior_names
+    ):
+        msg = "behavior_names must match the behavior dimension"
         raise ValueError(msg)
 
 
