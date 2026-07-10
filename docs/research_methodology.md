@@ -391,3 +391,28 @@ has increased the leakage available in the metric, not the quality of the evalua
 candidate clears both bars, the current window is retained and must be reported as an early-window
 diagnostic. Reporting remains stratified cross-validation, old incompatible mean-rate values remain
 historical-only, and none of this is an official benchmark result.
+
+## Recommended movement-window cross-validation
+
+The carried-forward MC_Maze Small target is the per-trial
+`behavior_speed_peak_centered_1p28s` crop. It is applied after rebinning to 20 ms and spans 64 bins
+around each trial's peak hand speed. Behavior is mandatory: a missing hand/cursor position signal is
+an error rather than a silent rate-only fallback. Movement coverage and endpoint-direction entropy
+are reported with every run so the crop remains auditable as a reach-dynamics window.
+
+The frozen protocol uses five repeats of five-fold greedy-balanced stratified cross-validation. Trial
+strata include endpoint direction, endpoint distance, mean speed, population rate, and held-out rate.
+The held-out neuron mask is fixed within a repeat, and the train-held-out mean-rate reference is
+recomputed from each training fold. Factor Analysis, feature standardization, and held-out decoding
+are also fit on training trials only.
+
+`factor_latent` is the carried-forward valid baseline. `train_mean_rate` is the canonical zero-bit
+reference, not a competitor. `split_mean_rate_invalid` reads evaluation-fold target counts and is
+included only to re-check whether target-leakage dominance persists; it is excluded from valid-model
+selection regardless of its score. The generated protocol YAML freezes the dataset hash, window,
+binning, scorer, folds, stratification, methods, and bootstrap settings.
+
+Claim safety is unchanged. The original `from_start_1p28s` and recommended-window scores answer
+different prediction problems and cannot be described as model-performance improvements. Single-split
+results are unreportable, old incompatible mean-rate values are not tuning targets, invalid controls
+are not model performance, and all outputs are local rather than official NLB leaderboard results.

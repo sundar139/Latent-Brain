@@ -1304,7 +1304,14 @@ def write_unified_scoreboard_report(
         "- Factor-latent stratified CV CI95 low: "
         f"{summary.get('factor_latent_stratified_cv_ci95_low')}",
         f"- Window audit available: {summary.get('window_audit_available')}",
+        f"- Recommended-window CV available: {summary.get('recommended_window_cv_available')}",
         f"- Recommended window: {summary.get('recommended_window_name')}",
+        "- Factor-latent recommended-window mean: "
+        f"{summary.get('factor_latent_recommended_window_mean')}",
+        "- Factor-latent recommended-window CI95 low: "
+        f"{summary.get('factor_latent_recommended_window_ci95_low')}",
+        "- Factor-latent beats invalid-control mean: "
+        f"{summary.get('factor_latent_beats_invalid_control_mean')}",
         f"- Current window still supported: {summary.get('current_window_still_supported')}",
         "- Best LFADS-family source summary path: "
         f"{summary.get('best_lfads_family_source_summary_path')}",
@@ -2901,5 +2908,121 @@ def write_window_audit_outputs(
     balance_statistics.to_csv(paths["balance_statistics"], index=False)
     write_window_audit_report(
         paths["report"], summary, window_table, method_summary, recommendations
+    )
+    return paths
+
+
+def write_recommended_window_cv_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    method_summary: pd.DataFrame,
+    fold_balance: pd.DataFrame,
+    leakage_diagnostics: pd.DataFrame,
+    protocol: dict[str, Any],
+) -> Path:
+    """Write the claim-safe recommended movement-window CV report."""
+    lines = [
+        f"# {summary.get('dataset_name')} recommended-window cross-validation",
+        "",
+        (
+            "This is local recommended-window cross-validation analysis, not an official NLB "
+            "leaderboard result."
+        ),
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and frozen protocol",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Recommended window: {summary.get('recommended_window_name')}",
+        f"- Window crop policy: {summary.get('window_crop_policy')}",
+        f"- Fold count: {summary.get('fold_count')}",
+        f"- Repeats: {summary.get('repeats')}",
+        f"- Total folds: {summary.get('total_folds')}",
+        f"- Moving bin fraction mean: {summary.get('moving_bin_fraction_mean')}",
+        f"- Endpoint direction entropy mean: {summary.get('endpoint_direction_entropy_mean')}",
+        "",
+        "## Factor-latent stratified cross-validation",
+        f"- Mean unified bits/spike: {summary.get('factor_latent_mean')}",
+        f"- Std unified bits/spike: {summary.get('factor_latent_std')}",
+        "- CI95: "
+        f"[{summary.get('factor_latent_ci95_low')}, {summary.get('factor_latent_ci95_high')}]",
+        f"- Positive fraction: {summary.get('factor_latent_positive_fraction')}",
+        "",
+        *_format_table(method_summary),
+        "",
+        "## Leakage re-check",
+        f"- Invalid split-mean diagnostic mean: {summary.get('split_mean_invalid_mean')}",
+        "- Factor-latent minus invalid split-mean: "
+        f"{summary.get('factor_latent_minus_split_mean_invalid')}",
+        f"- Leakage dominance persists: {summary.get('leakage_dominance_persists')}",
+        f"- Conclusion: {summary.get('leakage_dominance_conclusion')}",
+        "",
+        *_format_table(leakage_diagnostics),
+        "",
+        "## Fold balance summary",
+        f"- Fold balance warning: {summary.get('fold_balance_warning')}",
+        "",
+        *_format_table(fold_balance),
+        "",
+        "## Frozen protocol",
+        "```yaml",
+        yaml.safe_dump(protocol, sort_keys=False).rstrip(),
+        "```",
+        "",
+        "## Interpretation",
+        "- Previous `from_start` results were early/pre-movement diagnostics.",
+        (
+            "- Recommended-window scores are not performance improvements over from-start "
+            "scores; they use a different prediction target."
+        ),
+        (
+            "- Recommended-window stratified cross-validation is the carried-forward MC_Maze "
+            "Small protocol."
+        ),
+        "- Invalid controls remain leakage diagnostics only.",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_recommended_window_cv_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    scores: pd.DataFrame,
+    method_summary: pd.DataFrame,
+    fold_assignments: pd.DataFrame,
+    behavior_statistics: pd.DataFrame,
+    fold_balance: pd.DataFrame,
+    leakage_diagnostics: pd.DataFrame,
+    protocol: dict[str, Any],
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "recommended_window_cv_summary.json",
+        "scores": output_dir / "recommended_window_scores.csv",
+        "method_summary": output_dir / "recommended_window_method_summary.csv",
+        "fold_assignments": output_dir / "recommended_window_fold_assignments.csv",
+        "behavior_statistics": output_dir / "recommended_window_behavior_statistics.csv",
+        "fold_balance": output_dir / "recommended_window_fold_balance.csv",
+        "leakage_diagnostics": output_dir / "recommended_window_leakage_diagnostics.csv",
+        "protocol": output_dir / "recommended_window_protocol.yaml",
+        "report": output_dir / "recommended_window_cv_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    scores.to_csv(paths["scores"], index=False)
+    method_summary.to_csv(paths["method_summary"], index=False)
+    fold_assignments.to_csv(paths["fold_assignments"], index=False)
+    behavior_statistics.to_csv(paths["behavior_statistics"], index=False)
+    fold_balance.to_csv(paths["fold_balance"], index=False)
+    leakage_diagnostics.to_csv(paths["leakage_diagnostics"], index=False)
+    paths["protocol"].write_text(yaml.safe_dump(protocol, sort_keys=False), encoding="utf-8")
+    write_recommended_window_cv_report(
+        paths["report"], summary, method_summary, fold_balance, leakage_diagnostics, protocol
     )
     return paths

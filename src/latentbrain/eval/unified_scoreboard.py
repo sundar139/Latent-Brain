@@ -560,6 +560,62 @@ def load_window_audit_warning(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def load_recommended_window_cv_warning(config: dict[str, Any]) -> dict[str, Any]:
+    """Recommended-window CV fields. Absent falls back cleanly; malformed fails clearly."""
+    path = _summary_path(config["inputs"].get("recommended_window_cv_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "recommended_window_cv_available": False,
+            "recommended_window_name": None,
+            "recommended_reporting_mode": None,
+            "factor_latent_recommended_window_mean": None,
+            "factor_latent_recommended_window_ci95_low": None,
+            "factor_latent_beats_invalid_control_mean": None,
+            "single_split_results_reportable": False,
+        }
+    label = "recommended window cross-validation"
+    summary = _load_summary(path, label)
+    required = (
+        "recommended_window_name",
+        "recommended_reporting_mode",
+        "factor_latent_mean",
+        "factor_latent_ci95_low",
+        "factor_latent_beats_invalid_control_mean",
+        "single_split_results_reportable",
+    )
+    for key in required:
+        if key not in summary:
+            msg = f"malformed recommended window cv summary ({label}): missing {key} at {path}"
+            raise ValueError(msg)
+    if not isinstance(summary["recommended_window_name"], str) or not isinstance(
+        summary["recommended_reporting_mode"], str
+    ):
+        msg = f"malformed recommended window cv summary ({label}): names must be strings"
+        raise ValueError(msg)
+    if bool(summary["single_split_results_reportable"]):
+        msg = (
+            f"malformed recommended window cv summary ({label}): "
+            "single_split_results_reportable must be false"
+        )
+        raise ValueError(msg)
+    return {
+        "recommended_window_cv_available": True,
+        "recommended_window_name": summary["recommended_window_name"],
+        "recommended_reporting_mode": summary["recommended_reporting_mode"],
+        "factor_latent_recommended_window_mean": _required_float(
+            summary, "factor_latent_mean", path, label
+        ),
+        "factor_latent_recommended_window_ci95_low": _required_float(
+            summary, "factor_latent_ci95_low", path, label
+        ),
+        "factor_latent_beats_invalid_control_mean": bool(
+            summary["factor_latent_beats_invalid_control_mean"]
+        ),
+        "single_split_results_reportable": False,
+        "recommended_window_cv_summary_path": str(path),
+    }
+
+
 def _is_seed_robustness_aggregate(method_name: object) -> bool:
     return str(method_name).startswith("seed_robustness_")
 

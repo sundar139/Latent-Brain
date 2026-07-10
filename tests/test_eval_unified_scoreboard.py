@@ -15,6 +15,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_unified_score_row,
     load_cv_rate_audit_warning,
     load_lfads_family_candidates,
+    load_recommended_window_cv_warning,
     load_seed_robustness_candidates,
     load_split_audit_warning,
     load_stratified_cv_warning,
@@ -42,6 +43,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "cv_rate_audit_summary_path": str(tmp_path / "cv_rate_audit.json"),
             "stratified_cv_summary_path": str(tmp_path / "stratified_cv.json"),
             "window_audit_summary_path": str(tmp_path / "window_audit.json"),
+            "recommended_window_cv_summary_path": str(tmp_path / "recommended_window_cv.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -904,3 +906,48 @@ def test_window_audit_invalid_controls_never_become_best_valid_model() -> None:
     )
 
     assert summary["best_valid_model"] == "factor_latent"
+
+
+def _write_recommended_window_cv(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+                "recommended_reporting_mode": "recommended_window_stratified_cross_validation",
+                "factor_latent_mean": 0.077,
+                "factor_latent_ci95_low": 0.068,
+                "factor_latent_beats_invalid_control_mean": True,
+                "single_split_results_reportable": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_recommended_window_cv_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_recommended_window_cv(tmp_path / "recommended_window_cv.json")
+
+    warning = load_recommended_window_cv_warning(config)
+
+    assert warning["recommended_window_cv_available"] is True
+    assert warning["recommended_window_name"] == "behavior_speed_peak_centered_1p28s"
+    assert warning["factor_latent_recommended_window_mean"] == 0.077
+    assert warning["factor_latent_recommended_window_ci95_low"] == 0.068
+    assert warning["factor_latent_beats_invalid_control_mean"] is True
+    assert warning["single_split_results_reportable"] is False
+
+
+def test_missing_recommended_window_cv_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    warning = load_recommended_window_cv_warning(_lfads_candidate_config(tmp_path))
+
+    assert warning["recommended_window_cv_available"] is False
+    assert warning["factor_latent_recommended_window_mean"] is None
+
+
+def test_malformed_recommended_window_cv_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "recommended_window_cv.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        load_recommended_window_cv_warning(config)

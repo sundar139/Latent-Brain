@@ -91,6 +91,27 @@ window. If no candidate improves both behavior coverage and valid-model performa
 window is retained and explicitly labelled an early-window diagnostic. Outputs and figures are local
 ignored artifacts under `results/mc_maze_small/window_audit/`, not official NLB leaderboard results.
 
+## Recommended movement-window cross-validation
+
+The audit confirmed that `from_start_1p28s` contains essentially no movement, so every earlier score
+on that crop is an early/pre-movement diagnostic rather than a reach-dynamics result. The
+carried-forward MC_Maze Small window is now `behavior_speed_peak_centered_1p28s`. Confirm it with the
+same behavior/rate-stratified protocol used by the audit:
+
+```powershell
+python scripts/run_recommended_window_cv.py --config configs/mc_maze_small_recommended_window_cv.yaml
+```
+
+This run freezes five repeats of five-fold stratified cross-validation at 20 ms, recomputes the
+train-held-out mean-rate reference inside every fold, and reports movement coverage and endpoint
+direction entropy with the scores. Factor-latent is the carried-forward valid baseline. The
+`split_mean_rate_invalid` control remains an evaluation-target leakage diagnostic only and is
+excluded from model selection.
+
+Recommended-window scores are not directly comparable with `from_start` scores as performance gains:
+the two crops define different prediction targets. Outputs are local ignored artifacts under
+`results/mc_maze_small/recommended_window_cv/`; they are not official NLB leaderboard results.
+
 ## Behavior-stratified cross-validation
 
 The diagnostic report froze MC_Maze Small with one issue unresolved: repeated *random* splits

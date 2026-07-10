@@ -25,6 +25,7 @@ from latentbrain.eval.reporting import (
     write_neural_ode_refinement_outputs,
     write_neural_ode_tuning_report,
     write_neural_sde_tuning_report,
+    write_recommended_window_cv_report,
     write_seed_robustness_outputs,
     write_split_audit_outputs,
     write_stratified_cv_outputs,
@@ -1746,3 +1747,50 @@ def test_unified_scoreboard_report_exposes_window_audit_fields(tmp_path: Path) -
     assert "Window audit available: True" in text
     assert "Recommended window: behavior_speed_peak_centered_1p28s" in text
     assert "Current window still supported: False" in text
+
+
+def test_recommended_window_report_contains_protocol_and_claim_safety(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+        "window_crop_policy": "behavior_speed_peak_centered",
+        "fold_count": 5,
+        "repeats": 5,
+        "total_folds": 25,
+        "moving_bin_fraction_mean": 0.57,
+        "endpoint_direction_entropy_mean": 2.0,
+        "factor_latent_mean": 0.08,
+        "factor_latent_std": 0.01,
+        "factor_latent_ci95_low": 0.07,
+        "factor_latent_ci95_high": 0.09,
+        "factor_latent_positive_fraction": 1.0,
+        "split_mean_invalid_mean": 0.07,
+        "factor_latent_minus_split_mean_invalid": 0.01,
+        "leakage_dominance_persists": False,
+        "leakage_dominance_conclusion": (
+            "The leakage dominance observed in the pre-movement window does not persist."
+        ),
+        "fold_balance_warning": "none",
+    }
+    one_row = pd.DataFrame([{"method_name": "factor_latent", "value": 0.08}])
+    output_path = tmp_path / "report.md"
+
+    write_recommended_window_cv_report(
+        output_path,
+        summary,
+        one_row,
+        pd.DataFrame([{"fold_index": 0, "fold_balance_warning": "none"}]),
+        pd.DataFrame([{"metric": "recommended_window_cv_mean"}]),
+        {"window": {"name": "behavior_speed_peak_centered_1p28s"}, "protocol_frozen": True},
+    )
+
+    report = output_path.read_text(encoding="utf-8")
+    assert "Moving bin fraction mean" in report
+    assert "does not persist" in report
+    assert "Frozen protocol" in report
+    assert "different prediction target" in report
+    assert "Invalid controls use evaluation fold targets" in report
+    assert "Old incompatible mean-rate values are not used as tuning targets." in report
+    assert "not an official NLB leaderboard result" in report

@@ -539,18 +539,22 @@ Run the CPU-only movement-window and alignment audit with:
 python scripts/run_window_audit.py --config configs/mc_maze_small_window_audit.yaml
 ```
 
-Behavior-stratified cross-validation remains the preferred reporting protocol for MC_Maze Small,
-but the choice of evaluation window remains a diagnostic factor rather than a settled one. The
-current `from_start` 1.28-second crop shows endpoint directions concentrated in a small number of
-sectors, which is what a window that ends before or early in the reach looks like.
+The audit found a moving-bin fraction of zero in `from_start_1p28s`. Previous factor-latent and neural
+results on that crop are therefore early/pre-movement diagnostics, not reach-dynamics results. The
+carried-forward MC_Maze Small window is `behavior_speed_peak_centered_1p28s`.
 
-This audit compares that window against a longer early window, peak-speed-centred windows, and a
-movement-onset-aligned window, rebuilding behavior features and stratified folds inside each one.
-It reports reach-direction entropy and moving-bin fraction per window alongside factor-latent's
-cross-validated score.
+Confirm the recommended window under the frozen CPU-only stratified protocol with:
 
-The window recommendation is made from valid models and behavior coverage only. The invalid
-`split_mean_rate_invalid` control is reported per window as a leakage diagnostic and is excluded from
-the decision. Additional behavior-aligned windows should be audited before any further modeling work
-is done on this dataset. Generated outputs and figures remain ignored under
-`results/mc_maze_small/window_audit/` and are not official NLB leaderboard results.
+```powershell
+python scripts/run_recommended_window_cv.py --config configs/mc_maze_small_recommended_window_cv.yaml
+```
+
+Factor-latent remains the carried-forward valid baseline. Five repeats of five-fold stratified
+cross-validation re-check whether the invalid split-mean control still dominates while reporting
+movement coverage, endpoint-direction entropy, and fold balance. If confirmed, lack of invalid-control
+dominance is a protocol diagnostic only: `split_mean_rate_invalid` still uses evaluation-fold targets,
+never becomes model performance, and never participates in valid-model selection.
+
+Recommended-window scores and `from_start` scores are different prediction targets, so their absolute
+difference is not a model-performance improvement. Generated outputs remain ignored under
+`results/mc_maze_small/recommended_window_cv/`; no official NLB leaderboard claim is made.
