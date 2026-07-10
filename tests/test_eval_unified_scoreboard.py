@@ -17,6 +17,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_lfads_family_candidates,
     load_seed_robustness_candidates,
     load_split_audit_warning,
+    load_stratified_cv_warning,
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
@@ -38,6 +39,7 @@ def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:
             "seed_robustness_summary_path": str(tmp_path / "seed_robustness.json"),
             "split_audit_summary_path": str(tmp_path / "split_audit.json"),
             "cv_rate_audit_summary_path": str(tmp_path / "cv_rate_audit.json"),
+            "stratified_cv_summary_path": str(tmp_path / "stratified_cv.json"),
         },
         "known_unified_values": {
             "lfads_unified_validation_bits_per_spike": 0.009,
@@ -697,3 +699,104 @@ def test_invalid_rate_controls_never_become_best_valid_model() -> None:
 
     assert summary["best_valid_model"] == "factor_latent"
     assert summary["best_valid_model_validation_bits_per_spike"] == 0.0316
+
+
+def _write_stratified_cv(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "recommended_reporting_mode": "stratified_cross_validation",
+                "single_split_results_reportable": False,
+                "factor_latent_mean_unified_bits_per_spike": 0.0143,
+                "factor_latent_ci95_low": 0.0091,
+                "factor_latent_ci95_high": 0.0195,
+                "carried_forward_method": "factor_latent",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_stratified_cv_summary_is_loaded_when_present(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    _write_stratified_cv(tmp_path / "stratified_cv.json")
+
+    warning = load_stratified_cv_warning(config)
+
+    assert warning["stratified_cv_available"] is True
+    assert warning["recommended_reporting_mode"] == "stratified_cross_validation"
+    assert warning["single_split_results_reportable"] is False
+    assert warning["factor_latent_stratified_cv_mean"] == 0.0143
+    assert warning["factor_latent_stratified_cv_ci95_low"] == 0.0091
+    assert warning["stratified_cv_summary_path"] == str((tmp_path / "stratified_cv.json").resolve())
+
+
+def test_missing_stratified_cv_summary_falls_back_cleanly(tmp_path: Path) -> None:
+    warning = load_stratified_cv_warning(_lfads_candidate_config(tmp_path))
+
+    assert warning["stratified_cv_available"] is False
+    assert warning["factor_latent_stratified_cv_mean"] is None
+    assert warning["factor_latent_stratified_cv_ci95_low"] is None
+
+
+def test_malformed_stratified_cv_summary_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "stratified_cv.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        load_stratified_cv_warning(config)
+
+
+def test_stratified_cv_summary_missing_key_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "stratified_cv.json").write_text(json.dumps({"other": 1}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing recommended_reporting_mode"):
+        load_stratified_cv_warning(config)
+
+
+def test_stratified_cv_summary_non_string_mode_fails_clearly(tmp_path: Path) -> None:
+    config = _lfads_candidate_config(tmp_path)
+    (tmp_path / "stratified_cv.json").write_text(
+        json.dumps(
+            {
+                "recommended_reporting_mode": 3,
+                "factor_latent_mean_unified_bits_per_spike": 0.01,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must be a string"):
+        load_stratified_cv_warning(config)
+
+
+def test_invalid_fold_controls_never_become_best_valid_model() -> None:
+    scores = pd.DataFrame(
+        [
+            build_unified_score_row(
+                "factor_latent", "decoder", "validation", 0.0316, 1.0, True, "ref", ""
+            ),
+            build_unified_score_row(
+                "split_mean_rate_invalid",
+                "invalid_control",
+                "validation",
+                0.0924,
+                None,
+                False,
+                "ref",
+                "uses evaluation fold targets",
+            ),
+        ]
+    )
+
+    summary = summarize_unified_scoreboard(
+        rank_unified_validation_scores(scores),
+        {
+            "factor_latent_unified_validation_bits_per_spike": 0.0316,
+            "best_oracle_validation_bits_per_spike": 3.0,
+        },
+    )
+
+    assert summary["best_valid_model"] == "factor_latent"

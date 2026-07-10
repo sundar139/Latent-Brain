@@ -1,0 +1,85 @@
+dataset:
+  name: mc_maze_small
+  processed_path: data/processed/nlb/mc_maze_small/mc_maze_small_processed.npz
+  expected_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  original_bin_size_ms: 5
+
+window:
+  duration_seconds: 1.28
+  crop_policy: from_start
+
+binning:
+  target_bin_size_ms: 20
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_metric: unified_bits_per_spike
+
+cross_validation:
+  fold_count: 5
+  repeats: 5
+  base_seed: 2027
+  heldout_neuron_fraction: 0.25
+  stratification:
+    use_endpoint_direction: true
+    endpoint_direction_bins: 8
+    use_endpoint_distance: true
+    endpoint_distance_bins: 3
+    use_mean_speed: true
+    mean_speed_bins: 3
+    use_population_rate: true
+    population_rate_bins: 3
+    use_heldout_rate: true
+    heldout_rate_bins: 3
+  fallback_when_behavior_missing: rate_only
+  min_trials_per_stratum: 2
+  assignment_method: greedy_balanced
+  compare_random_splits: true
+  random_split_repeats: 25
+
+methods:
+  - name: train_mean_rate
+    type: rate_control
+    valid_model: false
+    reportable_as_model_performance: false
+    notes: "Canonical reference; not a competitor."
+
+  - name: factor_latent
+    type: factor_latent
+    valid_model: true
+    reportable_as_model_performance: true
+    latent_dim: 8
+    smoothing_sigma_ms: 200.0
+    heldout_decoder_alpha: 10000.0
+    standardize_features: true
+    fit_intercept: true
+    factor_analysis_random_state: 0
+    notes: "Carried-forward valid baseline."
+
+  - name: split_mean_rate_invalid
+    type: invalid_control
+    valid_model: false
+    reportable_as_model_performance: false
+    invalid_reason: "Uses evaluation fold target counts."
+    notes: "Leakage diagnostic only."
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+
+inputs:
+  diagnostic_report_summary_path: reports/mc_maze_small_diagnostic/mc_maze_small_diagnostic_summary.json
+  cv_rate_audit_summary_path: results/mc_maze_small/cv_rate_audit/cv_rate_audit_summary.json
+
+references:
+  repeated_split_factor_latent_validation_mean: 0.026929226953529
+  repeated_split_factor_latent_test_mean: 0.008975282435208521
+  repeated_split_factor_latent_test_positive_fraction: 0.76
+  train_mean_validation_bits_per_spike: 0.0
+
+reporting:
+  output_dir: results/mc_maze_small/stratified_cv

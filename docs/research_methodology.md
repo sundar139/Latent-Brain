@@ -306,3 +306,45 @@ control reported as model performance, no single-split result reported as final 
 canonical unified metric used, old mean-rate values excluded from current targets, generated outputs
 not committed, negative neural results included, seed confound disclosed, split instability
 disclosed. The report builder exits non-zero if any item fails.
+
+## Behavior-stratified cross-validation
+
+Repeated random splits fixed the wrong half of the problem. They average over the accident of which
+15 trials land in an evaluation split, but any individual fold can still be dominated by one reach
+direction or one firing-rate regime. On a centre-out reaching task that is not a cosmetic concern:
+a fold missing an entire direction asks the model to extrapolate, and the resulting score measures
+the split rather than the method.
+
+Each trial is summarized by endpoint displacement, endpoint direction, endpoint distance, mean
+speed, population firing rate, and held-out firing rate. Direction is binned into equal-width
+sectors of the circle so opposite reaches can never share a bin; distance, speed, and both rates are
+binned by rank so each bin holds an equal share of trials regardless of the underlying distribution.
+The stratum label is the tuple of enabled bins. Strata with fewer trials than
+`min_trials_per_stratum` are pooled rather than dropped, because the alternative is a fold that never
+observes a rare reach at all. When behavior is absent, the behavior-derived terms fall away and the
+protocol degrades explicitly to rate-only stratification.
+
+Assignment is greedy and balanced: within each stratum, trials are visited in a seeded random order
+and placed into whichever fold is currently smallest. This keeps fold sizes within one trial of each
+other while spreading every stratum across folds. Assignment is deterministic given the seed, and
+each repeat uses a fresh seed. Within a repeat, the held-in/held-out neuron mask is fixed, so folds
+differ only in which trials they hold out.
+
+Fold balance is measured, not asserted. Per fold we record trial count, mean and spread of
+population rate, held-out rate, endpoint distance, and speed, plus the Shannon entropy of the reach
+directions it contains. Per repeat we report the min, max, range, and coefficient of variation of
+each of those quantities across folds, and warn when trial counts deviate from the mean by more than
+a quarter or when a rate metric spans more than a fifth of its mean across folds.
+
+Random-versus-stratified comparison is run under matched conditions: the same fold count, the same
+number of folds, the same scorer, the same methods — only the assignment differs. The variance
+reduction fraction is `1 - var(stratified) / var(random)`, and it is reported with its sign. If
+stratification does not reduce variance, that is the finding.
+
+The scoring protocol is unchanged in every other respect. The train-held-out mean-rate reference is
+recomputed from the training folds alone for every evaluation fold, and scores exactly `0.0`
+bits/spike against itself, which serves as a per-fold scorer self-check. Evaluation is canonical and
+unweighted. `split_mean_rate_invalid` is scored on every fold as a leakage diagnostic and is excluded
+from valid-model selection, as is the reference itself: neither is reportable as model performance.
+Stratified cross-validation is the recommended reporting mode for MC_Maze Small; single-split numbers
+remain unreportable, and old incompatible mean-rate values remain historical-only.

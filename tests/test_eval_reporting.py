@@ -27,6 +27,7 @@ from latentbrain.eval.reporting import (
     write_neural_sde_tuning_report,
     write_seed_robustness_outputs,
     write_split_audit_outputs,
+    write_stratified_cv_outputs,
     write_switching_ode_tuning_outputs,
     write_temporal_rebinning_report,
     write_unified_scoreboard_report,
@@ -1444,3 +1445,158 @@ def test_unified_scoreboard_report_includes_repeated_split_reporting_warning(
     assert "Recommended reporting mode: repeated_split" in text
     assert "Invalid rate controls present: True" in text
     assert "Rate offset warning: unmodeled split-level rate offset" in text
+
+
+def _stratified_cv_summary() -> dict:
+    return {
+        "dataset_name": "mc_maze_small",
+        "dataset_hash": "abc",
+        "bin_size_ms": 20,
+        "window_seconds": 1.28,
+        "reference_model": "train_heldout_mean_rate",
+        "fold_count": 5,
+        "repeats": 5,
+        "total_folds": 25,
+        "assignment_method": "greedy_balanced",
+        "stratification_variables": ["use_endpoint_direction", "use_population_rate"],
+        "mean_population_rate_fold_range": 0.02,
+        "mean_heldout_rate_fold_range": 0.03,
+        "mean_endpoint_distance_fold_range": 0.4,
+        "mean_speed_fold_range": 0.3,
+        "mean_endpoint_direction_entropy": 2.0,
+        "endpoint_direction_entropy_max": 2.0794415416798357,
+        "endpoint_direction_concentrated": False,
+        "fold_balance_warning": "none",
+        "factor_latent_mean_unified_bits_per_spike": 0.0143,
+        "factor_latent_std_unified_bits_per_spike": 0.0112,
+        "factor_latent_ci95_low": 0.0091,
+        "factor_latent_ci95_high": 0.0195,
+        "factor_latent_positive_fraction": 0.88,
+        "split_mean_rate_invalid_mean_unified_bits_per_spike": 0.0924,
+        "invalid_controls_excluded_from_valid_model_selection": True,
+        "stratified_factor_latent_mean": 0.0143,
+        "stratified_factor_latent_std": 0.0112,
+        "random_fold_factor_latent_mean": 0.0130,
+        "random_fold_factor_latent_std": 0.0160,
+        "random_factor_latent_test_mean_reference": 0.008975282435208521,
+        "random_factor_latent_test_positive_fraction_reference": 0.76,
+        "stratification_reduces_variance": True,
+        "variance_reduction_fraction": 0.51,
+        "recommended_reporting_mode": "stratified_cross_validation",
+        "single_split_results_reportable": False,
+        "carried_forward_method": "factor_latent",
+    }
+
+
+def _stratified_method_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "method_name": "factor_latent",
+                "valid_model": True,
+                "reportable_as_model_performance": True,
+                "mean_unified_bits_per_spike": 0.0143,
+                "notes": "carried forward",
+            },
+            {
+                "method_name": "split_mean_rate_invalid",
+                "valid_model": False,
+                "reportable_as_model_performance": False,
+                "mean_unified_bits_per_spike": 0.0924,
+                "notes": "leakage diagnostic",
+            },
+        ]
+    )
+
+
+def test_stratified_cv_report_includes_balance_comparison_and_warnings(tmp_path: Path) -> None:
+    fold_balance = pd.DataFrame(
+        [
+            {
+                "repeat_index": 0,
+                "fold_index": 0,
+                "n_trials": 20,
+                "mean_population_rate_hz": 0.6,
+                "mean_heldout_rate_hz": 0.57,
+                "mean_endpoint_distance": 4.1,
+                "mean_speed": 3.8,
+                "endpoint_direction_entropy": 2.0,
+                "stratum_count": 12,
+            }
+        ]
+    )
+    comparisons = pd.DataFrame(
+        [
+            {
+                "repeat_index": 0,
+                "metric": "mean_heldout_rate_hz",
+                "min_value": 0.55,
+                "max_value": 0.58,
+                "range": 0.03,
+                "mean_value": 0.57,
+                "std_value": 0.01,
+                "coefficient_of_variation": 0.018,
+            }
+        ]
+    )
+
+    paths = write_stratified_cv_outputs(
+        tmp_path,
+        _stratified_cv_summary(),
+        pd.DataFrame([{"repeat_index": 0, "fold_index": 0}]),
+        pd.DataFrame([{"repeat_index": 0, "trial_index": 0}]),
+        fold_balance,
+        comparisons,
+        _stratified_method_summary(),
+    )
+    text = paths["report"].read_text(encoding="utf-8")
+
+    assert paths["fold_balance"].exists()
+    assert paths["method_summary"].exists()
+
+    assert "## Fold balance" in text
+    assert "Fold balance warning: none" in text
+    assert "endpoint_direction_entropy" in text
+    assert "Mean held-out-rate fold range: 0.03" in text
+
+    assert "## Random versus stratified comparison" in text
+    assert "Stratification reduces variance: True" in text
+    assert "Variance reduction fraction: 0.51" in text
+    assert "Repeated random-split test mean reference: 0.008975282435208521" in text
+    # The 70/15/15 reference must never be presented as comparable to a cross-validation mean.
+    assert "Their means are therefore not comparable" in text
+    assert "protocol difference rather than a performance gain" in text
+    assert "Endpoint directions are concentrated in this dataset and window: False" in text
+
+    assert "Recommended reporting mode: stratified_cross_validation" in text
+    assert "Single-split results reportable: False" in text
+    assert "Carried-forward method: factor_latent" in text
+
+    assert (
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance."
+        in text
+    )
+    assert "split_mean_rate_invalid" in text
+    assert "Old incompatible mean-rate values are not used as tuning targets" in text
+    assert "not an official NLB leaderboard result" in text
+    assert "Stratified cross-validation is preferred over single-split reporting." in text
+
+
+def test_unified_scoreboard_report_exposes_stratified_cv_fields(tmp_path: Path) -> None:
+    summary = {
+        "dataset_name": "mc_maze_small",
+        "reference_model": "train_heldout_mean_rate",
+        "generalization_risk": "high",
+        "stratified_cv_available": True,
+        "factor_latent_stratified_cv_mean": 0.0143,
+        "factor_latent_stratified_cv_ci95_low": 0.0091,
+    }
+
+    path = write_unified_scoreboard_report(
+        tmp_path / "report.md", summary, pd.DataFrame(), pd.DataFrame()
+    )
+    text = path.read_text(encoding="utf-8")
+
+    assert "Stratified CV available: True" in text
+    assert "Factor-latent stratified CV mean: 0.0143" in text
+    assert "Factor-latent stratified CV CI95 low: 0.0091" in text

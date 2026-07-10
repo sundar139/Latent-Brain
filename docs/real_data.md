@@ -506,3 +506,27 @@ is never model performance.
 The recommended next work is larger or additional datasets, or cross-validated reporting on this
 one. Generated report bundles remain ignored under `reports/mc_maze_small_diagnostic/` and are not
 official NLB leaderboard results.
+
+## MC_Maze Small stratified cross-validation status
+
+Run the CPU-only stratified cross-validation with:
+
+```powershell
+python scripts/run_stratified_cv.py --config configs/mc_maze_small_stratified_cv.yaml
+```
+
+Random 70/15/15 splits of MC_Maze Small are unstable. With only 15 validation and 15 test trials, a
+single split's score depends heavily on which trials it happened to draw, and repeated random splits
+average that away without ever guaranteeing that a fold contains a balanced spread of reach
+directions, distances, speeds, or firing rates.
+
+Behavior-stratified cross-validation is the preferred protocol. Folds are built so that endpoint
+direction, endpoint distance, speed, population rate, and held-out rate are comparable across folds,
+and fold balance is reported alongside every score.
+
+Factor-latent remains the carried-forward valid baseline and is reported as a stratified
+cross-validation mean with its spread and confidence interval, never as a single-split number. The
+`split_mean_rate_invalid` control reads each evaluation fold's own held-out targets; it remains a
+leakage diagnostic only, is never model performance, and never competes for best valid model.
+Generated outputs and figures remain ignored under `results/mc_maze_small/stratified_cv/` and are not
+official NLB leaderboard results.

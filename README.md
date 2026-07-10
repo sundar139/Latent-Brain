@@ -67,6 +67,30 @@ If `nlb-tools` is unavailable from pip in your environment, install it from the 
 python -m pip install git+https://github.com/neurallatents/nlb_tools.git
 ```
 
+## Behavior-stratified cross-validation
+
+The diagnostic report froze MC_Maze Small with one issue unresolved: repeated *random* splits
+reduced the damage of a 15-trial evaluation split, but they never guaranteed that a fold contains a
+balanced set of reach directions, distances, speeds, or firing rates. This workflow builds folds
+that do:
+
+```powershell
+python scripts/run_stratified_cv.py --config configs/mc_maze_small_stratified_cv.yaml
+```
+
+Trials are binned by endpoint direction, endpoint distance, mean speed, population rate, and
+held-out rate, then assigned greedily so every fold receives a comparable share of each stratum.
+Factor-latent, the canonical `train_mean_rate` reference, and the invalid `split_mean_rate_invalid`
+control are scored on every held-out fold under canonical unweighted unified bits/spike, and the
+same protocol is run with matched *unstratified* folds so the variance change is measured rather
+than assumed.
+
+Single-split reporting remains disallowed. **Stratified cross-validation is the preferred
+MC_Maze Small reporting protocol.** Invalid controls read evaluation-fold targets, so they remain
+leakage diagnostics only and can never win valid-model selection. Outputs and figures are local
+ignored artifacts under `results/mc_maze_small/stratified_cv/`, not official NLB leaderboard
+results.
+
 ## MC_Maze Small diagnostic report
 
 After the seed-robustness benchmark, the split generalization audit, and the cross-validated rate

@@ -494,6 +494,44 @@ def load_cv_rate_audit_warning(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def load_stratified_cv_warning(config: dict[str, Any]) -> dict[str, Any]:
+    """Stratified cross-validation recommendation. Absent falls back cleanly; malformed fails."""
+    path = _summary_path(config["inputs"].get("stratified_cv_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "stratified_cv_available": False,
+            "factor_latent_stratified_cv_mean": None,
+            "factor_latent_stratified_cv_ci95_low": None,
+        }
+    label = "stratified cross-validation"
+    summary = _load_summary(path, label)
+    for key in ("recommended_reporting_mode", "factor_latent_mean_unified_bits_per_spike"):
+        if key not in summary:
+            msg = f"malformed stratified cv summary ({label}): missing {key} at {path}"
+            raise ValueError(msg)
+    mode = summary["recommended_reporting_mode"]
+    if not isinstance(mode, str):
+        msg = (
+            f"malformed stratified cv summary ({label}): "
+            "recommended_reporting_mode must be a string"
+        )
+        raise ValueError(msg)
+    return {
+        "stratified_cv_available": True,
+        # The stratified protocol supersedes repeated random splits as the reporting mode.
+        "recommended_reporting_mode": mode,
+        "single_split_results_reportable": False,
+        "factor_latent_stratified_cv_mean": _required_float(
+            summary, "factor_latent_mean_unified_bits_per_spike", path, label
+        ),
+        "factor_latent_stratified_cv_ci95_low": _optional_float(summary, "factor_latent_ci95_low"),
+        "factor_latent_stratified_cv_ci95_high": _optional_float(
+            summary, "factor_latent_ci95_high"
+        ),
+        "stratified_cv_summary_path": str(path),
+    }
+
+
 def _is_seed_robustness_aggregate(method_name: object) -> bool:
     return str(method_name).startswith("seed_robustness_")
 

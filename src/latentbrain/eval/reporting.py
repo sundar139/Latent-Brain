@@ -1299,6 +1299,10 @@ def write_unified_scoreboard_report(
         f"- Recommended reporting mode: {summary.get('recommended_reporting_mode')}",
         f"- Invalid rate controls present: {summary.get('invalid_rate_controls_present')}",
         f"- Rate offset warning: {summary.get('rate_offset_warning')}",
+        f"- Stratified CV available: {summary.get('stratified_cv_available')}",
+        f"- Factor-latent stratified CV mean: {summary.get('factor_latent_stratified_cv_mean')}",
+        "- Factor-latent stratified CV CI95 low: "
+        f"{summary.get('factor_latent_stratified_cv_ci95_low')}",
         "- Best LFADS-family source summary path: "
         f"{summary.get('best_lfads_family_source_summary_path')}",
         "- Oracle diagnostic score: "
@@ -2583,4 +2587,158 @@ def write_cv_rate_audit_outputs(
     write_cv_rate_audit_report(
         paths["report"], summary, method_summary, fa_sensitivity, decomposition, recommendations
     )
+    return paths
+
+
+def write_stratified_cv_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    method_summary: pd.DataFrame,
+    fold_balance: pd.DataFrame,
+    comparisons: pd.DataFrame,
+) -> Path:
+    """Write a Markdown report for local behavior-stratified cross-validation."""
+    valid = (
+        method_summary[method_summary["reportable_as_model_performance"].astype(bool)]
+        if not method_summary.empty
+        else method_summary
+    )
+    invalid = (
+        method_summary[~method_summary["valid_model"].astype(bool)]
+        if not method_summary.empty
+        else method_summary
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} behavior-stratified cross-validation",
+        "",
+        "This is local stratified cross-validation analysis, not an official NLB leaderboard "
+        "result.",
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance.",
+        "Old incompatible mean-rate values are not used as tuning targets.",
+        "",
+        "## Dataset and protocol",
+        f"- Dataset name: {summary.get('dataset_name')}",
+        f"- Dataset hash: {summary.get('dataset_hash')}",
+        f"- Bin size: {summary.get('bin_size_ms')} ms",
+        f"- Window length: {summary.get('window_seconds')} seconds",
+        f"- Canonical reference model: {summary.get('reference_model')}",
+        f"- Fold count: {summary.get('fold_count')}",
+        f"- Repeats: {summary.get('repeats')}",
+        f"- Total folds: {summary.get('total_folds')}",
+        f"- Assignment method: {summary.get('assignment_method')}",
+        f"- Stratification variables: {summary.get('stratification_variables')}",
+        "",
+        "## Fold balance",
+        f"- Mean population-rate fold range: {summary.get('mean_population_rate_fold_range')}",
+        f"- Mean held-out-rate fold range: {summary.get('mean_heldout_rate_fold_range')}",
+        f"- Mean endpoint-distance fold range: {summary.get('mean_endpoint_distance_fold_range')}",
+        f"- Mean speed fold range: {summary.get('mean_speed_fold_range')}",
+        "- Mean endpoint-direction entropy: "
+        f"{summary.get('mean_endpoint_direction_entropy')} "
+        f"(maximum {summary.get('endpoint_direction_entropy_max')})",
+        "- Endpoint directions are concentrated in this dataset and window: "
+        f"{summary.get('endpoint_direction_concentrated')}",
+        f"- Fold balance warning: {summary.get('fold_balance_warning')}",
+        (
+            "Low endpoint-direction entropy is a property of the dataset and the cropped window, "
+            "not of the fold assignment; where it is low, direction stratification has little "
+            "left to balance."
+        ),
+        "",
+        *_format_table(fold_balance),
+        "",
+        "### Per-repeat fold spread",
+        "",
+        *_format_table(comparisons),
+        "",
+        "## Factor-latent stratified cross-validation",
+        f"- Mean unified bits/spike: {summary.get('factor_latent_mean_unified_bits_per_spike')}",
+        f"- Std unified bits/spike: {summary.get('factor_latent_std_unified_bits_per_spike')}",
+        f"- CI95 low: {summary.get('factor_latent_ci95_low')}",
+        f"- CI95 high: {summary.get('factor_latent_ci95_high')}",
+        f"- Positive fraction: {summary.get('factor_latent_positive_fraction')}",
+        "",
+        "Reportable valid models:",
+        "",
+        *(_format_table(valid) if not valid.empty else ["(no reportable valid models)"]),
+        "",
+        "## Invalid split-mean diagnostic",
+        "",
+        "Invalid controls use evaluation fold targets and cannot be reported as model performance.",
+        "",
+        "- Split-mean invalid mean unified bits/spike: "
+        f"{summary.get('split_mean_rate_invalid_mean_unified_bits_per_spike')}",
+        "- Invalid controls excluded from valid model selection: "
+        f"{summary.get('invalid_controls_excluded_from_valid_model_selection')}",
+        "",
+        *(_format_table(invalid) if not invalid.empty else ["(no invalid controls scored)"]),
+        "",
+        "## Random versus stratified comparison",
+        f"- Stratified factor-latent mean: {summary.get('stratified_factor_latent_mean')}",
+        f"- Stratified factor-latent std: {summary.get('stratified_factor_latent_std')}",
+        f"- Random-fold factor-latent mean: {summary.get('random_fold_factor_latent_mean')}",
+        f"- Random-fold factor-latent std: {summary.get('random_fold_factor_latent_std')}",
+        "- Repeated random-split test mean reference: "
+        f"{summary.get('random_factor_latent_test_mean_reference')}",
+        "- Repeated random-split test-positive fraction reference: "
+        f"{summary.get('random_factor_latent_test_positive_fraction_reference')}",
+        (
+            "The repeated random-split references come from a 70/15/15 protocol with 15 "
+            "evaluation trials, whereas cross-validation trains on more trials and evaluates on "
+            "larger folds. Their means are therefore not comparable, and a higher "
+            "cross-validation mean is a protocol difference rather than a performance gain. "
+            "Only the matched random-fold comparison above, which differs from the stratified "
+            "run solely in how trials are assigned, supports a variance claim."
+        ),
+        f"- Stratification reduces variance: {summary.get('stratification_reduces_variance')}",
+        f"- Variance reduction fraction: {summary.get('variance_reduction_fraction')}",
+        "",
+        "## Reporting recommendation",
+        f"- Recommended reporting mode: {summary.get('recommended_reporting_mode')}",
+        f"- Single-split results reportable: {summary.get('single_split_results_reportable')}",
+        f"- Carried-forward method: {summary.get('carried_forward_method')}",
+        "",
+        "## Interpretation",
+        "- Stratified cross-validation is preferred over single-split reporting.",
+        "- Invalid controls remain leakage diagnostics only.",
+        (
+            "- Factor-latent remains the carried-forward valid baseline unless a future valid "
+            "method beats it under the same protocol."
+        ),
+        "- Neural models should not be tuned against the old single split.",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def write_stratified_cv_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    scores: pd.DataFrame,
+    fold_assignments: pd.DataFrame,
+    fold_balance: pd.DataFrame,
+    comparisons: pd.DataFrame,
+    method_summary: pd.DataFrame,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "stratified_cv_summary.json",
+        "scores": output_dir / "stratified_cv_scores.csv",
+        "fold_assignments": output_dir / "stratified_fold_assignments.csv",
+        "fold_balance": output_dir / "fold_balance_statistics.csv",
+        "comparisons": output_dir / "fold_balance_comparisons.csv",
+        "method_summary": output_dir / "stratified_cv_method_summary.csv",
+        "report": output_dir / "stratified_cv_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    scores.to_csv(paths["scores"], index=False)
+    fold_assignments.to_csv(paths["fold_assignments"], index=False)
+    fold_balance.to_csv(paths["fold_balance"], index=False)
+    comparisons.to_csv(paths["comparisons"], index=False)
+    method_summary.to_csv(paths["method_summary"], index=False)
+    write_stratified_cv_report(paths["report"], summary, method_summary, fold_balance, comparisons)
     return paths
