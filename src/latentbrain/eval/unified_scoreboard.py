@@ -10,6 +10,7 @@ import pandas as pd  # type: ignore[import-untyped]
 from latentbrain.paths import get_repo_root, resolve_configured_path
 
 HISTORICAL_STATUS = "historical_only_not_directly_comparable"
+FACTOR_LATENT_METHOD = "factor_latent"
 SPLIT_SCORE_COLUMNS = [
     "method_name",
     "split",
@@ -681,4 +682,89 @@ def summarize_unified_scoreboard(
         if aggregates.empty
         else [str(name) for name in aggregates["method_name"]],
         "seed_robustness_ingested": not aggregates.empty,
+    }
+
+
+DATASET_SCOREBOARD_KEYS = (
+    "recommended_window_name",
+    "recommended_reporting_mode",
+    "factor_latent_mean",
+    "factor_latent_ci95_low",
+    "factor_latent_ci95_high",
+    "factor_latent_positive_fraction",
+    "factor_latent_beats_invalid_control_mean",
+    "leakage_dominance_persists",
+    "single_split_results_reportable",
+    "official_leaderboard_claim",
+)
+
+
+def load_dataset_cv_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Summary-only scoreboard for a dataset whose evidence is recommended-window CV.
+
+    Missing summaries fall back cleanly; malformed summaries fail clearly. An invalid control
+    can never surface as the best valid method here because only factor-latent is exposed.
+    """
+    dataset_name = str(config["dataset"]["name"])
+    path = _summary_path(config["inputs"].get("recommended_window_cv_summary_path"))
+    window_audit = _summary_path(config["inputs"].get("window_audit_summary_path"))
+    if path is None or not path.exists():
+        return {
+            "dataset_name": dataset_name,
+            "recommended_window_cv_available": False,
+            "recommended_window_name": None,
+            "recommended_reporting_mode": None,
+            "factor_latent_recommended_window_mean": None,
+            "factor_latent_recommended_window_ci95_low": None,
+            "factor_latent_recommended_window_ci95_high": None,
+            "factor_latent_positive_fraction": None,
+            "factor_latent_beats_invalid_control_mean": None,
+            "leakage_dominance_persists": None,
+            "best_valid_method": None,
+            "window_audit_available": bool(window_audit and window_audit.exists()),
+            "single_split_results_reportable": False,
+            "official_leaderboard_claim": False,
+        }
+    label = f"{dataset_name} recommended window cross-validation"
+    summary = _load_summary(path, label)
+    for key in DATASET_SCOREBOARD_KEYS:
+        if key not in summary:
+            msg = f"malformed recommended window cv summary ({label}): missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["single_split_results_reportable"]):
+        msg = (
+            f"malformed recommended window cv summary ({label}): "
+            "single_split_results_reportable must be false"
+        )
+        raise ValueError(msg)
+    if bool(summary["official_leaderboard_claim"]):
+        msg = f"malformed recommended window cv summary ({label}): no leaderboard claim is allowed"
+        raise ValueError(msg)
+    return {
+        "dataset_name": dataset_name,
+        "recommended_window_cv_available": True,
+        "recommended_window_name": str(summary["recommended_window_name"]),
+        "recommended_reporting_mode": str(summary["recommended_reporting_mode"]),
+        "factor_latent_recommended_window_mean": _required_float(
+            summary, "factor_latent_mean", path, label
+        ),
+        "factor_latent_recommended_window_ci95_low": _required_float(
+            summary, "factor_latent_ci95_low", path, label
+        ),
+        "factor_latent_recommended_window_ci95_high": _required_float(
+            summary, "factor_latent_ci95_high", path, label
+        ),
+        "factor_latent_positive_fraction": _required_float(
+            summary, "factor_latent_positive_fraction", path, label
+        ),
+        "factor_latent_beats_invalid_control_mean": bool(
+            summary["factor_latent_beats_invalid_control_mean"]
+        ),
+        "leakage_dominance_persists": bool(summary["leakage_dominance_persists"]),
+        # Only reportable valid models are eligible; invalid controls are never surfaced.
+        "best_valid_method": FACTOR_LATENT_METHOD,
+        "window_audit_available": bool(window_audit and window_audit.exists()),
+        "single_split_results_reportable": False,
+        "official_leaderboard_claim": False,
+        "recommended_window_cv_summary_path": str(path),
     }

@@ -871,3 +871,143 @@ from_start_1p28s rejected: moving_bin_fraction_mean=0.0001 below 0.25;
 Recommended-window stratified cross-validation on MC_Maze Large, carrying
 `behavior_speed_peak_centered_1p28s` forward at 20 ms bins. Single-split results remain
 unreportable. No model has been run on Large and no benchmark claim is made.
+
+## MC_Maze Large recommended-window cross-validation
+
+Run with:
+
+```powershell
+python scripts/run_recommended_window_cv.py --config configs/mc_maze_large_recommended_window_cv.yaml
+python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+```
+
+Status: complete and frozen. No neural model was trained or tuned. No official NLB leaderboard
+result is claimed. Outputs are local ignored artifacts under
+`results/mc_maze_large/recommended_window_cv/`.
+
+### Evaluation source and protocol
+
+Event-centered windows were extracted from the trial-aware raw representation, never from the
+globally crop-to-min processed array. Extraction happens at the 5 ms source bin size and the result
+is rebinned to 20 ms afterwards, so summing counts preserves every spike inside the window.
+
+```text
+dataset_hash:        074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+trial_source:        trial_aware_raw (sub-Jenkins_ses-large_desc-train_behavior+ecephys.nwb)
+trial length range:  2006 to 4141 source bins
+window:              behavior_speed_peak_centered_1p28s (1.28 s, zero clipped, zero padded)
+evaluation array:    [500, 64, 162]  (20 ms bins)
+held-in / held-out:  122 / 40 neurons
+folds x repeats:     5 x 5 = 25 fold evaluations
+train / eval trials: 400 / 100 per fold (every fold held exactly 100 trials)
+heldout_mask_policy: fixed_within_repeat
+```
+
+Every trial appears exactly once as evaluation per repeat. The held-out neuron mask is drawn once per
+repeat and held fixed across that repeat's five folds, so folds differ only in trials. The
+train-heldout mean-rate reference is recomputed from training trials only on every fold and scores
+exactly `0.0` unified bits/spike against itself on all 25 folds.
+
+### Factor-latent baseline
+
+```text
+mean:                 0.12271672423988657
+std:                  0.025404656817326
+CI95:                 [0.11323877517640364, 0.13279417856463843]
+positive fold fraction: 1.0  (25 of 25 folds)
+between-repeat std:   0.026885468208411117
+within-repeat std:    0.0067354761061974855
+```
+
+The confidence interval lies entirely above the train-mean reference of `0.0`. Factor-latent is
+therefore the first valid MC_Maze Large baseline under this protocol. Between-repeat variation
+exceeds within-repeat variation, so the neuron mask, not the trial fold, drives most of the spread.
+
+### FactorAnalysis random-state sensitivity
+
+The FactorAnalysis random state is configured explicitly and is never derived from the fold index or
+repeat index. All 25 folds were rescored at each of five states.
+
+```text
+random states:  0, 2027, 2028, 2029, 2030
+mean by state:  0.122717, 0.121704, 0.121694, 0.121956, 0.122013
+range:          0.0010229403760970285
+std:            0.00041710575451157797
+warning:        none  (tolerance 0.005 bits/spike)
+```
+
+The baseline is stable with respect to the FactorAnalysis seed: the spread is about 40 times smaller
+than the fold-to-fold standard deviation.
+
+### Invalid leakage control
+
+```text
+split_mean_invalid_mean:  0.008967375250262581
+split_mean_invalid_std:   0.002695464410988248
+factor_latent_minus_invalid: 0.113749348989624
+factor beats invalid on the mean:  true
+factor beats invalid on folds:     1.0  (25 of 25)
+leakage_dominance_persists:        false
+```
+
+The split-mean control reads each evaluation fold's own held-out-neuron means, so it can never be
+reported as model performance. Beating it is a leakage diagnostic, not a benchmark result. On Large
+the control is much weaker than on Small (0.0090 versus 0.0711 bits/spike): averaging targets over
+100 evaluation trials leaks far less than averaging over Small's 20.
+
+### Fold balance
+
+```text
+trial count per fold:        100 for every fold (perfectly balanced)
+strata per fold:             65 to 68
+population-rate fold range:  0.0177 Hz
+held-out-rate fold range:    0.0232 Hz
+endpoint-distance fold range: 2.1201
+mean-speed fold range:       2.2840
+endpoint-direction entropy:  1.8060 (max 2.0794), not concentrated
+fold_balance_warning:        none
+```
+
+Fold quality was judged on behavior and rate balance only. Invalid-control scores were never used to
+judge fold quality.
+
+### Comparison with MC_Maze Small
+
+Small and Large differ in trials, neurons, firing rates, and target distributions. Only protocol
+stability and leakage diagnostics are compared. **No cross-dataset model-performance improvement is
+claimed, and the Large factor-latent mean must not be read as better than Small's.**
+
+| field | mc_maze_small | mc_maze_large |
+|---|---|---|
+| fold count x repeats | 5 x 5 | 5 x 5 |
+| eval trials per fold | 20 | 100 |
+| factor-latent mean | 0.077080 | 0.122717 |
+| factor-latent std | 0.014665 | 0.025405 |
+| factor-latent CI95 | [0.071435, 0.082517] | [0.113239, 0.132794] |
+| positive fold fraction | 1.0 | 1.0 |
+| split-mean invalid mean | 0.071104 | 0.008967 |
+| factor minus invalid | 0.005976 | 0.113749 |
+| moving-bin fraction | 0.576875 | 0.855563 |
+| endpoint-direction entropy | 2.028389 | 1.819469 |
+
+Permitted conclusions, as generated:
+
+- Large fold-to-fold variance is wider than Small under this protocol.
+- Large and Small have the same positive-fold fraction.
+- Leakage dominance does not persist on Small.
+- Leakage dominance does not persist on Large.
+
+### Frozen protocol
+
+`results/mc_maze_large/recommended_window_cv/recommended_window_protocol.yaml` freezes the source
+dataset hash, trial-aware extraction, the window name and duration, the extract-before-rebin policy,
+the 20 ms target bin size, 5 folds x 5 repeats, the stratification settings, the fixed-within-repeat
+held-out-neuron policy, the train-heldout mean-rate reference, the factor-latent settings, and the
+claim-safety flags (`single_split_results_reportable: false`,
+`old_mean_rate_values_used_as_targets: false`, `official_leaderboard_claim: false`,
+`invalid_controls_excluded_from_model_selection: true`).
+
+### Next phase
+
+Valid Large baseline expansion, then reevaluation of the LFADS-style, neural-ODE, and neural-SDE
+models under this frozen protocol. No neural model has been run on Large.

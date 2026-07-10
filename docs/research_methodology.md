@@ -511,3 +511,62 @@ stratified cross-validation, with invalid controls kept as leakage diagnostics r
 competitors. Keeping the stages apart is what allows the recommended window to be frozen before any
 model sees it, and what allows a Large result to be compared against a Small result that was frozen
 the same way.
+
+## Trial-aware extraction precedes rebinning as well as cropping
+
+Rebinning before extraction would quantize the event to the reporting grid: a peak-speed bin located
+at 5 ms resolution becomes a 20 ms bin, and the window centre moves by up to two source bins. Worse,
+rebinning the full trial and then windowing forces the window to be cut from an array that
+`crop_to_min` already truncated. The MC_Maze Large evaluation therefore extracts the window from the
+ragged raw trials at the 5 ms source resolution and rebins the extracted window afterwards. Because
+rebinning sums adjacent spike counts, every spike inside the window survives that order; none of them
+survive the other order if the event lay past the crop.
+
+## Fold-level leakage prevention
+
+Every quantity that touches evaluation trials is recomputed inside the fold. The train-heldout
+mean-rate reference is fit on that fold's 400 training trials, never on the pooled dataset, and the
+factor-latent smoother, standardizer, FactorAnalysis, and ridge decoder are all fit on training
+trials only. The evaluation fold's held-out-neuron counts are read exactly once, to score. No valid
+method sees an evaluation target during calibration or selection, and no method is selected by its
+evaluation score.
+
+The split-mean invalid control deliberately violates this: it predicts each evaluation fold's own
+held-out-neuron means. It exists to measure how much a target-reading method could gain, which sets
+a floor no valid model should be judged against. It is marked `valid_model: false` and
+`reportable_as_model_performance: false`, and `select_best_valid_method` filters on both flags, so it
+can never be carried forward or reported as performance.
+
+## Held-out neuron masks are fixed within a repeat
+
+If the neuron mask were redrawn per fold, the five folds of one repeat would differ in two ways at
+once (which trials are evaluated and which neurons are predicted), and fold-to-fold spread would
+confound trial variance with mask variance. The mask is therefore drawn once per repeat from
+`base_seed + repeat_index` and held fixed across that repeat's folds. Repeats then vary the mask
+deterministically. This makes the two variance components separable: within-repeat standard deviation
+measures trial-fold noise, between-repeat standard deviation measures neuron-mask sensitivity. On
+MC_Maze Large the between-repeat term (0.0269) is roughly four times the within-repeat term (0.0067),
+so which neurons are held out matters more than which trials are evaluated.
+
+## FactorAnalysis random state is separated from fold and repeat seeds
+
+Seeding FactorAnalysis from the fold index or the run index silently entangles two different kinds of
+variability: sampling variance over trials, and optimizer variance over EM initializations. A method
+could then look stable only because its seed happened to co-vary with the folds. The FactorAnalysis
+random state is therefore taken from the method configuration alone and is constant across all 25
+folds of the main run. Sensitivity to it is measured separately, by rescoring every fold at each of
+five explicit random states, and reported as a range and a standard deviation with a documented
+tolerance (0.005 bits/spike). On MC_Maze Large the range is 0.0010, well inside the tolerance.
+
+## Small and Large scores are not directly comparable
+
+The two datasets differ in trial count, neuron count, firing rates, reach-direction distribution, and
+window movement coverage. Unified bits/spike is normalized against a train-mean reference computed
+within each dataset, which makes it comparable across *methods* on one dataset, not across datasets.
+The evaluation fold size differs by a factor of five, which alone changes how much a target-averaging
+control can leak, and indeed the invalid control falls from 0.0711 on Small to 0.0090 on Large.
+
+Cross-dataset comparison is therefore restricted to protocol stability and leakage diagnostics: fold
+variance, positive-fold fraction, whether leakage dominance persists, and behavior coverage. The
+comparison generator emits only those statements. Asserting that Large factor-latent performance is
+better or worse than Small's is forbidden, and the report says so explicitly.

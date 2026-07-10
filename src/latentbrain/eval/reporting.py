@@ -3201,3 +3201,239 @@ def write_movement_window_audit_report(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
+
+
+def write_large_recommended_window_cv_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+    scores: pd.DataFrame,
+    tables: dict[str, pd.DataFrame],
+    protocol: dict[str, Any],
+) -> dict[str, Path]:
+    """Write the trial-aware recommended-window CV outputs. No model is trained here."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "recommended_window_cv_summary.json",
+        "scores": output_dir / "recommended_window_scores.csv",
+        "method_summary": output_dir / "recommended_window_method_summary.csv",
+        "fold_assignments": output_dir / "recommended_window_fold_assignments.csv",
+        "behavior_statistics": output_dir / "recommended_window_behavior_statistics.csv",
+        "fold_balance": output_dir / "recommended_window_fold_balance.csv",
+        "leakage_diagnostics": output_dir / "recommended_window_leakage_diagnostics.csv",
+        "factor_analysis_sensitivity": output_dir / "factor_analysis_random_state_sensitivity.csv",
+        "small_large_comparison": output_dir / "small_large_protocol_comparison.csv",
+        "protocol": output_dir / "recommended_window_protocol.yaml",
+        "report": output_dir / "recommended_window_cv_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    scores.to_csv(paths["scores"], index=False)
+    for key in (
+        "method_summary",
+        "fold_assignments",
+        "behavior_statistics",
+        "fold_balance",
+        "leakage_diagnostics",
+        "factor_analysis_sensitivity",
+        "small_large_comparison",
+    ):
+        tables[key].to_csv(paths[key], index=False)
+    paths["protocol"].write_text(yaml.safe_dump(protocol, sort_keys=False), encoding="utf-8")
+    write_large_recommended_window_cv_report(
+        paths["report"], summary, tables["method_summary"], tables["small_large_comparison"]
+    )
+    return paths
+
+
+def write_large_recommended_window_cv_report(
+    output_path: Path,
+    summary: dict[str, Any],
+    method_summary: pd.DataFrame,
+    comparison: pd.DataFrame,
+) -> Path:
+    """Claim-safe Markdown report for the trial-aware recommended-window CV."""
+    leakage = (
+        "Target leakage remains dominant: the invalid split-mean control still beats factor-latent "
+        "on the mean."
+        if summary.get("leakage_dominance_persists")
+        else "Leakage dominance does not persist: factor-latent beats the invalid control on the "
+        "mean."
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} Recommended-Window Cross-Validation",
+        "",
+        "Event-centered windows were extracted from the trial-aware raw representation, not the "
+        "globally crop-to-min processed array.",
+        "The split-mean control uses evaluation-fold targets and cannot be reported as model "
+        "performance.",
+        "MC_Maze Small and MC_Maze Large scores are not interpreted as directly comparable "
+        "model-performance measurements.",
+        "This is local cross-validation analysis, not an official NLB leaderboard result.",
+        "Old incompatible mean-rate values were not used as tuning targets.",
+        "",
+        "## Evaluation source",
+        "",
+        f"- dataset: {summary.get('dataset_name')}",
+        f"- source dataset hash: {summary.get('dataset_hash')}",
+        f"- trial source: {summary.get('trial_source')} ({summary.get('trial_source_file')})",
+        f"- trial length range (source bins): {summary.get('trial_length_min')} to "
+        f"{summary.get('trial_length_max')}",
+        f"- global crop used for event-centered windows: "
+        f"{summary.get('global_crop_used_for_event_centered_windows')}",
+        f"- trials: {summary.get('trial_count')}",
+        f"- neurons: {summary.get('neuron_count')} "
+        f"(held-in {summary.get('heldin_neuron_count')}, "
+        f"held-out {summary.get('heldout_neuron_count')})",
+        "",
+        "## Frozen movement window",
+        "",
+        f"- window: {summary.get('window_name')}",
+        f"- crop policy: {summary.get('window_crop_policy')}",
+        f"- duration: {summary.get('window_duration_seconds')} s",
+        f"- target bin size: {summary.get('target_bin_size_ms')} ms",
+        f"- time bins: {summary.get('time_bins')}",
+        "- extraction happened at the source bin size, before rebinning.",
+        f"- moving-bin fraction: {summary.get('moving_bin_fraction_mean')}",
+        f"- endpoint-direction entropy: {summary.get('endpoint_direction_entropy_mean')}",
+        "",
+        "## Stratified fold protocol",
+        "",
+        f"- folds: {summary.get('fold_count')} x repeats: {summary.get('repeats')} = "
+        f"{summary.get('total_folds')} fold evaluations",
+        f"- train trials per fold: {summary.get('train_trials_per_fold')}",
+        f"- evaluation trials per fold: {summary.get('eval_trials_per_fold')}",
+        f"- held-out neuron mask policy: {summary.get('heldout_mask_policy')}",
+        f"- assignment method: {summary.get('assignment_method')}",
+        f"- reference model: {summary.get('reference_model')} "
+        f"(scores {summary.get('train_mean_rate_mean')} bits/spike against itself)",
+        "- the train-heldout mean-rate reference is recomputed from training trials only, on "
+        "every fold.",
+        "",
+        "## Fold balance",
+        "",
+        f"- population-rate fold range: {summary.get('mean_population_rate_fold_range')}",
+        f"- held-out-rate fold range: {summary.get('mean_heldout_rate_fold_range')}",
+        f"- endpoint-distance fold range: {summary.get('mean_endpoint_distance_fold_range')}",
+        f"- mean-speed fold range: {summary.get('mean_speed_fold_range')}",
+        f"- endpoint-direction entropy: {summary.get('mean_endpoint_direction_entropy')} "
+        f"(max {summary.get('endpoint_direction_entropy_max')})",
+        f"- fold balance warning: {summary.get('fold_balance_warning')}",
+        "",
+        "## Factor-latent baseline",
+        "",
+        f"- mean: {summary.get('factor_latent_mean')}",
+        f"- std: {summary.get('factor_latent_std')}",
+        f"- CI95: [{summary.get('factor_latent_ci95_low')}, "
+        f"{summary.get('factor_latent_ci95_high')}]",
+        f"- positive fold fraction: {summary.get('factor_latent_positive_fraction')}",
+        f"- between-repeat std: {summary.get('factor_latent_between_repeat_std')}",
+        f"- within-repeat std: {summary.get('factor_latent_within_repeat_std')}",
+        "",
+        _markdown_table(method_summary),
+        "",
+        "## FactorAnalysis random-state sensitivity",
+        "",
+        "The FactorAnalysis random state is configured explicitly and is never derived from the "
+        "fold index or repeat index.",
+        f"- random states: {summary.get('factor_analysis_random_states')}",
+        f"- range across states: {summary.get('factor_analysis_random_state_range')}",
+        f"- std across states: {summary.get('factor_analysis_random_state_std')}",
+        f"- warning: {summary.get('factor_analysis_random_state_warning')}",
+        "",
+        "## Invalid leakage control",
+        "",
+        f"- split-mean invalid mean: {summary.get('split_mean_invalid_mean')}",
+        f"- split-mean invalid std: {summary.get('split_mean_invalid_std')}",
+        f"- factor-latent minus invalid: {summary.get('factor_latent_minus_split_mean_invalid')}",
+        f"- factor-latent beats invalid on the mean: "
+        f"{summary.get('factor_latent_beats_invalid_control_mean')}",
+        f"- folds where factor-latent beats invalid: "
+        f"{summary.get('factor_latent_beats_invalid_control_fraction')}",
+        f"- leakage dominance persists: {summary.get('leakage_dominance_persists')}",
+        "",
+        leakage,
+        "",
+        "Beating an invalid control is a leakage diagnostic, never an official benchmark result.",
+        "",
+        "## Comparison with MC_Maze Small protocol",
+        "",
+        "Small and Large differ in trials, neurons, firing rates, and target distributions. Only "
+        "protocol stability and leakage diagnostics are compared. No cross-dataset "
+        "model-performance improvement is claimed.",
+        "",
+        _markdown_table(comparison),
+        "",
+        "Conclusions:",
+        "",
+        *[f"- {line}" for line in summary.get("small_large_comparison_conclusions", [])],
+        "",
+        "## Reporting recommendation",
+        "",
+        f"- reporting mode: {summary.get('recommended_reporting_mode')}",
+        f"- protocol frozen: {summary.get('protocol_frozen')}",
+        f"- single-split results reportable: {summary.get('single_split_results_reportable')}",
+        f"- invalid controls excluded from model selection: "
+        f"{summary.get('invalid_controls_excluded_from_model_selection')}",
+        f"- official leaderboard claim: {summary.get('official_leaderboard_claim')}",
+        "",
+        "## Limitations",
+        "",
+        "- factor-latent is a FactorAnalysis-based baseline, not GPFA and not a neural model.",
+        "- no LFADS-style, neural-ODE, neural-SDE, or switching model was trained or tuned here.",
+        "- the invalid split-mean control reads evaluation-fold targets and is diagnostic only.",
+        "- cross-dataset metric differences are not model improvements.",
+        "- all outputs are local ignored artifacts.",
+        "",
+        "## Next research actions",
+        "",
+        "- expand valid non-neural Large baselines under this frozen protocol.",
+        "- reevaluate LFADS-style, neural-ODE, and neural-SDE models under the same protocol.",
+        "- run controlled multi-seed and architecture ablations before any comparison claim.",
+        "",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def write_dataset_scoreboard_outputs(
+    output_dir: Path,
+    summary: dict[str, Any],
+) -> dict[str, Path]:
+    """Write the summary-only scoreboard for a dataset whose evidence is CV summaries."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "summary": output_dir / "unified_scoreboard_summary.json",
+        "report": output_dir / "unified_scoreboard_report.md",
+    }
+    paths["summary"].write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    lines = [
+        f"# {summary.get('dataset_name')} unified scoreboard",
+        "",
+        "This is a local scoreboard of recommended-window cross-validation evidence, not an "
+        "official NLB leaderboard result.",
+        "Invalid controls use evaluation-fold targets and can never be the best valid method.",
+        "",
+        f"- recommended-window CV available: {summary.get('recommended_window_cv_available')}",
+        f"- recommended window: {summary.get('recommended_window_name')}",
+        f"- reporting mode: {summary.get('recommended_reporting_mode')}",
+        f"- factor-latent mean: {summary.get('factor_latent_recommended_window_mean')}",
+        f"- factor-latent CI95: "
+        f"[{summary.get('factor_latent_recommended_window_ci95_low')}, "
+        f"{summary.get('factor_latent_recommended_window_ci95_high')}]",
+        f"- factor-latent positive fraction: {summary.get('factor_latent_positive_fraction')}",
+        f"- factor-latent beats invalid control: "
+        f"{summary.get('factor_latent_beats_invalid_control_mean')}",
+        f"- leakage dominance persists: {summary.get('leakage_dominance_persists')}",
+        f"- best valid method: {summary.get('best_valid_method')}",
+        f"- single-split results reportable: {summary.get('single_split_results_reportable')}",
+        f"- official leaderboard claim: {summary.get('official_leaderboard_claim')}",
+        "",
+    ]
+    paths["report"].write_text("\n".join(lines), encoding="utf-8")
+    return paths

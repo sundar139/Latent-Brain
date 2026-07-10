@@ -21,7 +21,10 @@ from latentbrain.data.validation import (
     validate_trial_split,
 )
 from latentbrain.eval.rebinning import compute_window_bins_for_duration
-from latentbrain.eval.reporting import write_unified_scoreboard_outputs
+from latentbrain.eval.reporting import (
+    write_dataset_scoreboard_outputs,
+    write_unified_scoreboard_outputs,
+)
 from latentbrain.eval.scoring import (
     ScoringConfig,
     score_heldout_prediction,
@@ -31,6 +34,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
     build_unified_score_row,
     load_cv_rate_audit_warning,
+    load_dataset_cv_scoreboard,
     load_lfads_family_candidates,
     load_recommended_window_cv_warning,
     load_seed_robustness_candidates,
@@ -223,8 +227,28 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _raw_config(path: Path) -> dict[str, Any]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        msg = f"scoreboard config must contain a mapping: {path}"
+        raise ValueError(msg)
+    return dict(loaded)
+
+
+def _is_dataset_summary_config(config: dict[str, Any]) -> bool:
+    """Summary-only configs carry CV evidence, not a model-scoring pipeline."""
+    return "known_unified_values" not in config
+
+
 def _load_config(path: Path) -> dict[str, Any]:
     return UnifiedScoreboardConfig.from_yaml(path).model_dump()
+
+
+def run_dataset_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    summary = load_dataset_cv_scoreboard(config)
+    output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
+    write_dataset_scoreboard_outputs(output_dir, summary)
+    return {"summary": summary, "output_dir": output_dir}
 
 
 def _relative(path: Path, root: Path) -> str:
@@ -453,6 +477,28 @@ def run_unified_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    raw = _raw_config(args.config)
+    if _is_dataset_summary_config(raw):
+        result = run_dataset_scoreboard(raw)
+        summary = result["summary"]
+        for key in (
+            "dataset_name",
+            "recommended_window_cv_available",
+            "recommended_window_name",
+            "recommended_reporting_mode",
+            "factor_latent_recommended_window_mean",
+            "factor_latent_recommended_window_ci95_low",
+            "factor_latent_recommended_window_ci95_high",
+            "factor_latent_positive_fraction",
+            "factor_latent_beats_invalid_control_mean",
+            "leakage_dominance_persists",
+            "best_valid_method",
+            "single_split_results_reportable",
+            "official_leaderboard_claim",
+        ):
+            console.print(f"{key}: {summary[key]}")
+        console.print(f"output_dir: {result['output_dir']}")
+        return 0
     config = _load_config(args.config)
     result = run_unified_scoreboard(config)
     summary = result["summary"]

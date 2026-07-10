@@ -56,6 +56,8 @@ FOLD_ASSIGNMENT_COLUMNS = [
 SCORE_COLUMNS = [
     "repeat_index",
     "fold_index",
+    "split_seed",
+    "neuron_mask_seed",
     "method_name",
     "method_type",
     "valid_model",
@@ -365,9 +367,8 @@ def score_folds(
     for repeat_index in sorted(fold_assignments["repeat_index"].unique()):
         repeat_rows = fold_assignments[fold_assignments["repeat_index"] == repeat_index]
         # The neuron mask is fixed within a repeat so folds differ only in trials.
-        mask = create_neuron_mask(
-            dataset.spikes.shape[2], heldout_fraction, seed=base_seed + int(repeat_index)
-        )
+        repeat_seed = base_seed + int(repeat_index)
+        mask = create_neuron_mask(dataset.spikes.shape[2], heldout_fraction, seed=repeat_seed)
         heldin = np.flatnonzero(mask.heldin)
         heldout = np.flatnonzero(mask.heldout)
         for fold_index in sorted(repeat_rows["fold_index"].unique()):
@@ -414,6 +415,8 @@ def score_folds(
                     {
                         "repeat_index": int(repeat_index),
                         "fold_index": int(fold_index),
+                        "split_seed": repeat_seed,
+                        "neuron_mask_seed": repeat_seed,
                         "method_name": method_name,
                         "method_type": str(method.get("type", "")),
                         "valid_model": valid,

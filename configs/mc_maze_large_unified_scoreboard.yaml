@@ -1,0 +1,9 @@
+dataset:
+  name: mc_maze_large
+
+inputs:
+  window_audit_summary_path: results/mc_maze_large/window_audit/window_audit_summary.json
+  recommended_window_cv_summary_path: results/mc_maze_large/recommended_window_cv/recommended_window_cv_summary.json
+
+reporting:
+  output_dir: results/mc_maze_large/unified_scoreboard

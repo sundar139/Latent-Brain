@@ -14,10 +14,15 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from latentbrain.eval.recommended_window_cv import (  # noqa: E402
     RECOMMENDED_WINDOW_NAME,
+    TRIAL_AWARE_SOURCE,
     build_recommended_window_protocol,
+    evaluate_large_recommended_window_cv,
     evaluate_recommended_window_cv,
 )
-from latentbrain.eval.reporting import write_recommended_window_cv_outputs  # noqa: E402
+from latentbrain.eval.reporting import (  # noqa: E402
+    write_large_recommended_window_cv_outputs,
+    write_recommended_window_cv_outputs,
+)
 from latentbrain.eval.stratified_cv import ASSIGNMENT_METHODS  # noqa: E402
 from latentbrain.paths import get_repo_root, resolve_configured_path  # noqa: E402
 
@@ -45,6 +50,34 @@ def _load_config(path: Path) -> dict[str, Any]:
     config = cast(dict[str, Any], loaded)
     _validate_config(config)
     return config
+
+
+def _is_trial_aware_config(config: dict[str, Any]) -> bool:
+    return "trial_source" in config
+
+
+def _validate_trial_aware_config(config: dict[str, Any]) -> None:
+    trial_source = config["trial_source"]
+    if str(trial_source["type"]) != TRIAL_AWARE_SOURCE:
+        msg = f"trial_source.type must be {TRIAL_AWARE_SOURCE}"
+        raise ValueError(msg)
+    if bool(trial_source["allow_global_crop_to_min"]):
+        msg = "trial_source.allow_global_crop_to_min must be false"
+        raise ValueError(msg)
+    if not bool(config["binning"]["extract_before_rebin"]):
+        msg = "binning.extract_before_rebin must be true"
+        raise ValueError(msg)
+    if str(config["cross_validation"]["heldout_mask_policy"]) != "fixed_within_repeat":
+        msg = "cross_validation.heldout_mask_policy must be fixed_within_repeat"
+        raise ValueError(msg)
+    sensitivity = config.get("factor_analysis_sensitivity", {})
+    states = [int(state) for state in sensitivity.get("random_states", [])]
+    if len(set(states)) != len(states):
+        msg = "factor_analysis_sensitivity.random_states must be unique"
+        raise ValueError(msg)
+    if not config["dataset"].get("expected_hash"):
+        msg = "dataset.expected_hash is required for trial-aware cross-validation"
+        raise ValueError(msg)
 
 
 def _validate_config(config: dict[str, Any]) -> None:
@@ -103,6 +136,8 @@ def _validate_config(config: dict[str, Any]) -> None:
     if int(config["statistics"]["bootstrap_repeats"]) <= 0:
         msg = "statistics.bootstrap_repeats must be positive"
         raise ValueError(msg)
+    if _is_trial_aware_config(config):
+        _validate_trial_aware_config(config)
 
 
 def _write_figures(
@@ -169,11 +204,101 @@ def _write_figures(
     plt.close(fig)
 
 
+def _write_large_figures(
+    output_dir: Path,
+    scores: pd.DataFrame,
+    tables: dict[str, pd.DataFrame],
+) -> None:
+    figure_dir = output_dir / "figures"
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    sensitivity = tables["factor_analysis_sensitivity"]
+    if not sensitivity.empty:
+        means = sensitivity.groupby("factor_analysis_random_state")["unified_bits_per_spike"].mean()
+        fig, axis = plt.subplots(figsize=(7, 4))
+        axis.bar([str(state) for state in means.index], means.to_numpy(dtype=np.float64))
+        axis.set(
+            xlabel="FactorAnalysis random state",
+            ylabel="Mean unified bits/spike",
+            title="Random-state sensitivity",
+        )
+        fig.tight_layout()
+        fig.savefig(figure_dir / "factor_analysis_random_state_sensitivity.png", dpi=160)
+        plt.close(fig)
+
+    comparison = tables["small_large_comparison"]
+    fig, axis = plt.subplots(figsize=(7, 4))
+    datasets = comparison["dataset"].astype(str).to_numpy()
+    means = comparison["factor_latent_mean"].to_numpy(dtype=np.float64)
+    lows = means - comparison["factor_latent_ci95_low"].to_numpy(dtype=np.float64)
+    highs = comparison["factor_latent_ci95_high"].to_numpy(dtype=np.float64) - means
+    axis.errorbar(datasets, means, yerr=[lows, highs], fmt="o", capsize=5)
+    axis.axhline(0.0, color="black", linewidth=1)
+    axis.set(
+        ylabel="Factor-latent unified bits/spike (95% CI)",
+        title="Protocol stability, not a performance comparison",
+    )
+    fig.tight_layout()
+    fig.savefig(figure_dir / "small_large_stability_comparison.png", dpi=160)
+    plt.close(fig)
+
+
+def _run_large(config: dict[str, Any]) -> int:
+    scores, tables, summary = evaluate_large_recommended_window_cv(config)
+    protocol = build_recommended_window_protocol(config, summary)
+    output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
+    write_large_recommended_window_cv_outputs(output_dir, summary, scores, tables, protocol)
+    _write_figures(
+        output_dir,
+        scores.rename(columns={"repeat_index": "fold_repeat"}),
+        tables["behavior_statistics"],
+        tables["fold_balance"],
+    )
+    _write_large_figures(output_dir, scores, tables)
+    for key in (
+        "dataset_name",
+        "dataset_hash",
+        "window_name",
+        "trial_source",
+        "target_bin_size_ms",
+        "trial_count",
+        "time_bins",
+        "neuron_count",
+        "fold_count",
+        "repeats",
+        "total_folds",
+        "train_trials_per_fold",
+        "eval_trials_per_fold",
+        "factor_latent_mean",
+        "factor_latent_std",
+        "factor_latent_positive_fraction",
+        "split_mean_invalid_mean",
+        "factor_latent_minus_split_mean_invalid",
+        "factor_latent_beats_invalid_control_mean",
+        "factor_latent_beats_invalid_control_fraction",
+        "leakage_dominance_persists",
+        "factor_analysis_random_state_range",
+        "factor_analysis_random_state_warning",
+        "fold_balance_warning",
+        "recommended_reporting_mode",
+        "invalid_controls_excluded_from_model_selection",
+        "protocol_frozen",
+    ):
+        print(f"{key}: {summary.get(key)}")
+    print(
+        "factor_latent_ci95: "
+        f"[{summary['factor_latent_ci95_low']:.6f}, {summary['factor_latent_ci95_high']:.6f}]"
+    )
+    print(f"output_directory: {output_dir}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
         config_path = resolve_configured_path(args.config, get_repo_root())
         config = _load_config(config_path)
+        if _is_trial_aware_config(config):
+            return _run_large(config)
         scores, tables, summary = evaluate_recommended_window_cv(config)
     except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
         print(f"ERROR: {exc}")

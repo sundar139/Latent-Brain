@@ -1,0 +1,109 @@
+dataset:
+  name: mc_maze_large
+  processed_path: data/processed/nlb/mc_maze_large/mc_maze_large_processed.npz
+  metadata_path: data/processed/nlb/mc_maze_large/mc_maze_large_metadata.json
+  provenance_path: data/processed/nlb/mc_maze_large/mc_maze_large_provenance.json
+  raw_dir: data/raw/nlb/mc_maze_large
+  expected_hash: 074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+  original_bin_size_ms: 5
+
+trial_source:
+  type: trial_aware_raw
+  allow_global_crop_to_min: false
+  require_exact_trial_lengths: true
+
+binning:
+  target_bin_size_ms: 20
+  extract_before_rebin: true
+
+window:
+  name: behavior_speed_peak_centered_1p28s
+  crop_policy: behavior_speed_peak_centered
+  duration_seconds: 1.28
+  report_label: "Transferred peak-speed-centered reach window"
+
+scoring:
+  reference_model: train_heldout_mean_rate
+  include_poisson_constant: true
+  min_rate_hz: 1.0e-4
+  max_rate_hz: 500.0
+  primary_metric: unified_bits_per_spike
+
+cross_validation:
+  fold_count: 5
+  repeats: 5
+  base_seed: 2027
+  heldout_neuron_fraction: 0.25
+  heldout_mask_policy: fixed_within_repeat
+  assignment_method: greedy_balanced
+  min_trials_per_stratum: 2
+
+stratification:
+  use_endpoint_direction: true
+  endpoint_direction_bins: 8
+  use_endpoint_distance: true
+  endpoint_distance_bins: 4
+  use_mean_speed: true
+  mean_speed_bins: 4
+  use_population_rate: true
+  population_rate_bins: 4
+  use_heldout_rate: true
+  heldout_rate_bins: 4
+  fallback_when_behavior_missing: fail
+
+methods:
+  - name: train_mean_rate
+    type: rate_control
+    valid_model: false
+    reportable_as_model_performance: false
+    notes: "Canonical reference; not a competing model."
+
+  - name: factor_latent
+    type: factor_latent
+    valid_model: true
+    reportable_as_model_performance: true
+    latent_dim: 8
+    smoothing_sigma_ms: 200.0
+    heldout_decoder_alpha: 10000.0
+    standardize_features: true
+    fit_intercept: true
+    factor_analysis_random_state: 0
+    notes: "Carried-forward valid baseline."
+
+  - name: split_mean_rate_invalid
+    type: invalid_control
+    valid_model: false
+    reportable_as_model_performance: false
+    invalid_reason: "Uses evaluation-fold target counts."
+    notes: "Leakage diagnostic only."
+
+factor_analysis_sensitivity:
+  enabled: true
+  random_states:
+    - 0
+    - 2027
+    - 2028
+    - 2029
+    - 2030
+  run_on_all_folds: true
+
+statistics:
+  confidence_interval: 0.95
+  bootstrap_repeats: 10000
+  bootstrap_seed: 1337
+
+inputs:
+  window_audit_summary_path: results/mc_maze_large/window_audit/window_audit_summary.json
+  small_recommended_window_summary_path: results/mc_maze_small/recommended_window_cv/recommended_window_cv_summary.json
+
+references:
+  small_factor_latent_mean: 0.07707984048489147
+  small_factor_latent_std: null
+  small_factor_latent_ci95_low: 0.07143536625695274
+  small_factor_latent_ci95_high: 0.08251744011449201
+  small_factor_latent_positive_fraction: 1.0
+  small_split_mean_invalid_mean: 0.07110368937717054
+  small_factor_minus_invalid: 0.005976151107720928
+
+reporting:
+  output_dir: results/mc_maze_large/recommended_window_cv

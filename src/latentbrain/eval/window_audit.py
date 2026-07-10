@@ -895,6 +895,7 @@ def evaluate_window_coverage(
     }
     extras = {
         "windowed_spikes": np.asarray(windowed_spikes),
+        "windowed_behavior": np.asarray(windowed_behavior),
         "speed_profile": np.asarray(speed.mean(axis=0)),
     }
     return coverage, summary, extras
