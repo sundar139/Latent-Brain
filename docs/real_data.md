@@ -558,3 +558,20 @@ never becomes model performance, and never participates in valid-model selection
 Recommended-window scores and `from_start` scores are different prediction targets, so their absolute
 difference is not a model-performance improvement. Generated outputs remain ignored under
 `results/mc_maze_small/recommended_window_cv/`; no official NLB leaderboard claim is made.
+
+## MC_Maze Small final local status
+
+The local diagnostic report now carries forward `behavior_speed_peak_centered_1p28s` under
+`recommended_window_stratified_cross_validation`. At 20 ms with five folds by five repeats,
+`factor_latent` has mean unified bits/spike `0.07707984048489147` and CI95
+`[0.07143536625695274, 0.08251744011449201]`. It is the only carried-forward valid model.
+
+The invalid `split_mean_rate_invalid` leakage control has mean `0.07110368937717054`, leaving
+factor-latent minus invalid at `0.005976151107720928`; leakage dominance therefore does not persist
+on the recommended window. This does not validate the control or establish a causal explanation:
+the control still reads evaluation targets and is excluded from model performance.
+
+Every earlier `from_start_1p28s` score remains an early/pre-movement diagnostic. Those values are not
+directly comparable as performance improvements because the prediction target changed. Single-split
+results remain unreportable, and there is no official leaderboard claim. The next major move is
+transfer of this frozen protocol to MC_Maze Large, not additional MC_Maze Small model tuning.

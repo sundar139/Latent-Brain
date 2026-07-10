@@ -78,6 +78,15 @@ def _inputs() -> dict[str, Any]:
             "rate_offset_explains_split_mean_advantage": False,
             "invalid_control_methods": sorted(INVALID_METHODS),
         },
+        "recommended_window_cv_summary": {
+            "factor_latent_mean": 0.07707984048489147,
+            "factor_latent_ci95_low": 0.07143536625695274,
+            "factor_latent_ci95_high": 0.08251744011449201,
+            "split_mean_invalid_mean": 0.07110368937717054,
+            "factor_latent_minus_split_mean_invalid": 0.005976151107720928,
+            "leakage_dominance_persists": False,
+        },
+        "recommended_window_method_summary": pd.DataFrame(),
         "method_summary": _method_summary(),
         "missing_inputs": [],
     }
@@ -107,6 +116,11 @@ def test_method_registry_marks_factor_latent_carried_forward() -> None:
     assert len(carried) == 1
     assert carried.iloc[0]["method_name"] == "factor_latent"
     assert bool(carried.iloc[0]["valid_model"]) is True
+    assert carried.iloc[0]["evaluated_window"] == "behavior_speed_peak_centered_1p28s"
+    assert carried.iloc[0]["reporting_protocol"] == (
+        "recommended_window_stratified_cross_validation"
+    )
+    assert carried.iloc[0]["current_protocol_status"] == "carried_forward_recommended_window"
 
 
 def test_neural_methods_are_marked_negative_or_historical_diagnostics() -> None:
@@ -119,9 +133,14 @@ def test_neural_methods_are_marked_negative_or_historical_diagnostics() -> None:
     ):
         assert registry.loc[method, "status"] == "negative_diagnostic"
         assert bool(registry.loc[method, "reportable_as_model_performance"]) is False
+        assert registry.loc[method, "current_protocol_status"] == "early_premovement_diagnostic"
+        assert "negative_diagnostic_under_old_window_or_unstable_protocol" in str(
+            registry.loc[method, "notes"]
+        )
     for method in ("lfads_unified_tuning", "lfads_controller_tuning", "neural_sde_tuning"):
         assert registry.loc[method, "status"] == "historical_diagnostic"
         assert bool(registry.loc[method, "reportable_as_model_performance"]) is False
+        assert registry.loc[method, "current_protocol_status"] == "historical_diagnostic"
 
 
 def test_audit_flagged_invalid_methods_override_the_static_table() -> None:

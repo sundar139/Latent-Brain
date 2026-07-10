@@ -130,8 +130,8 @@ control are scored on every held-out fold under canonical unweighted unified bit
 same protocol is run with matched *unstratified* folds so the variance change is measured rather
 than assumed.
 
-Single-split reporting remains disallowed. **Stratified cross-validation is the preferred
-MC_Maze Small reporting protocol.** Invalid controls read evaluation-fold targets, so they remain
+Single-split reporting remains disallowed. Stratified cross-validation is retained inside the
+carried-forward recommended-window protocol. Invalid controls read evaluation-fold targets, so they remain
 leakage diagnostics only and can never win valid-model selection. Outputs and figures are local
 ignored artifacts under `results/mc_maze_small/stratified_cv/`, not official NLB leaderboard
 results.
@@ -146,14 +146,18 @@ actually established and what must not be claimed:
 python scripts/build_mc_maze_diagnostic_report.py --config configs/mc_maze_small_diagnostic_report.yaml
 ```
 
-The builder consolidates the accepted summaries into a deterministic report, a method registry, and
-a claim safety checklist. It refuses to write anything if claim-safety validation fails — for
-example if an invalid control were marked reportable, if the carried-forward method were invalid,
-or if single-split reporting were recommended.
+The builder consolidates the accepted summaries, including the recommended-window CV result, into a
+deterministic report, method registry, and claim-safety checklist. It refuses to write anything if
+the carried-forward window is not `behavior_speed_peak_centered_1p28s`, the reporting mode is not
+`recommended_window_stratified_cross_validation`, an invalid control is marked reportable, or
+single-split reporting is recommended.
 
-`factor_latent` is the carried-forward valid baseline, and it is reportable only as a
-**repeated-split** result with its spread. Single-split numbers are not final performance: the
-15-trial validation and test splits are unstable, and the neural-ODE near-win was seed-specific.
+`factor_latent` is the carried-forward valid baseline under 20 ms, five-fold by five-repeat
+recommended-window cross-validation. Previous `from_start_1p28s` factor-latent and neural results
+remain early/pre-movement diagnostics, not reach-dynamics performance. Recommended-window scores use
+a different prediction target and are not direct performance improvements over those old-window
+scores. Single-split numbers remain unreportable final performance: the 15-trial validation and test
+splits are unstable, and the neural-ODE near-win was seed-specific.
 The `split_mean_rate_invalid` and `oracle_split_scaled_factor_latent_invalid` controls read
 evaluation-split targets; they are **leakage diagnostics** and can never be reported as model
 performance. No official benchmark claim is made anywhere in this repository. The generated bundle

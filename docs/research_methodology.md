@@ -416,3 +416,20 @@ Claim safety is unchanged. The original `from_start_1p28s` and recommended-windo
 different prediction problems and cannot be described as model-performance improvements. Single-split
 results are unreportable, old incompatible mean-rate values are not tuning targets, invalid controls
 are not model performance, and all outputs are local rather than official NLB leaderboard results.
+
+## MC_Maze Small diagnostic evidence chain
+
+The final local diagnostic bundle preserves the full evidence chain instead of presenting the last
+number without context. Multi-seed evaluation established the seed confound behind the neural-ODE
+near-win. The split audit then exposed instability in the small validation and test sets. The rate
+audit showed that split-mean advantages came from evaluation-target leakage. Behavior-stratified
+cross-validation reduced dependence on accidental fold composition, and the movement-window audit
+showed that `from_start_1p28s` was early/pre-movement. Recommended-window cross-validation finally
+evaluated `behavior_speed_peak_centered_1p28s` using five folds by five repeats at 20 ms.
+
+The report therefore carries forward `factor_latent` only under
+`recommended_window_stratified_cross_validation`. Old neural results remain historical or
+early/pre-movement diagnostics until rerun under that protocol. Invalid split-mean controls remain
+leakage diagnostics regardless of score. The report validator rejects a different carried-forward
+window or reporting mode, reportable invalid controls, final single-split reporting, direct
+old-window versus recommended-window improvement claims, and any official leaderboard claim.

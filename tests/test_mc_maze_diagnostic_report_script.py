@@ -78,6 +78,35 @@ def _write_inputs(tmp_path: Path) -> dict[str, str]:
             },
         ]
     ).to_csv(tmp_path / "method_summary.csv", index=False)
+    (tmp_path / "recommended.json").write_text(
+        json.dumps(
+            {
+                "recommended_window_name": "behavior_speed_peak_centered_1p28s",
+                "bin_size_ms": 20,
+                "fold_count": 5,
+                "repeats": 5,
+                "total_folds": 25,
+                "factor_latent_mean": 0.07707984048489147,
+                "factor_latent_ci95_low": 0.07143536625695274,
+                "factor_latent_ci95_high": 0.08251744011449201,
+                "factor_latent_positive_fraction": 1.0,
+                "split_mean_invalid_mean": 0.07110368937717054,
+                "factor_latent_minus_split_mean_invalid": 0.005976151107720928,
+                "leakage_dominance_persists": False,
+                "moving_bin_fraction_mean": 0.576875,
+                "endpoint_direction_entropy_mean": 2.0283893834346562,
+                "fold_balance_warning": "none",
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame([{"method_name": "factor_latent"}]).to_csv(
+        tmp_path / "recommended_scores.csv", index=False
+    )
+    pd.DataFrame([{"method_name": "factor_latent"}]).to_csv(
+        tmp_path / "recommended_method_summary.csv", index=False
+    )
+    (tmp_path / "recommended_protocol.yaml").write_text("protocol_frozen: true\n", encoding="utf-8")
     return {
         "data_quality_summary_path": str(tmp_path / "quality.json"),
         "unified_scoreboard_summary_path": str(tmp_path / "scoreboard.json"),
@@ -85,6 +114,11 @@ def _write_inputs(tmp_path: Path) -> dict[str, str]:
         "split_audit_summary_path": str(tmp_path / "split.json"),
         "cv_rate_audit_summary_path": str(tmp_path / "cv.json"),
         "method_summary_path": str(tmp_path / "method_summary.csv"),
+        "recommended_window_cv_summary_path": str(tmp_path / "recommended.json"),
+        "recommended_window_scores_path": str(tmp_path / "recommended_scores.csv"),
+        "recommended_window_method_summary_path": str(tmp_path / "recommended_method_summary.csv"),
+        "recommended_window_protocol_path": str(tmp_path / "recommended_protocol.yaml"),
+        "window_audit_summary_path": str(tmp_path / "recommended.json"),
     }
 
 
@@ -106,12 +140,17 @@ def _config(tmp_path: Path) -> dict[str, Any]:
         "inputs": _write_inputs(tmp_path),
         "accepted_findings": {
             "carried_forward_valid_method": "factor_latent",
+            "carried_forward_window": "behavior_speed_peak_centered_1p28s",
+            "previous_from_start_window_status": "early_premovement_diagnostic",
             "single_split_results_reportable": False,
-            "recommended_reporting_mode": "repeated_split",
+            "recommended_reporting_mode": "recommended_window_stratified_cross_validation",
             "invalid_rate_controls_present": True,
+            "invalid_controls_excluded_from_model_performance": True,
             "neural_ode_near_win_seed_specific": True,
+            "split_instability_disclosed": True,
             "split_mean_advantage_is_rate_offset": False,
             "split_mean_advantage_is_target_leakage": True,
+            "leakage_dominance_persists_on_recommended_window": False,
             "no_official_benchmark_claim": True,
         },
         "reporting": {
@@ -139,6 +178,14 @@ def test_missing_required_input_fails_clearly(tmp_path: Path) -> None:
     assert module.main(["--config", str(_write_config(tmp_path, config))]) == 2
 
 
+def test_missing_recommended_window_summary_fails_clearly(tmp_path: Path) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    config["inputs"]["recommended_window_cv_summary_path"] = str(tmp_path / "absent.json")
+
+    assert module.main(["--config", str(_write_config(tmp_path, config))]) == 2
+
+
 def test_official_leaderboard_claim_fails_config_validation(tmp_path: Path) -> None:
     module = _script_module()
     config = _config(tmp_path)
@@ -151,6 +198,14 @@ def test_single_split_reporting_mode_fails_config_validation(tmp_path: Path) -> 
     module = _script_module()
     config = _config(tmp_path)
     config["accepted_findings"]["recommended_reporting_mode"] = "single_split"
+
+    assert module.main(["--config", str(_write_config(tmp_path, config))]) == 2
+
+
+def test_wrong_carried_forward_window_fails_config_validation(tmp_path: Path) -> None:
+    module = _script_module()
+    config = _config(tmp_path)
+    config["accepted_findings"]["carried_forward_window"] = "from_start_1p28s"
 
     assert module.main(["--config", str(_write_config(tmp_path, config))]) == 2
 
@@ -193,7 +248,8 @@ def test_script_prints_carried_forward_method_and_checklist_status(
     printed = capsys.readouterr().out
     assert "carried_forward_method: factor_latent" in printed
     assert "claim_safety_checklist_passed: True" in printed
-    assert "recommended_reporting_mode: repeated_split" in printed
+    assert "recommended_reporting_mode: recommended_window_stratified_cross_validation" in printed
+    assert "carried_forward_window: behavior_speed_peak_centered_1p28s" in printed
     assert "official_leaderboard_claim: False" in printed
 
 

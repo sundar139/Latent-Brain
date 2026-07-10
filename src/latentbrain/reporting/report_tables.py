@@ -12,6 +12,9 @@ METHOD_REGISTRY_COLUMNS = [
     "invalid_reason",
     "status",
     "carried_forward",
+    "evaluated_window",
+    "reporting_protocol",
+    "current_protocol_status",
     "notes",
 ]
 
@@ -23,6 +26,7 @@ TABLE_NAMES = (
     "seed_robustness_summary",
     "split_generalization_summary",
     "cv_rate_audit_summary",
+    "recommended_window_summary",
 )
 
 CARRIED_FORWARD_METHOD = "factor_latent"
@@ -56,8 +60,8 @@ _REGISTRY_ROWS: tuple[dict[str, Any], ...] = (
         "status": "carried_forward_baseline",
         "carried_forward": True,
         "notes": (
-            "Train-only factor-analysis latents decoded to held-out rates. Reportable only as a "
-            "repeated-split baseline with its spread, never as a single-split number."
+            "Train-only factor-analysis latents decoded to held-out rates. Carried forward under "
+            "recommended-window stratified cross-validation, never as a single-split number."
         ),
     },
     {
@@ -158,7 +162,31 @@ def build_method_registry(
     inputs: dict[str, Any] | None = None, config: dict[str, Any] | None = None
 ) -> pd.DataFrame:
     """Static registry of every scored method with its accepted validity verdict."""
-    registry = pd.DataFrame(list(_REGISTRY_ROWS), columns=METHOD_REGISTRY_COLUMNS)
+    registry = pd.DataFrame(list(_REGISTRY_ROWS))
+    registry["evaluated_window"] = "from_start_1p28s"
+    registry["reporting_protocol"] = "historical_diagnostic"
+    registry["current_protocol_status"] = "historical_diagnostic"
+    recommended = registry["method_name"].isin(
+        {"train_mean_rate", "factor_latent", "split_mean_rate_invalid"}
+    )
+    registry.loc[recommended, "evaluated_window"] = "behavior_speed_peak_centered_1p28s"
+    registry.loc[recommended, "reporting_protocol"] = (
+        "recommended_window_stratified_cross_validation"
+    )
+    registry.loc[
+        registry["method_name"].eq("factor_latent"),
+        "current_protocol_status",
+    ] = "carried_forward_recommended_window"
+    registry.loc[registry["method_family"].eq("invalid_control"), "current_protocol_status"] = (
+        "invalid_control"
+    )
+    negative_neural = registry["status"].eq("negative_diagnostic")
+    registry.loc[negative_neural, "current_protocol_status"] = "early_premovement_diagnostic"
+    neural = ~registry["method_family"].isin({"reference", "non_neural_latent", "invalid_control"})
+    registry.loc[neural, "notes"] = registry.loc[neural, "notes"].map(
+        lambda value: f"negative_diagnostic_under_old_window_or_unstable_protocol; {value}"
+    )
+    registry = registry[METHOD_REGISTRY_COLUMNS]
     invalid_methods = set()
     if inputs:
         cv_summary = inputs.get("cv_rate_audit_summary") or {}
@@ -354,6 +382,29 @@ def _cv_rate_audit_summary(inputs: dict[str, Any]) -> pd.DataFrame:
     return _rows_to_frame(rows, ["field", "value"])
 
 
+def _recommended_window_summary(inputs: dict[str, Any]) -> pd.DataFrame:
+    summary = inputs.get("recommended_window_cv_summary") or {}
+    keys = (
+        "recommended_window_name",
+        "bin_size_ms",
+        "fold_count",
+        "repeats",
+        "total_folds",
+        "factor_latent_mean",
+        "factor_latent_ci95_low",
+        "factor_latent_ci95_high",
+        "factor_latent_positive_fraction",
+        "split_mean_invalid_mean",
+        "factor_latent_minus_split_mean_invalid",
+        "leakage_dominance_persists",
+        "moving_bin_fraction_mean",
+        "endpoint_direction_entropy_mean",
+        "fold_balance_warning",
+    )
+    rows = [{"field": key, "value": summary.get(key, "unavailable")} for key in keys]
+    return _rows_to_frame(rows, ["field", "value"])
+
+
 def build_diagnostic_tables(
     inputs: dict[str, Any], config: dict[str, Any]
 ) -> dict[str, pd.DataFrame]:
@@ -367,6 +418,7 @@ def build_diagnostic_tables(
         "seed_robustness_summary": _seed_robustness_summary(inputs),
         "split_generalization_summary": _split_generalization_summary(inputs),
         "cv_rate_audit_summary": _cv_rate_audit_summary(inputs),
+        "recommended_window_summary": _recommended_window_summary(inputs),
     }
     missing = set(TABLE_NAMES) - set(tables)
     if missing:

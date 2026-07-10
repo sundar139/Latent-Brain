@@ -4,9 +4,12 @@ import pandas as pd  # type: ignore[import-untyped]
 
 from latentbrain.reporting.report_tables import METHOD_REGISTRY_COLUMNS, build_method_registry
 from latentbrain.reporting.report_validation import (
+    DIFFERENT_TARGET_STATEMENT,
+    EARLY_WINDOW_STATEMENT,
     INVALID_CONTROL_STATEMENT,
     NOT_OFFICIAL_STATEMENT,
     OLD_MEAN_RATE_STATEMENT,
+    RECOMMENDED_WINDOW_STATEMENT,
     REQUIRED_REPORT_SECTIONS,
     SEED_CONFOUND_STATEMENT,
     SPLIT_INSTABILITY_STATEMENT,
@@ -22,9 +25,13 @@ def _findings(**overrides: object) -> dict[str, object]:
         "official_leaderboard_claim": False,
         "no_official_benchmark_claim": True,
         "carried_forward_valid_method": "factor_latent",
+        "carried_forward_window": "behavior_speed_peak_centered_1p28s",
+        "previous_from_start_window_status": "early_premovement_diagnostic",
         "single_split_results_reportable": False,
-        "recommended_reporting_mode": "repeated_split",
+        "recommended_reporting_mode": "recommended_window_stratified_cross_validation",
         "invalid_rate_controls_present": True,
+        "invalid_controls_excluded_from_model_performance": True,
+        "factor_latent_beats_invalid_control_mean": True,
         "neural_ode_near_win_seed_specific": True,
         "split_mean_advantage_is_rate_offset": False,
         "split_mean_advantage_is_target_leakage": True,
@@ -41,6 +48,9 @@ def _valid_report_text() -> str:
             SEED_CONFOUND_STATEMENT,
             SPLIT_INSTABILITY_STATEMENT,
             OLD_MEAN_RATE_STATEMENT,
+            RECOMMENDED_WINDOW_STATEMENT,
+            EARLY_WINDOW_STATEMENT,
+            DIFFERENT_TARGET_STATEMENT,
         )
     )
     return f"{body}\n{statements}\n"
@@ -112,6 +122,35 @@ def test_claim_safety_fails_if_single_split_results_are_reportable() -> None:
     )
 
     assert any("single-split results are marked reportable" in failure for failure in failures)
+
+
+def test_claim_safety_requires_recommended_window_and_reporting_mode() -> None:
+    missing = validate_claim_safety(_findings(carried_forward_window=""), build_method_registry())
+    wrong_window = validate_claim_safety(
+        _findings(carried_forward_window="from_start_1p28s"), build_method_registry()
+    )
+    wrong_mode = validate_claim_safety(
+        _findings(recommended_reporting_mode="repeated_split"), build_method_registry()
+    )
+
+    assert any("carried-forward window" in failure for failure in missing)
+    assert any("behavior_speed_peak_centered_1p28s" in failure for failure in wrong_window)
+    assert any(
+        "recommended_window_stratified_cross_validation" in failure for failure in wrong_mode
+    )
+
+
+def test_report_text_rejects_missing_early_window_warning_and_direct_improvement_claim() -> None:
+    missing_warning = _valid_report_text().replace(EARLY_WINDOW_STATEMENT, "")
+    unsafe_claim = (
+        _valid_report_text()
+        + "Recommended-window scores are performance improvements over from-start scores.\n"
+    )
+
+    assert validate_report_text(missing_warning)
+    assert any(
+        "performance improvements" in failure for failure in validate_report_text(unsafe_claim)
+    )
 
 
 def test_claim_safety_fails_if_split_mean_advantage_called_rate_offset() -> None:

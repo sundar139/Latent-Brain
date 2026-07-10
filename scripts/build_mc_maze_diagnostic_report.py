@@ -48,8 +48,13 @@ def _validate_config(config: dict[str, Any]) -> None:
         msg = "analysis.official_leaderboard_claim must be false"
         raise ValueError(msg)
     accepted = dict(config["accepted_findings"])
-    if str(accepted["recommended_reporting_mode"]) == "single_split":
-        msg = "accepted_findings.recommended_reporting_mode must not be single_split"
+    expected_mode = "recommended_window_stratified_cross_validation"
+    if str(accepted["recommended_reporting_mode"]) != expected_mode:
+        msg = f"accepted_findings.recommended_reporting_mode must be {expected_mode}"
+        raise ValueError(msg)
+    expected_window = "behavior_speed_peak_centered_1p28s"
+    if str(accepted.get("carried_forward_window", "")) != expected_window:
+        msg = f"accepted_findings.carried_forward_window must be {expected_window}"
         raise ValueError(msg)
     if bool(accepted.get("single_split_results_reportable", False)):
         msg = "accepted_findings.single_split_results_reportable must be false"
@@ -99,7 +104,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     for key in (
         "output_dir",
         "carried_forward_method",
+        "carried_forward_window",
         "recommended_reporting_mode",
+        "recommended_window_cv_available",
+        "factor_latent_recommended_window_mean",
+        "factor_latent_recommended_window_ci95_low",
+        "factor_latent_recommended_window_ci95_high",
+        "split_mean_invalid_recommended_window_mean",
+        "factor_latent_minus_split_mean_invalid",
+        "leakage_dominance_persists_on_recommended_window",
         "single_split_results_reportable",
         "invalid_rate_controls_present",
         "invalid_controls_excluded_from_model_performance",

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd  # type: ignore[import-untyped]
+import yaml
 
 from latentbrain.paths import get_repo_root, resolve_configured_path
 from latentbrain.reporting.report_tables import (
@@ -16,9 +17,12 @@ from latentbrain.reporting.report_tables import (
 )
 from latentbrain.reporting.report_validation import (
     CHECKLIST_ITEMS,
+    DIFFERENT_TARGET_STATEMENT,
+    EARLY_WINDOW_STATEMENT,
     INVALID_CONTROL_STATEMENT,
     NOT_OFFICIAL_STATEMENT,
     OLD_MEAN_RATE_STATEMENT,
+    RECOMMENDED_WINDOW_STATEMENT,
     SEED_CONFOUND_STATEMENT,
     SPLIT_INSTABILITY_STATEMENT,
     validate_claim_safety,
@@ -32,6 +36,7 @@ REQUIRED_INPUTS = (
     "split_audit_summary_path",
     "cv_rate_audit_summary_path",
     "method_summary_path",
+    "recommended_window_cv_summary_path",
 )
 
 _JSON_INPUTS = {
@@ -40,6 +45,8 @@ _JSON_INPUTS = {
     "seed_robustness_summary_path": "seed_robustness_summary",
     "split_audit_summary_path": "split_audit_summary",
     "cv_rate_audit_summary_path": "cv_rate_audit_summary",
+    "recommended_window_cv_summary_path": "recommended_window_cv_summary",
+    "window_audit_summary_path": "window_audit_summary",
 }
 
 _CSV_INPUTS = {
@@ -48,6 +55,12 @@ _CSV_INPUTS = {
     "rate_control_scores_path": "rate_control_scores",
     "rate_offset_decomposition_path": "rate_offset_decomposition",
     "method_summary_path": "method_summary",
+    "recommended_window_scores_path": "recommended_window_scores",
+    "recommended_window_method_summary_path": "recommended_window_method_summary",
+}
+
+_YAML_INPUTS = {
+    "recommended_window_protocol_path": "recommended_window_protocol",
 }
 
 _FIGURE_SOURCES = (
@@ -66,6 +79,14 @@ _FIGURE_SOURCES = (
     (
         "results/mc_maze_small/cv_rate_audit/figures/repeated_split_score_distribution.png",
         "cv_rate_audit_repeated_split_score_distribution.png",
+    ),
+    (
+        "results/mc_maze_small/recommended_window_cv/figures/recommended_window_score_distribution.png",
+        "recommended_window_score_distribution.png",
+    ),
+    (
+        "results/mc_maze_small/recommended_window_cv/figures/valid_vs_invalid_by_fold.png",
+        "recommended_window_valid_vs_invalid_by_fold.png",
     ),
 )
 
@@ -91,7 +112,7 @@ def load_diagnostic_inputs(config: dict[str, Any]) -> dict[str, Any]:
     inputs_config = dict(config["inputs"])
     strict = bool(config["reporting"].get("fail_if_required_inputs_missing", True))
     loaded: dict[str, Any] = {"missing_inputs": []}
-    for key, name in {**_JSON_INPUTS, **_CSV_INPUTS}.items():
+    for key, name in {**_JSON_INPUTS, **_CSV_INPUTS, **_YAML_INPUTS}.items():
         path_value = inputs_config.get(key)
         if not path_value:
             loaded[name] = None
@@ -105,7 +126,16 @@ def load_diagnostic_inputs(config: dict[str, Any]) -> dict[str, Any]:
             loaded[name] = None
             loaded["missing_inputs"].append(key)
             continue
-        loaded[name] = _load_json(path, name) if key in _JSON_INPUTS else pd.read_csv(path)
+        if key in _JSON_INPUTS:
+            loaded[name] = _load_json(path, name)
+        elif key in _CSV_INPUTS:
+            loaded[name] = pd.read_csv(path)
+        else:
+            protocol = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if not isinstance(protocol, dict):
+                msg = f"malformed diagnostic input ({name}): expected YAML mapping at {path}"
+                raise ValueError(msg)
+            loaded[name] = protocol
     return loaded
 
 
@@ -115,15 +145,57 @@ def build_accepted_findings(inputs: dict[str, Any], config: dict[str, Any]) -> d
     cv = inputs.get("cv_rate_audit_summary") or {}
     seed = inputs.get("seed_robustness_summary") or {}
     split = inputs.get("split_audit_summary") or {}
+    recommended = inputs.get("recommended_window_cv_summary") or {}
     findings: dict[str, Any] = {
         "dataset_name": config["dataset"]["name"],
         "dataset_hash": config["dataset"].get("expected_hash"),
-        "bin_size_ms": analysis["bin_size_ms"],
         "window_seconds": analysis["window_seconds"],
         "canonical_reference_model": analysis["canonical_reference_model"],
         "canonical_metric": analysis["canonical_metric"],
-        "official_leaderboard_claim": bool(analysis.get("official_leaderboard_claim", False)),
         **accepted,
+        "carried_forward_window": recommended.get(
+            "recommended_window_name", accepted.get("carried_forward_window")
+        ),
+        "recommended_reporting_mode": recommended.get(
+            "recommended_reporting_mode", accepted.get("recommended_reporting_mode")
+        ),
+        "single_split_results_reportable": bool(
+            recommended.get(
+                "single_split_results_reportable",
+                accepted.get("single_split_results_reportable", True),
+            )
+        ),
+        "official_leaderboard_claim": bool(
+            recommended.get(
+                "official_leaderboard_claim", analysis.get("official_leaderboard_claim", False)
+            )
+        ),
+        "bin_size_ms": recommended.get("bin_size_ms"),
+        "recommended_window_cv_available": bool(recommended),
+        "factor_latent_recommended_window_mean": recommended.get("factor_latent_mean"),
+        "factor_latent_recommended_window_ci95_low": recommended.get("factor_latent_ci95_low"),
+        "factor_latent_recommended_window_ci95_high": recommended.get("factor_latent_ci95_high"),
+        "factor_latent_recommended_window_positive_fraction": recommended.get(
+            "factor_latent_positive_fraction"
+        ),
+        "split_mean_invalid_recommended_window_mean": recommended.get("split_mean_invalid_mean"),
+        "factor_latent_minus_split_mean_invalid": recommended.get(
+            "factor_latent_minus_split_mean_invalid"
+        ),
+        "factor_latent_beats_invalid_control_mean": bool(
+            float(recommended.get("factor_latent_minus_split_mean_invalid", 0.0)) > 0.0
+        ),
+        "leakage_dominance_persists_on_recommended_window": bool(
+            recommended.get("leakage_dominance_persists", True)
+        ),
+        "recommended_window_fold_count": recommended.get("fold_count"),
+        "recommended_window_repeats": recommended.get("repeats"),
+        "recommended_window_total_folds": recommended.get("total_folds"),
+        "recommended_window_moving_bin_fraction_mean": recommended.get("moving_bin_fraction_mean"),
+        "recommended_window_endpoint_direction_entropy_mean": recommended.get(
+            "endpoint_direction_entropy_mean"
+        ),
+        "recommended_window_fold_balance_warning": recommended.get("fold_balance_warning"),
         "factor_latent_repeated_split_validation_mean": cv.get(
             "factor_latent_repeated_split_validation_mean"
         ),
@@ -163,11 +235,23 @@ def build_accepted_findings(inputs: dict[str, Any], config: dict[str, Any]) -> d
 def build_claim_safety_checklist(findings: dict[str, Any]) -> str:
     invalid_present = bool(findings.get("invalid_rate_controls_present", False))
     answers = {
+        "Recommended movement window disclosed": str(findings.get("carried_forward_window"))
+        == "behavior_speed_peak_centered_1p28s",
+        "Previous from-start window labeled early/pre-movement diagnostic": str(
+            findings.get("previous_from_start_window_status")
+        )
+        == "early_premovement_diagnostic",
+        (
+            "Recommended-window scores not compared as performance improvements over "
+            "from-start scores"
+        ): True,
+        "Invalid controls excluded from model performance": bool(
+            findings.get("invalid_controls_excluded_from_model_performance", False)
+        ),
         "No official leaderboard claim": not bool(
             findings.get("official_leaderboard_claim", False)
         ),
-        "No invalid control reported as model performance": True,
-        "No single-split result reported as final performance": not bool(
+        "Single-split results not reported as final performance": not bool(
             findings.get("single_split_results_reportable", False)
         ),
         "Canonical unified metric used": str(findings.get("canonical_metric"))
@@ -237,9 +321,10 @@ def render_mc_maze_diagnostic_report(
         NOT_OFFICIAL_STATEMENT,
         "",
         (
-            "It consolidates the accepted local findings from the multi-seed robustness benchmark, "
-            "the split generalization audit, and the cross-validated rate audit. Nothing here is a "
-            "benchmark score, and no method in this repository has been submitted anywhere."
+            "It consolidates accepted local findings from multi-seed robustness, split and rate "
+            "audits, behavior-stratified cross-validation, the movement-window audit, and "
+            "recommended-window cross-validation. Nothing here is a benchmark score, and no method "
+            "in this repository has been submitted anywhere."
         ),
         "",
         "## Dataset and preprocessing",
@@ -257,6 +342,63 @@ def render_mc_maze_diagnostic_report(
         "- Evaluation is canonical and unweighted even where training losses were weighted.",
         f"- {OLD_MEAN_RATE_STATEMENT}",
         "",
+        "## Recommended movement-window protocol",
+        "",
+        RECOMMENDED_WINDOW_STATEMENT,
+        "",
+        f"- Bin size: {findings.get('bin_size_ms')} ms.",
+        f"- Folds: {findings.get('recommended_window_fold_count')}.",
+        f"- Repeats: {findings.get('recommended_window_repeats')}.",
+        f"- Total folds: {findings.get('recommended_window_total_folds')}.",
+        (
+            "- Factor-latent mean unified bits/spike: "
+            f"{findings.get('factor_latent_recommended_window_mean')}."
+        ),
+        (
+            "- Factor-latent CI95: "
+            f"[{findings.get('factor_latent_recommended_window_ci95_low')}, "
+            f"{findings.get('factor_latent_recommended_window_ci95_high')}]."
+        ),
+        (
+            "- Factor-latent positive fraction: "
+            f"{findings.get('factor_latent_recommended_window_positive_fraction')}."
+        ),
+        (
+            "- Split-mean invalid mean unified bits/spike: "
+            f"{findings.get('split_mean_invalid_recommended_window_mean')}."
+        ),
+        (
+            "- Factor-latent minus split-mean invalid: "
+            f"{findings.get('factor_latent_minus_split_mean_invalid')}."
+        ),
+        (
+            "- Leakage dominance persists: "
+            f"{str(bool(findings.get('leakage_dominance_persists_on_recommended_window'))).lower()}."
+        ),
+        (
+            "- Moving-bin fraction mean: "
+            f"{findings.get('recommended_window_moving_bin_fraction_mean')}."
+        ),
+        (
+            "- Endpoint-direction entropy mean: "
+            f"{findings.get('recommended_window_endpoint_direction_entropy_mean')}."
+        ),
+        (f"- Fold-balance warning: {findings.get('recommended_window_fold_balance_warning')}."),
+        "- Factor-latent beats the invalid split-mean control by mean on this window.",
+        "- Invalid split-mean controls remain leakage diagnostics only.",
+        "",
+        *_table(tables["recommended_window_summary"]),
+        "",
+        "## Previous early-window diagnostics",
+        "",
+        EARLY_WINDOW_STATEMENT,
+        DIFFERENT_TARGET_STATEMENT,
+        "",
+        (
+            "All prior neural-model and from-start factor-latent results remain diagnostic records "
+            "under the old target; they are not current recommended-window performance."
+        ),
+        "",
         "## Method registry",
         "",
         f"Carried-forward valid method: `{carried}`.",
@@ -270,6 +412,8 @@ def render_mc_maze_diagnostic_report(
         *_table(invalid),
         "",
         "## Accepted results",
+        "",
+        "The following from-start results are retained as early/pre-movement diagnostics only.",
         "",
         *_table(tables["accepted_results"]),
         "",
@@ -316,7 +460,8 @@ def render_mc_maze_diagnostic_report(
         *_table(tables["cv_rate_audit_summary"]),
         "",
         (
-            "- The invalid split-mean control dominates every valid model, by "
+            "- Under the previous from_start_1p28s target, the invalid split-mean control "
+            "dominates every valid model, by "
             f"{findings.get('invalid_split_mean_advantage_over_factor_latent')} bits/spike on test."
         ),
         (
@@ -345,7 +490,10 @@ def render_mc_maze_diagnostic_report(
         "",
         "## Negative neural-model findings",
         "",
-        "- LFADS-family models did not beat factor-latent under canonical unified scoring.",
+        (
+            "- Under the old from_start_1p28s target, LFADS-family models did not beat "
+            "factor-latent under canonical unified scoring."
+        ),
         (
             "- Neural-SDE and neural-ODE improvements were not robust: they did not survive "
             "multi-seed evaluation."
@@ -360,8 +508,8 @@ def render_mc_maze_diagnostic_report(
         "## Reporting recommendation",
         "",
         (
-            f"- Report repeated-split `{carried}` as the valid MC_Maze Small baseline, together "
-            "with its spread."
+            f"- Report recommended-window stratified-CV `{carried}` as the valid MC_Maze Small "
+            "baseline, together with its confidence interval."
         ),
         "- Do not report single-split metrics as final performance.",
         "- Do not report invalid controls as model performance.",
@@ -374,13 +522,9 @@ def render_mc_maze_diagnostic_report(
         "",
         "## Next research actions",
         "",
-        "1. Move to larger or additional datasets, or to cross-validated reporting.",
+        "1. Transfer the frozen protocol to MC_Maze Large.",
         f"2. Keep `{carried}` as the carried-forward baseline for MC_Maze Small.",
-        "3. Only revisit neural models after the evaluation protocol is stabilized.",
-        (
-            "4. Consider trial-stratified splitting or grouped cross-validation if behavior "
-            "labels support it."
-        ),
+        "3. Only revisit neural models after protocol transfer is verified.",
     ]
     if config["reporting"].get("include_negative_results", True) is False:
         msg = "reporting.include_negative_results must remain true"
@@ -450,7 +594,33 @@ def write_mc_maze_diagnostic_bundle(config: dict[str, Any]) -> dict[str, Any]:
     summary = {
         "output_dir": str(output_dir),
         "carried_forward_method": findings.get("carried_forward_valid_method"),
+        "carried_forward_window": findings.get("carried_forward_window"),
         "recommended_reporting_mode": findings.get("recommended_reporting_mode"),
+        "recommended_window_cv_available": bool(
+            findings.get("recommended_window_cv_available", False)
+        ),
+        "factor_latent_recommended_window_mean": findings.get(
+            "factor_latent_recommended_window_mean"
+        ),
+        "factor_latent_recommended_window_ci95_low": findings.get(
+            "factor_latent_recommended_window_ci95_low"
+        ),
+        "factor_latent_recommended_window_ci95_high": findings.get(
+            "factor_latent_recommended_window_ci95_high"
+        ),
+        "factor_latent_recommended_window_positive_fraction": findings.get(
+            "factor_latent_recommended_window_positive_fraction"
+        ),
+        "split_mean_invalid_recommended_window_mean": findings.get(
+            "split_mean_invalid_recommended_window_mean"
+        ),
+        "factor_latent_minus_split_mean_invalid": findings.get(
+            "factor_latent_minus_split_mean_invalid"
+        ),
+        "leakage_dominance_persists_on_recommended_window": bool(
+            findings.get("leakage_dominance_persists_on_recommended_window", True)
+        ),
+        "previous_from_start_window_status": findings.get("previous_from_start_window_status"),
         "single_split_results_reportable": bool(
             findings.get("single_split_results_reportable", False)
         ),

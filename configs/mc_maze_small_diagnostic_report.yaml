@@ -22,15 +22,25 @@ inputs:
   rate_control_scores_path: results/mc_maze_small/cv_rate_audit/rate_control_scores.csv
   rate_offset_decomposition_path: results/mc_maze_small/cv_rate_audit/rate_offset_decomposition.csv
   method_summary_path: results/mc_maze_small/cv_rate_audit/method_summary.csv
+  recommended_window_cv_summary_path: results/mc_maze_small/recommended_window_cv/recommended_window_cv_summary.json
+  recommended_window_scores_path: results/mc_maze_small/recommended_window_cv/recommended_window_scores.csv
+  recommended_window_method_summary_path: results/mc_maze_small/recommended_window_cv/recommended_window_method_summary.csv
+  recommended_window_protocol_path: results/mc_maze_small/recommended_window_cv/recommended_window_protocol.yaml
+  window_audit_summary_path: results/mc_maze_small/window_audit/window_audit_summary.json
 
 accepted_findings:
   carried_forward_valid_method: factor_latent
+  carried_forward_window: behavior_speed_peak_centered_1p28s
+  previous_from_start_window_status: early_premovement_diagnostic
   single_split_results_reportable: false
-  recommended_reporting_mode: repeated_split
+  recommended_reporting_mode: recommended_window_stratified_cross_validation
   invalid_rate_controls_present: true
+  invalid_controls_excluded_from_model_performance: true
   neural_ode_near_win_seed_specific: true
+  split_instability_disclosed: true
   split_mean_advantage_is_rate_offset: false
   split_mean_advantage_is_target_leakage: true
+  leakage_dominance_persists_on_recommended_window: false
   no_official_benchmark_claim: true
 
 reporting:

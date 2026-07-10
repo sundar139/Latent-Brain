@@ -23,6 +23,17 @@ SPLIT_INSTABILITY_STATEMENT = (
 OLD_MEAN_RATE_STATEMENT = (
     "Old incompatible mean-rate values are historical-only and are not used as tuning targets."
 )
+RECOMMENDED_WINDOW_STATEMENT = (
+    "The carried-forward MC_Maze Small window is behavior_speed_peak_centered_1p28s."
+)
+EARLY_WINDOW_STATEMENT = (
+    "Previous from_start_1p28s results describe an early/pre-movement window and should not be "
+    "described as reach-dynamics performance."
+)
+DIFFERENT_TARGET_STATEMENT = (
+    "Recommended-window scores and from-start scores use different prediction targets, not "
+    "direct performance improvements."
+)
 
 REQUIRED_REPORT_PHRASES = (
     NOT_OFFICIAL_STATEMENT,
@@ -30,6 +41,16 @@ REQUIRED_REPORT_PHRASES = (
     SEED_CONFOUND_STATEMENT,
     SPLIT_INSTABILITY_STATEMENT,
     OLD_MEAN_RATE_STATEMENT,
+    RECOMMENDED_WINDOW_STATEMENT,
+    EARLY_WINDOW_STATEMENT,
+    DIFFERENT_TARGET_STATEMENT,
+)
+
+FORBIDDEN_REPORT_PHRASES = (
+    "recommended-window scores are performance improvements over from-start scores",
+    "recommended-window scores improve performance over from-start scores",
+    "recommended-window scores outperform from-start scores",
+    "recommended-window performance improvement over from-start",
 )
 
 REQUIRED_REPORT_SECTIONS = (
@@ -37,6 +58,8 @@ REQUIRED_REPORT_SECTIONS = (
     "## Scope",
     "## Dataset and preprocessing",
     "## Canonical metric",
+    "## Recommended movement-window protocol",
+    "## Previous early-window diagnostics",
     "## Method registry",
     "## Accepted results",
     "## Multi-seed robustness",
@@ -50,9 +73,12 @@ REQUIRED_REPORT_SECTIONS = (
 )
 
 CHECKLIST_ITEMS = (
+    "Recommended movement window disclosed",
+    "Previous from-start window labeled early/pre-movement diagnostic",
+    "Recommended-window scores not compared as performance improvements over from-start scores",
+    "Invalid controls excluded from model performance",
     "No official leaderboard claim",
-    "No invalid control reported as model performance",
-    "No single-split result reported as final performance",
+    "Single-split results not reported as final performance",
     "Canonical unified metric used",
     "Old incompatible mean-rate values excluded from current targets",
     "Generated outputs not committed",
@@ -95,13 +121,26 @@ def validate_claim_safety(findings: dict[str, Any], method_registry: pd.DataFram
         failures.append("official leaderboard claim is true")
     if not bool(findings.get("no_official_benchmark_claim", True)):
         failures.append("no_official_benchmark_claim is false")
-    if bool(findings.get("single_split_results_reportable", False)):
+    if bool(findings.get("single_split_results_reportable", True)):
         failures.append("single-split results are marked reportable")
+    if not bool(findings.get("factor_latent_beats_invalid_control_mean", False)):
+        failures.append("factor-latent does not beat the invalid split-mean control by mean")
     mode = str(findings.get("recommended_reporting_mode", ""))
-    if mode == "single_split":
-        failures.append("recommended reporting mode is single_split")
-    if mode != "repeated_split":
-        failures.append(f"recommended reporting mode must be repeated_split; got {mode!r}")
+    expected_mode = "recommended_window_stratified_cross_validation"
+    if mode != expected_mode:
+        failures.append(f"recommended reporting mode must be {expected_mode}; got {mode!r}")
+    window = str(findings.get("carried_forward_window", ""))
+    expected_window = "behavior_speed_peak_centered_1p28s"
+    if not window:
+        failures.append("carried-forward window is missing")
+    elif window != expected_window:
+        failures.append(f"carried-forward window must be {expected_window}; got {window!r}")
+    if str(findings.get("previous_from_start_window_status", "")) != (
+        "early_premovement_diagnostic"
+    ):
+        failures.append("from_start_1p28s is not labelled early/pre-movement diagnostic")
+    if not bool(findings.get("invalid_controls_excluded_from_model_performance", False)):
+        failures.append("invalid controls are not excluded from model performance")
     carried = str(findings.get("carried_forward_valid_method", ""))
     if not carried:
         failures.append("no carried-forward method recorded")
@@ -130,4 +169,8 @@ def validate_report_text(report_text: str) -> list[str]:
     for phrase in REQUIRED_REPORT_PHRASES:
         if phrase not in report_text:
             failures.append(f"report is missing required statement: {phrase}")
+    lowered = report_text.lower()
+    for phrase in FORBIDDEN_REPORT_PHRASES:
+        if phrase in lowered:
+            failures.append(f"report implies direct performance improvements: {phrase}")
     return failures
