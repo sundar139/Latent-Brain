@@ -21,6 +21,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_neural_ode_diagnostics_scoreboard,
     load_neural_ode_pilot_scoreboard,
     load_recommended_window_cv_warning,
+    load_release_readiness_scoreboard,
     load_seed_robustness_candidates,
     load_split_audit_warning,
     load_stratified_cv_warning,
@@ -72,6 +73,27 @@ def test_latent_interpretability_scoreboard_missing_and_unsafe(tmp_path: Path) -
         load_latent_interpretability_scoreboard(
             {"inputs": {"latent_interpretability_summary_path": str(path)}}
         )
+
+
+def test_release_readiness_fields_load_without_ranking_candidate(tmp_path: Path) -> None:
+    path = tmp_path / "release.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ready": True,
+                "metric_consistency_passed": True,
+                "claim_consistency_passed": True,
+                "neural_search_closed": True,
+                "official_leaderboard_claim": False,
+                "causal_claim_allowed": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    loaded = load_release_readiness_scoreboard({"inputs": {"release_readiness_path": str(path)}})
+    assert loaded["release_audit_available"] is True
+    assert loaded["project_release_ready"] is True
+    assert "best_valid_method" not in loaded
 
 
 def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:

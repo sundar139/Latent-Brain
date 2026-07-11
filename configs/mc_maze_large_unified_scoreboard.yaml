@@ -10,6 +10,7 @@ inputs:
   neural_ode_pilot_summary_path: results/mc_maze_large/neural_ode_pilot/neural_ode_pilot_summary.json
   neural_ode_diagnostics_summary_path: results/mc_maze_large/neural_ode_diagnostics/neural_ode_diagnostics_summary.json
   latent_interpretability_summary_path: results/mc_maze_large/latent_interpretability/latent_interpretability_summary.json
+  release_readiness_path: results/release_audit/release_readiness.json
 
 reporting:
   output_dir: results/mc_maze_large/unified_scoreboard

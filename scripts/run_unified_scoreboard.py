@@ -43,6 +43,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_neural_ode_diagnostics_scoreboard,
     load_neural_ode_pilot_scoreboard,
     load_recommended_window_cv_warning,
+    load_release_readiness_scoreboard,
     load_seed_robustness_candidates,
     load_split_audit_warning,
     load_stratified_cv_warning,
@@ -261,6 +262,7 @@ def run_dataset_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         summary.update(load_neural_ode_pilot_scoreboard(config))
         summary.update(load_neural_ode_diagnostics_scoreboard(config))
         summary.update(load_latent_interpretability_scoreboard(config))
+        summary.update(load_release_readiness_scoreboard(config))
     output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
     write_dataset_scoreboard_outputs(output_dir, summary)
     return {"summary": summary, "output_dir": output_dir}

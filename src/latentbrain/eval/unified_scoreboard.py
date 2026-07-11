@@ -1140,3 +1140,42 @@ def load_latent_interpretability_scoreboard(config: dict[str, Any]) -> dict[str,
         "causal_claim_allowed": False,
         "latent_interpretability_summary_path": str(path),
     }
+
+
+RELEASE_READINESS_KEYS = (
+    "ready",
+    "metric_consistency_passed",
+    "claim_consistency_passed",
+    "neural_search_closed",
+    "official_leaderboard_claim",
+    "causal_claim_allowed",
+)
+
+
+def load_release_readiness_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Optional final-release status; metadata only, never a ranking candidate."""
+    path = _summary_path(config.get("inputs", {}).get("release_readiness_path"))
+    fallback = {
+        "release_audit_available": False,
+        "project_release_ready": False,
+        "release_metric_consistency_passed": False,
+        "release_claim_consistency_passed": False,
+        "neural_search_closed": False,
+    }
+    if path is None or not path.exists():
+        return fallback
+    label = "release readiness"
+    summary = _load_summary(path, label)
+    for key in RELEASE_READINESS_KEYS:
+        if key not in summary:
+            raise ValueError(f"malformed release readiness summary: missing {key} at {path}")
+    if bool(summary["official_leaderboard_claim"]) or bool(summary["causal_claim_allowed"]):
+        raise ValueError(f"claim-unsafe release readiness summary at {path}")
+    return {
+        "release_audit_available": True,
+        "project_release_ready": bool(summary["ready"]),
+        "release_metric_consistency_passed": bool(summary["metric_consistency_passed"]),
+        "release_claim_consistency_passed": bool(summary["claim_consistency_passed"]),
+        "neural_search_closed": bool(summary["neural_search_closed"]),
+        "release_readiness_path": str(path),
+    }

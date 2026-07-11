@@ -1,0 +1,117 @@
+sources:
+  small_cv: results/mc_maze_small/recommended_window_cv/recommended_window_cv_summary.json
+  large_cv: results/mc_maze_large/recommended_window_cv/recommended_window_cv_summary.json
+  baseline: results/mc_maze_large/baseline_suite/baseline_suite_summary.json
+  lfads_pilot: results/mc_maze_large/lfads_pilot/lfads_pilot_summary.json
+  lfads_diagnostics: results/mc_maze_large/lfads_diagnostics/lfads_diagnostics_summary.json
+  neural_ode_pilot: results/mc_maze_large/neural_ode_pilot/neural_ode_pilot_summary.json
+  neural_ode_diagnostics: results/mc_maze_large/neural_ode_diagnostics/neural_ode_diagnostics_summary.json
+  interpretability: results/mc_maze_large/latent_interpretability/latent_interpretability_summary.json
+  final_claims: results/mc_maze_large/latent_interpretability/final_claim_recommendation.json
+  large_scoreboard: results/mc_maze_large/unified_scoreboard/unified_scoreboard_summary.json
+
+expected:
+  small_cv.dataset_hash: 7ed048df5fab3cb8e7c82957c24619a29154800364231467af2deaba65fb6d9f
+  small_cv.recommended_window_name: behavior_speed_peak_centered_1p28s
+  large_cv.dataset_hash: 074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84
+  large_cv.recommended_window_name: behavior_speed_peak_centered_1p28s
+  baseline.baseline_to_beat: factor_latent_train_selected
+  neural_ode_diagnostics.recommended_next_action: retire_neural_ode_and_close_neural_model_search
+
+method_summary_path: results/mc_maze_large/baseline_suite/method_summary.csv
+
+documents:
+  - docs/latentbrain_research_report.md
+  - docs/latentbrain_claim_registry.md
+  - docs/latentbrain_reproducibility.md
+  - docs/latentbrain_release_notes.md
+
+claim_safety_documents:
+  - docs/latentbrain_research_report.md
+  - docs/latentbrain_release_notes.md
+
+findings:
+  - {id: small_hash, dataset: mc_maze_small, analysis: provenance, source: small_cv, key: dataset_hash, report_location: Datasets and provenance}
+  - {id: small_window, dataset: mc_maze_small, analysis: protocol, source: small_cv, key: recommended_window_name, report_location: MC_Maze Small findings}
+  - {id: small_factor_mean, dataset: mc_maze_small, analysis: recommended_window_cv, source: small_cv, key: factor_latent_mean, report_location: MC_Maze Small findings}
+  - {id: small_factor_ci_low, dataset: mc_maze_small, analysis: recommended_window_cv, source: small_cv, key: factor_latent_ci95_low, report_location: MC_Maze Small findings}
+  - {id: small_factor_ci_high, dataset: mc_maze_small, analysis: recommended_window_cv, source: small_cv, key: factor_latent_ci95_high, report_location: MC_Maze Small findings}
+  - {id: small_invalid_mean, dataset: mc_maze_small, analysis: leakage_control, source: small_cv, key: split_mean_invalid_mean, report_location: MC_Maze Small findings}
+  - {id: large_hash, dataset: mc_maze_large, analysis: provenance, source: baseline, key: dataset_hash, report_location: Datasets and provenance}
+  - {id: large_window, dataset: mc_maze_large, analysis: protocol, source: baseline, key: window_name, report_location: MC_Maze Large findings}
+  - {id: large_best_mean, dataset: mc_maze_large, analysis: baseline_suite, source: baseline, key: best_valid_method_mean, report_location: Valid baseline comparison}
+  - {id: large_best_ci_low, dataset: mc_maze_large, analysis: baseline_suite, source: baseline, key: baseline_to_beat_ci95_low, report_location: Valid baseline comparison}
+  - {id: large_best_ci_high, dataset: mc_maze_large, analysis: baseline_suite, source: baseline, key: baseline_to_beat_ci95_high, report_location: Valid baseline comparison}
+  - {id: large_invalid_mean, dataset: mc_maze_large, analysis: leakage_control, source: baseline, key: split_mean_invalid_mean, report_location: Valid baseline comparison}
+  - {id: lfads_mean, dataset: mc_maze_large, analysis: lfads_pilot, source: lfads_pilot, key: mean_unified_bits_per_spike, report_location: LFADS feasibility and retirement decision}
+  - {id: lfads_difference, dataset: mc_maze_large, analysis: lfads_pilot, source: lfads_pilot, key: mean_paired_difference_vs_baseline, report_location: LFADS feasibility and retirement decision}
+  - {id: neural_ode_mean, dataset: mc_maze_large, analysis: neural_ode_pilot, source: neural_ode_pilot, key: mean_unified_bits_per_spike, report_location: Deterministic neural-ODE feasibility and retirement decision}
+  - {id: neural_ode_difference, dataset: mc_maze_large, analysis: neural_ode_pilot, source: neural_ode_pilot, key: mean_paired_difference_vs_baseline, report_location: Deterministic neural-ODE feasibility and retirement decision}
+  - {id: continuous_mean_r2, dataset: mc_maze_large, analysis: interpretability, source: interpretability, key: continuous_mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: direction_accuracy, dataset: mc_maze_large, analysis: interpretability, source: interpretability, key: direction_accuracy, report_location: Latent interpretability and behavioral validity}
+  - {id: direction_balanced_accuracy, dataset: mc_maze_large, analysis: interpretability, source: interpretability, key: direction_balanced_accuracy, report_location: Latent interpretability and behavioral validity}
+  - {id: direction_macro_f1, dataset: mc_maze_large, analysis: interpretability, source: interpretability, key: direction_macro_f1, report_location: Latent interpretability and behavioral validity}
+  - {id: effective_dimension, dataset: mc_maze_large, analysis: geometry, source: interpretability, key: effective_dimension, report_location: Latent interpretability and behavioral validity}
+  - {id: direction_separability, dataset: mc_maze_large, analysis: geometry, source: interpretability, key: direction_separability, report_location: Latent interpretability and behavioral validity}
+  - {id: fold_stability, dataset: mc_maze_large, analysis: stability, source: interpretability, key: fold_stability, report_location: Latent interpretability and behavioral validity}
+  - {id: mask_stability, dataset: mc_maze_large, analysis: stability, source: interpretability, key: mask_stability, report_location: Latent interpretability and behavioral validity}
+  - {id: fa_state_stability, dataset: mc_maze_large, analysis: stability, source: interpretability, key: factor_analysis_state_stability, report_location: Latent interpretability and behavioral validity}
+  - {id: beyond_rate, dataset: mc_maze_large, analysis: rate_confound, source: interpretability, key: beyond_rate, report_location: Latent interpretability and behavioral validity}
+  - {id: hand_pos_x_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.hand_pos_x.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: hand_pos_y_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.hand_pos_y.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: hand_vel_x_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.hand_vel_x.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: hand_vel_y_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.hand_vel_y.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: hand_speed_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.hand_speed.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: cursor_pos_x_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.cursor_pos_x.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: cursor_pos_y_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.cursor_pos_y.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: cursor_vel_x_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.cursor_vel_x.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: cursor_vel_y_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.cursor_vel_y.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: cursor_speed_r2, dataset: mc_maze_large, analysis: decoding, source: interpretability, key: continuous_targets.cursor_speed.mean_r2, report_location: Latent interpretability and behavioral validity}
+  - {id: ready_for_final_report, dataset: mc_maze_large, analysis: interpretability, source: interpretability, key: ready_for_final_report, report_location: Conclusions}
+
+comparisons:
+  - {name: large_cv_fixed_factor_mean, a: large_cv:factor_latent_mean, b: baseline:factor_latent_fixed_mean, tolerance: 1.0e-12}
+  - {name: baseline_scoreboard_best_mean, a: baseline:best_valid_method_mean, b: large_scoreboard:baseline_to_beat_mean, tolerance: 1.0e-12}
+  - {name: lfads_pilot_diagnostic_mean, a: lfads_pilot:mean_unified_bits_per_spike, b: lfads_diagnostics:outer_mean_unified_bits_per_spike, tolerance: 1.0e-12}
+  - {name: neural_ode_pilot_diagnostic_mean, a: neural_ode_pilot:mean_unified_bits_per_spike, b: neural_ode_diagnostics:outer_evaluation_mean_unified_bits_per_spike, tolerance: 1.0e-12}
+  - {name: interpretability_scoreboard_complete, a: interpretability:latent_interpretability_complete, b: large_scoreboard:latent_interpretability_complete, tolerance: 0}
+  - {name: interpretability_scoreboard_out_of_fold, a: interpretability:out_of_fold_latents_used, b: large_scoreboard:out_of_fold_latents_used, tolerance: 0}
+  - {name: interpretability_scoreboard_claim_count, a: interpretability:supported_claim_count, b: large_scoreboard:supported_claim_count, tolerance: 0}
+
+reproduction_commands:
+  - python -m latentbrain.cli validate-config
+  - python scripts/check_environment.py
+  - python scripts/run_window_audit.py --config configs/mc_maze_large_window_audit.yaml
+  - python scripts/run_recommended_window_cv.py --config configs/mc_maze_large_recommended_window_cv.yaml
+  - python scripts/run_baseline_suite.py --config configs/mc_maze_large_baseline_suite.yaml
+  - python scripts/run_lfads_pilot.py --config configs/mc_maze_large_lfads_pilot.yaml
+  - python scripts/run_lfads_diagnostics.py --config configs/mc_maze_large_lfads_diagnostics.yaml
+  - python scripts/run_neural_ode_pilot.py --config configs/mc_maze_large_neural_ode_pilot.yaml
+  - python scripts/run_neural_ode_diagnostics.py --config configs/mc_maze_large_neural_ode_diagnostics.yaml
+  - python scripts/run_latent_interpretability.py --config configs/mc_maze_large_latent_interpretability.yaml
+  - python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
+
+quality_evidence:
+  quality_gates_passed: true
+  tests_passed: true
+  remote_ci_passed: true
+
+allowed_working_tree_files:
+  - AGENTS.md
+  - README.md
+  - configs/latentbrain_release.yaml
+  - docs/latentbrain_research_report.md
+  - docs/latentbrain_claim_registry.md
+  - docs/latentbrain_reproducibility.md
+  - docs/latentbrain_release_notes.md
+  - src/latentbrain/eval/release_audit.py
+  - scripts/run_release_audit.py
+  - tests/test_eval_release_audit.py
+  - tests/test_release_audit_script.py
+  - configs/mc_maze_large_unified_scoreboard.yaml
+  - scripts/run_unified_scoreboard.py
+  - src/latentbrain/eval/unified_scoreboard.py
+  - tests/test_eval_unified_scoreboard.py
+
+reporting:
+  output_dir: results/release_audit

@@ -1,698 +1,94 @@
 # LatentBrain
 
-LatentBrain is a Python research and engineering codebase for studying latent dynamical structure in neural population activity.
+LatentBrain is a Python 3.11 research codebase for leakage-safe latent-variable analysis of motor-cortical population activity from the Neural Latents Benchmark MC_Maze datasets.
 
-## Research goal
+## What the project studies
 
-The project aims to support rigorous investigation of latent variable and dynamical systems methods for neural time series. The current repository contains only the reproducible engineering foundation needed before data access, preprocessing, model development, training, and evaluation are introduced.
+The project asks whether low-dimensional states inferred from single-trial spiking can predict held-out neurons and preserve meaningful relationships to hand and cursor movement. It emphasizes reproducible data provenance, train-only model selection, repeated cross-validation, invalid-control separation, and claim safety.
 
-## Current repository status
+## Main findings
 
-Initialized foundation:
+- Initial fixed-split and globally cropped evaluations were insufficient. Final reporting uses trial-aware, peak-speed-centered 1.28-second windows and 5-fold × 5-repeat stratified cross-validation.
+- Factor latents are the carried-forward valid model on MC_Maze Small.
+- Nested-selected factor latents are the strongest valid tested MC_Maze Large model under the frozen protocol.
+- LFADS-style and deterministic neural-ODE single-repeat feasibility pilots were positive and stable but did not pass predeclared gates for full multi-repeat evaluation. Both branches are retired; neural-model search is closed.
+- Out-of-fold Large factor latents predict hand/cursor kinematics, decode endpoint direction, preserve relational trajectory geometry, and contain predictive structure beyond a scalar population-rate signal.
 
-- `src` package layout with the `latentbrain` package
-- Validated YAML configuration loading with environment overrides
-- Safe `.env.example` contract without committed secrets
-- Standard logging utilities
-- Deterministic seeding utilities for Python, NumPy, and optional PyTorch
-- Synthetic Poisson LDS data generation for validating data contracts
-- Local MC_Maze Small ingestion that trializes continuous NLB NWB dataframes into spike and behavior tensors when behavior is available
-- Typer-based CLI sanity commands
-- Ruff, mypy, pytest, pre-commit, and GitHub Actions quality checks
+Findings are local, associative, and predictive. They are not causal claims or official NLB leaderboard results. Small and Large score differences are not interpreted as direct model-performance improvement.
 
-Not implemented yet:
+## Evaluation protocol
 
-- Automatic dataset download or final benchmark preprocessing pipelines
-- Full LFADS, full neural SDE, or full Bayesian rSLDS inference
-- Neural Latents Benchmark evaluation
-- Official benchmark scores, checkpoints, or model artifacts
+Final protocols use:
 
-## Local setup
+- train-heldout per-neuron mean rate as the unified bits/spike reference;
+- trial-aware event-centered extraction before rebinning;
+- exact repeated stratified folds and fixed neuron masks within each repeat;
+- nested hyperparameter selection using outer-training trials only;
+- repeat-level paired uncertainty rather than treating correlated folds as independent;
+- invalid split-mean target-reading controls excluded from model ranking;
+- out-of-fold latent interpretation and train-only Procrustes alignment.
 
-Use Windows PowerShell from the repository root:
+MC_Maze Large final evaluation shape is `[500, 64, 162]` at 20 ms, with 122 held-in and 40 held-out neurons.
+
+## Reproducing the work
+
+Install:
 
 ```powershell
-cd "C:\Users\rohit\Documents\Personal Projects\Latent Brain"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,neurodata]"
 ```
 
-Python 3.11 is the intended runtime for continuous integration. If multiple Python versions are installed, create the virtual environment with the Python 3.11 executable available on your system.
-
-## Quality checks
-
-Run these commands before committing changes:
+Validate:
 
 ```powershell
+python -m latentbrain.cli validate-config
+python scripts/check_environment.py
+pytest -q
+```
+
+Data are never downloaded automatically. See [the reproducibility guide](docs/latentbrain_reproducibility.md) for DANDI assets, hashes, CPU/GPU requirements, and complete workflow commands.
+
+## Repository structure
+
+```text
+configs/              validated experiment and release contracts
+scripts/              thin command-line entry points
+src/latentbrain/data  ingestion, validation, splits, rebinning, provenance
+src/latentbrain/eval  scoring, baselines, audits, interpretability, release checks
+src/latentbrain/models and train  tested neural feasibility implementations
+src/latentbrain/reporting        claim-safe report helpers
+tests/                CPU-safe unit and script tests
+docs/                 research, methodology, provenance, and release documents
+```
+
+Generated `data/`, `results/`, `reports/`, checkpoints, latents, figures, and caches remain ignored.
+
+## Research reports
+
+- [Final research report](docs/latentbrain_research_report.md)
+- [Claim registry](docs/latentbrain_claim_registry.md)
+- [Reproducibility guide](docs/latentbrain_reproducibility.md)
+- [Release notes](docs/latentbrain_release_notes.md)
+- [Real-data record](docs/real_data.md)
+- [Research methodology](docs/research_methodology.md)
+
+## Limitations and claim safety
+
+Single-split results are non-reportable. Invalid controls never rank as models. Neural pilots use one held-out-neuron mask and cannot establish final multi-repeat superiority. Latent axes are rotationally non-identifiable. Temporal autocorrelation explains part of continuous decoding. Observational analysis cannot establish a biological mechanism. Cross-dataset score differences are not direct performance comparisons.
+
+## Development checks
+
+```powershell
+mypy --version
 ruff check .
 ruff format --check .
 mypy src
 pytest -q
 python -m latentbrain.cli validate-config
-python -m latentbrain.cli info
 python scripts/check_environment.py
+git diff --check
 ```
 
-Optional neural-data tooling for local real dataset preparation can be installed with:
-
-```powershell
-python -m pip install -e ".[dev,neurodata]"
-```
-
-If `nlb-tools` is unavailable from pip in your environment, install it from the official Neural Latents Benchmark GitHub repository:
-
-```powershell
-python -m pip install git+https://github.com/neurallatents/nlb_tools.git
-```
-
-## Movement-window and alignment audit
-
-Stratified cross-validation stabilised *how* MC_Maze Small is evaluated, but it also exposed a
-problem with *what* is being evaluated: endpoint directions are heavily concentrated in the current
-`from_start` 1.28-second crop, which suggests the window captures mostly early or pre-movement
-activity rather than the reach itself. This audit tests that directly:
-
-```powershell
-python scripts/run_window_audit.py --config configs/mc_maze_small_window_audit.yaml
-```
-
-Candidate windows include the current early window, a longer early window, windows centred on peak
-hand speed, and a movement-onset-aligned window. Each candidate is cropped per trial, has its
-behavior features recomputed, gets fresh behavior-stratified folds, and is scored under the same
-canonical unweighted metric. Reach-direction entropy and the fraction of moving bins measure how
-much actual movement each window contains.
-
-The window recommendation uses **valid-model performance and behavior coverage only**. The
-`split_mean_rate_invalid` control is scored on every window as a leakage diagnostic and can never
-influence the choice, because a window that inflates an invalid control has not become a better
-window. If no candidate improves both behavior coverage and valid-model performance, the current
-window is retained and explicitly labelled an early-window diagnostic. Outputs and figures are local
-ignored artifacts under `results/mc_maze_small/window_audit/`, not official NLB leaderboard results.
-
-## Recommended movement-window cross-validation
-
-The audit confirmed that `from_start_1p28s` contains essentially no movement, so every earlier score
-on that crop is an early/pre-movement diagnostic rather than a reach-dynamics result. The
-carried-forward MC_Maze Small window is now `behavior_speed_peak_centered_1p28s`. Confirm it with the
-same behavior/rate-stratified protocol used by the audit:
-
-```powershell
-python scripts/run_recommended_window_cv.py --config configs/mc_maze_small_recommended_window_cv.yaml
-```
-
-This run freezes five repeats of five-fold stratified cross-validation at 20 ms, recomputes the
-train-held-out mean-rate reference inside every fold, and reports movement coverage and endpoint
-direction entropy with the scores. Factor-latent is the carried-forward valid baseline. The
-`split_mean_rate_invalid` control remains an evaluation-target leakage diagnostic only and is
-excluded from model selection.
-
-Recommended-window scores are not directly comparable with `from_start` scores as performance gains:
-the two crops define different prediction targets. Outputs are local ignored artifacts under
-`results/mc_maze_small/recommended_window_cv/`; they are not official NLB leaderboard results.
-
-## Behavior-stratified cross-validation
-
-The diagnostic report froze MC_Maze Small with one issue unresolved: repeated *random* splits
-reduced the damage of a 15-trial evaluation split, but they never guaranteed that a fold contains a
-balanced set of reach directions, distances, speeds, or firing rates. This workflow builds folds
-that do:
-
-```powershell
-python scripts/run_stratified_cv.py --config configs/mc_maze_small_stratified_cv.yaml
-```
-
-Trials are binned by endpoint direction, endpoint distance, mean speed, population rate, and
-held-out rate, then assigned greedily so every fold receives a comparable share of each stratum.
-Factor-latent, the canonical `train_mean_rate` reference, and the invalid `split_mean_rate_invalid`
-control are scored on every held-out fold under canonical unweighted unified bits/spike, and the
-same protocol is run with matched *unstratified* folds so the variance change is measured rather
-than assumed.
-
-Single-split reporting remains disallowed. Stratified cross-validation is retained inside the
-carried-forward recommended-window protocol. Invalid controls read evaluation-fold targets, so they remain
-leakage diagnostics only and can never win valid-model selection. Outputs and figures are local
-ignored artifacts under `results/mc_maze_small/stratified_cv/`, not official NLB leaderboard
-results.
-
-## MC_Maze Small diagnostic report
-
-After the seed-robustness benchmark, the split generalization audit, and the cross-validated rate
-audit, the correct next artifact is not another model — it is a report that freezes what was
-actually established and what must not be claimed:
-
-```powershell
-python scripts/build_mc_maze_diagnostic_report.py --config configs/mc_maze_small_diagnostic_report.yaml
-```
-
-The builder consolidates the accepted summaries, including the recommended-window CV result, into a
-deterministic report, method registry, and claim-safety checklist. It refuses to write anything if
-the carried-forward window is not `behavior_speed_peak_centered_1p28s`, the reporting mode is not
-`recommended_window_stratified_cross_validation`, an invalid control is marked reportable, or
-single-split reporting is recommended.
-
-`factor_latent` is the carried-forward valid baseline under 20 ms, five-fold by five-repeat
-recommended-window cross-validation. Previous `from_start_1p28s` factor-latent and neural results
-remain early/pre-movement diagnostics, not reach-dynamics performance. Recommended-window scores use
-a different prediction target and are not direct performance improvements over those old-window
-scores. Single-split numbers remain unreportable final performance: the 15-trial validation and test
-splits are unstable, and the neural-ODE near-win was seed-specific.
-The `split_mean_rate_invalid` and `oracle_split_scaled_factor_latent_invalid` controls read
-evaluation-split targets; they are **leakage diagnostics** and can never be reported as model
-performance. No official benchmark claim is made anywhere in this repository. The generated bundle
-under `reports/mc_maze_small_diagnostic/` is a local ignored artifact.
-
-## Cross-validated rate audit
-
-The split generalization audit showed two things that make single-split numbers unreportable: the
-accepted 70/15/15 split's test-negative result is split-specific luck, and an **invalid** control
-that reads the evaluation split's own mean firing rate beats every valid model by a wide margin.
-This workflow replaces single-split interpretation with repeated-split reporting and quantifies
-that rate offset:
-
-```powershell
-python scripts/run_cv_rate_audit.py --config configs/mc_maze_small_cv_rate_audit.yaml
-```
-
-It is CPU-only and trains no neural networks. Factor-latent is scored across ten trial splits
-crossed with five sklearn `FactorAnalysis` random states, which separates trial-split variance
-from the estimator's own randomized-SVD variance — the latter alone moves the metric enough to
-matter. Alongside it run valid train-only controls (per-neuron train mean, held-in population
-rescaling, a train-only rate calibration) and clearly-labelled **invalid** diagnostic controls
-(`split_mean_rate_invalid`, `oracle_split_scaled_factor_latent_invalid`) that read evaluation
-targets.
-
-**Invalid controls use evaluation split targets and can never be reported as model performance.**
-They never compete for best valid model; they exist only to measure how much of the gap is a
-split-level rate offset. Single-split numbers are not reportable as final performance — report
-factor-latent as a repeated-split baseline instead. Old mean-rate values remain historical-only.
-Outputs and figures are local ignored artifacts under `results/mc_maze_small/cv_rate_audit/`, not
-official NLB leaderboard results.
-
-## Validation/test generalization audit
-
-Seed robustness established that no neural method beats factor-latent, but it also surfaced a
-more serious problem: every carried-forward method scores **positive on validation and negative
-on test**. Before any result is reported, that has to be explained. This audit does it:
-
-```powershell
-python scripts/run_split_audit.py --config configs/mc_maze_small_split_audit.yaml
-```
-
-The audit is CPU-only and trains no neural networks. It compares trial spike rates, held-out
-neuron activity, and behavior distributions across splits; bootstraps the validation/test gap;
-and re-runs a factor-latent baseline plus train-mean and split-mean controls under ten
-independent trial splits to see whether the test-negative pattern is specific to the accepted
-split or persists everywhere.
-
-MC_Maze Small has only 15 validation and 15 test trials, so a single split is weak evidence
-either way. **No model performance claim should be made until the validation/test instability is
-resolved.** If the audit reports high generalization risk, every score in this repository must be
-read as a validation-only diagnostic. Old mean-rate values remain historical-only. Outputs and
-figures are local ignored artifacts under `results/mc_maze_small/split_audit/`, not official NLB
-leaderboard results.
-
-## Multi-seed robustness
-
-Objective diagnostics uncovered a seed confound: the earlier workflow seeded with `seed + run_index`, so each method effectively trained from a different initialization, and re-running one identical objective under two seed offsets moved validation unified bits/spike by roughly 0.032 — more than any effect being measured. Single-seed leaderboards are therefore not sufficient for claims. This workflow re-compares the strongest methods under an explicit seed policy:
-
-```powershell
-python scripts/run_seed_robustness.py --config configs/mc_maze_small_multiseed_robustness.yaml
-```
-
-The trial split and held-in/held-out neuron mask are held **fixed** across every method and seed (`split_seed_mode: fixed`), while the **initialization/training seed varies** over the configured `seeds` list. Every method receives the identical seed list, and no seed is ever derived from a run index. Score spread across seeds therefore reflects initialization and training variance only.
-
-Selection uses canonical unified validation bits/spike over 20 ms MC_Maze Small bins, a 1.28-second window, and train-heldout mean rate as the reference; evaluation stays canonical and unweighted. Each method reports mean, standard deviation, a bootstrap 95% confidence interval, and paired per-seed differences against factor-latent. A method must beat factor-latent by mean *and* by CI lower bound before it is carried forward. Old mean-rate values remain historical-only. Results, figures, and checkpoints are local ignored artifacts under `results/mc_maze_small/seed_robustness/`, not official NLB leaderboard results.
-
-## Deterministic neural-ODE objective diagnostics
-
-Switching dynamics collapsed to one dominant regime and deterministic refinement gained only marginally, so the next workflow interrogates the training objective rather than the architecture:
-
-```powershell
-python scripts/tune_neural_ode_objectives.py --config configs/mc_maze_small_neural_ode_objectives.yaml
-```
-
-Controlled objective variants around the best deterministic neural-ODE refinement setting vary held-in/held-out loss weighting, zero/positive spike-count weighting, an optional train-only rate-calibration auxiliary loss, drift regularization, KL schedule, and input dropout. The model class is unchanged and `diffusion_scale` is forced to `0.0`.
-
-The canonical scoring target is validation unified bits/spike over 20 ms MC_Maze Small bins, a 1.28-second window, the deterministic split/mask, and train-heldout mean rate as the reference. Training losses may be weighted, but evaluation always uses the canonical unweighted unified metric. Factor-latent (0.0316438194429199) remains the current valid local target to beat; old mean-rate values are historical-only and are never tuning targets. Outputs, figures, and checkpoints are local ignored artifacts under `results/mc_maze_small/neural_ode_objectives/`, not official NLB leaderboard results.
-
-## Deterministic neural-ODE refinement
-
-Switching dynamics collapsed to one dominant regime locally, so the next local neural workflow refines deterministic latent dynamics instead of adding regimes:
-
-```powershell
-python scripts/refine_neural_ode.py --config configs/mc_maze_small_neural_ode_refinement.yaml
-```
-
-The refinement keeps diffusion disabled and tunes objective/schedule choices: held-out loss weight, KL scale/warmup, input dropout, drift regularization, cosine learning-rate scheduling, and unified-metric checkpoint selection. Selection uses canonical unified validation bits/spike: 20 ms MC_Maze Small bins, a 1.28-second window, deterministic split/mask, and train-heldout mean rate as the reference. Factor-latent remains the current valid local target to beat; old mean-rate values are historical-only. Outputs and checkpoints are local ignored artifacts under `results/mc_maze_small/neural_ode_refinement/`, not official NLB leaderboard results.
-
-## Switching deterministic latent dynamics
-
-Run local rSLDS-style switching neural-ODE-style tuning with:
-
-```powershell
-python scripts/tune_switching_ode.py --config configs/mc_maze_small_switching_ode_tuning.yaml
-```
-
-The model keeps diffusion disabled, infers soft regime probabilities over time, mixes a small number of learned drift fields, and reports regime occupancy/entropy diagnostics. Selection uses canonical unified validation bits/spike: 20 ms MC_Maze Small bins, a 1.28-second window, the deterministic split/mask, and train-heldout mean rate as the reference. The factor-latent unified score is the current valid local target to beat; old incompatible mean-rate values are historical-only and are not tuning targets. Results, figures, and checkpoints are local ignored artifacts under `results/mc_maze_small/switching_ode_tuning/`, not official NLB leaderboard results.
-
-## Configuration and environment
-
-The default configuration lives in `configs/base.yaml`. Local machine-specific values may be supplied through environment variables or a local `.env` file, but `.env` files must never be committed.
-
-Copy `.env.example` only when local overrides are needed, then keep any real values private.
-
-## Synthetic data
-
-LatentBrain includes a synthetic Poisson LDS generator for testing the data stack before real datasets are integrated:
-
-```powershell
-python scripts/generate_synthetic_data.py --config configs/synthetic_poisson_lds.yaml
-```
-
-The generated files are local validation artifacts, not benchmark results. Real neural datasets are not integrated yet, and generated synthetic files under `data/` are ignored by Git.
-
-## Real data
-
-LatentBrain includes a local MC_Maze Small ingestion path:
-
-```powershell
-python scripts/inspect_nlb_files.py --config configs/nlb_mc_maze_small.yaml
-python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_small.yaml
-```
-
-The script does not download data. Start with MC_Maze Small from the official Neural Latents Benchmark datasets page and DANDI repository `https://gui.dandiarchive.org/#/dandiset/000140`. Place legally obtained files under `data/raw/nlb/mc_maze_small` or set `LATENTBRAIN_NLB_ROOT`. The real NWB train file loads as a continuous `NWBDataset.data` pandas dataframe; LatentBrain uses NLB trial metadata to trialize it into `spikes: [trials, time, neurons]`, concatenating `heldout_spikes` after `spikes` when available. When train-file behavior columns are available, `hand_pos` and `cursor_pos` are trialized with the same trial IDs and cropped time window into `behavior: [trials, time, behavior_dims]` with named dimensions. The initial policy crops variable-length trials to the minimum trial length for a clean validation tensor. This is validation-oriented preprocessing, not final benchmark preprocessing. If files are missing, the script exits with guidance and creates no fake data. No trained model, benchmark score, EvalAI submission, or leaderboard claim exists. Behavior is stored for validation and future decoding work; velocity decoding is not implemented yet.
-
-## MC_Maze Large ingestion
-
-MC_Maze Large reuses the same ingestion layer with a variant-specific config:
-
-```powershell
-python scripts/inspect_nlb_files.py --config configs/nlb_mc_maze_large.yaml
-python scripts/prepare_nlb_data.py --config configs/nlb_mc_maze_large.yaml
-```
-
-The source is DANDI dandiset `000138`, version `0.220113.0407` (`https://gui.dandiarchive.org/#/dandiset/000138`), verified against the DANDI API and recorded in `configs/nlb_mc_maze_large.yaml`. The two expected assets total about 142.5 MB. Nothing is downloaded automatically: when `data/raw/nlb/mc_maze_large` is empty both scripts print `status: missing_raw_data`, the verified identifiers, the expected assets, `automatic_download_performed: false`, and the manual `dandi download DANDI:000138/0.220113.0407` command, then exit with code 2 without creating files. Raw and processed Large data stay uncommitted and gitignored.
-
-Inspection reports one record per candidate file with the detected dataset and variant, NWB identifier, session description, subject, acquisition series, processing modules, trial table presence and count, unit count, and behavior series candidates. Variant detection reads NWB metadata first and falls back to the filename only when metadata is unavailable, so a Small file under a Large config is rejected, as is a mix of incompatible sessions.
-
-MC_Maze Large real ingestion is verified: `spikes [500, 2006, 162]`, `behavior [500, 2006, 4]` at a 5 ms source bin, 350/75/75 train/validation/test trials, 122 held-in and 40 held-out neurons, dataset hash `074f6d693ba59b23c7e3449633d7c66171c9b52b22379047b414067036830c84`, reproducible across repeated preparations. Under `crop_to_min`, 296795 of 916892 raw spikes across 450340 bins are excluded and reported as warnings. See `docs/real_data.md` for the full record. Next: movement-window protocol validation.
-
-### MC_Maze Large movement-window audit
-
-```powershell
-python scripts/run_window_audit.py --config configs/mc_maze_large_window_audit.yaml
-```
-
-The audit rebuilds trials from the raw assets without `crop_to_min`, so event-centered windows are never taken from the globally cropped artifact. It quantifies what the global crop removes, evaluates five candidate windows on behavior coverage and alignment alone, and recommends a window. No model is trained, scored, or cross-validated here, and window selection cannot use model performance.
-
-Result: the global crop excludes the peak-speed bin for 40% of Large trials, so it is **not** suitable as the source of event-centered windows. The frozen MC_Maze Small window `behavior_speed_peak_centered_1p28s` transfers to Large: zero clipped trials, 0.856 moving-bin fraction, 1.000 peak-speed coverage, endpoint-direction entropy 1.819 nats. Outputs and figures are local ignored artifacts under `results/mc_maze_large/window_audit/`, not official NLB leaderboard results. Next: recommended-window stratified cross-validation on Large.
-
-### MC_Maze Large recommended-window cross-validation
-
-```powershell
-python scripts/run_recommended_window_cv.py --config configs/mc_maze_large_recommended_window_cv.yaml
-python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
-```
-
-The frozen Large window is `behavior_speed_peak_centered_1p28s` at 20 ms bins, giving a `[500, 64, 162]` evaluation array. Trial-aware extraction from the raw assets is mandatory: the globally crop-to-min processed array deletes the peak-speed bin on 40% of trials and can never source event-centered evaluation windows. Windows are extracted at the 5 ms source resolution and rebinned afterwards.
-
-Under 5 folds × 5 repeats (400 train / 100 evaluation trials per fold, held-out neuron mask fixed within each repeat), factor-latent is the first valid MC_Maze Large baseline: mean `0.1227` unified bits/spike, CI95 `[0.1132, 0.1328]`, positive on 25 of 25 folds, against a train-mean reference that scores exactly `0.0`. FactorAnalysis random-state spread is `0.0010`, well inside tolerance. The invalid split-mean control (mean `0.0090`) reads evaluation-fold targets, remains a leakage diagnostic, is excluded from model selection, and is beaten on every fold, so leakage dominance does not persist. Small and Large scores are not directly comparable; only protocol stability is compared. Results are local ignored artifacts, not official NLB leaderboard results.
-
-### MC_Maze Large valid baseline suite
-
-```powershell
-python scripts/run_baseline_suite.py --config configs/mc_maze_large_baseline_suite.yaml
-```
-
-The suite establishes the non-neural baseline that neural models must beat, before any neural model is reevaluated. **No neural model is trained, tuned, or scored in this milestone.**
-
-It reuses the frozen Large protocol exactly: the same 25 outer folds are read from the accepted assignments file, and the same per-repeat held-out neuron masks are recreated from the frozen base seed. Folds are never regenerated. Hyperparameters are chosen by nested train-only selection: inner folds are cut only from each outer fold's 400 training trials, the winner is refit on those 400 trials, and the outer-evaluation fold is scored exactly once. Smoothing, standardization, the factor-analysis basis, the reduced-rank projection, and the ridge decoder are all fit inside the training partition; evaluation counts enter only the final score.
-
-Valid baselines: `factor_latent_fixed` (the accepted incumbent, reproduced to verify the protocol), `factor_latent_train_selected`, `smoothed_cosmoothing_ridge`, and `reduced_rank_cosmoothing` (linear reduced-rank regression — not GPFA, and not a dynamical model). The invalid `split_mean_rate_invalid` control reads evaluation-fold targets, stays a leakage diagnostic, and is excluded from selection, ranking, and superiority testing; it can never become the baseline to beat.
-
-The 25 folds are not independent — five share each repeat's neuron mask and 300 of 400 training trials — so comparisons are made per repeat with a hierarchical paired bootstrap, never a naive 25-sample test. A method replaces the incumbent only if its paired mean difference is positive, the bootstrap interval excludes zero, and it wins on at least 80% of repeats; otherwise `factor_latent_fixed` is retained. Results are local ignored artifacts under `results/mc_maze_large/baseline_suite/`, not official NLB leaderboard results.
-
-Large begins as protocol transfer, not model tuning. This ingestion milestone is ingestion only: no factor-latent, neural model, stratified cross-validation, window selection, or benchmark comparison is run. Later Large reporting inherits the frozen MC_Maze Small protocol — 20 ms bins, the peak-speed-centered 1.28-second window candidate, stratified cross-validation, and the same claim-safety enforcement. Nothing here is an official NLB leaderboard result.
-
-## Data validation report
-
-After preparing MC_Maze Small, generate a local data-quality report with:
-
-```powershell
-python scripts/analyze_mc_maze.py --config configs/mc_maze_small_eda.yaml
-```
-
-The analysis writes JSON, CSV, Markdown, and PNG files under ignored `reports/mc_maze_small/` paths. It checks the processed dataset hash, split coverage, held-in and held-out masks, spike statistics, behavior availability, and trialization metadata. The report is exploratory validation only; no model training, behavior decoding metric, or benchmark evaluation is performed.
-
-## Mean-rate baseline
-
-After real-data preparation, run the first local sanity baseline with:
-
-```powershell
-python scripts/run_mean_rate_baseline.py --config configs/mc_maze_small_mean_rate.yaml
-```
-
-The baseline fits one constant firing rate per neuron using train trials only, then evaluates Poisson negative log-likelihood and bits/spike-style improvement on train, validation, and test splits for held-in, held-out, and all neurons. Outputs are written under ignored `results/mc_maze_small/mean_rate/` paths. This validates the local metric pipeline; it is not an official NLB benchmark result and does not train a neural network model.
-
-## Behavior decoder baseline
-
-After real-data preparation, run the local behavior-decoding sanity baseline with:
-
-```powershell
-python scripts/run_behavior_decoder.py --config configs/mc_maze_small_behavior_decoder.yaml
-```
-
-The baseline smooths binned spikes within each trial, uses held-in neurons by default, derives velocity targets from `hand_pos` and `cursor_pos`, and fits a train-only ridge decoder with train-only feature and target standardization. Outputs are written under ignored `results/mc_maze_small/behavior_decoder/` paths. This is not official benchmark performance, and no neural network model is trained.
-
-## Co-smoothing ridge baseline
-
-Run the local held-in to held-out neural co-smoothing sanity baseline with:
-
-```powershell
-python scripts/run_cosmoothing_baseline.py --config configs/mc_maze_small_cosmoothing_ridge.yaml
-```
-
-The baseline uses held-in neurons as inputs, held-out neurons as targets, smooths held-in spikes within each trial, and fits a train-only ridge decoder against a train-only held-out mean-rate reference. Outputs are written under ignored `results/mc_maze_small/cosmoothing_ridge/` paths. This is not an official NLB leaderboard result, and no neural network model is trained.
-
-## Co-smoothing ridge diagnostic sweep
-
-The first single ridge co-smoothing run underperformed the train-only mean-rate reference, so LatentBrain includes a local diagnostic sweep before any GPFA, LFADS, neural SDE, switching, or neural-network model work:
-
-```powershell
-python scripts/run_cosmoothing_sweep.py --config configs/mc_maze_small_cosmoothing_sweep.yaml
-```
-
-The sweep varies smoothing sigma, ridge alpha, feature standardization, and intercept use. Every fit uses train trials only, held-in neurons as inputs, held-out neurons as targets, train-only feature standardization when enabled, and a train-only held-out mean-rate reference. It evaluates train, validation, and test splits, selects the best configuration by validation held-out bits/spike, and writes local CSV/JSON/Markdown outputs under ignored `results/mc_maze_small/cosmoothing_sweep/` paths. These files are diagnostic artifacts ignored by Git, not official benchmark performance, and no neural network model is trained.
-
-## Factor latent baseline
-
-Run the first non-neural latent-variable sanity baseline with:
-
-```powershell
-python scripts/run_factor_latent_baseline.py --config configs/mc_maze_small_factor_latent.yaml
-```
-
-This baseline smooths held-in spike counts into firing rates, fits train-only Factor Analysis latents, decodes held-out neuron rates from those latents, and decodes behavior velocity when behavior is available. It is GPFA-style only: no temporal GP prior is implemented, so it is not a full GPFA claim. Outputs are local artifacts under ignored `results/mc_maze_small/factor_latent/` paths, not official benchmark performance, and no neural network model is trained.
-
-## Factor latent diagnostic sweep
-
-Tune the transparent non-neural latent baseline before LFADS/SDE work with:
-
-```powershell
-python scripts/run_factor_latent_sweep.py --config configs/mc_maze_small_factor_latent_sweep.yaml
-```
-
-The sweep varies latent dimension, smoothing sigma, held-out decoder alpha, and feature standardization. It selects by validation held-out bits/spike, reports behavior R² as a secondary metric, compares to the mean-rate sanity reference, and writes local ignored outputs under `results/mc_maze_small/factor_latent_sweep/`. This is not official benchmark performance, not full GPFA because no temporal GP prior is implemented, and no neural network model is trained.
-
-## LFADS-style GRU training foundation
-
-Run the first PyTorch neural modeling foundation with:
-
-```powershell
-python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru.yaml
-```
-
-For a small synthetic smoke run, generate synthetic data first and use the synthetic training config:
-
-```powershell
-python scripts/generate_synthetic_data.py --config configs/synthetic_poisson_lds.yaml
-python scripts/train_lfads_gru.py --config configs/synthetic_lfads_gru.yaml
-```
-
-This model is an LFADS-style sequential VAE foundation, not a full LFADS implementation. It uses held-in neurons as input and reconstructs held-in activity with a Poisson observation model. Metrics, checkpoints, config snapshots, and reports are local outputs under ignored `results/` paths. No official NLB leaderboard result is reported.
-The real MC_Maze LFADS-style configs request CUDA explicitly and fail fast if a CUDA-enabled PyTorch build is unavailable; synthetic configs may still run on CPU.
-
-## LFADS-style masked co-smoothing training
-
-Train the LFADS-style GRU with a masked co-smoothing objective using held-in spikes as the only model input and all-neuron rates as the model output:
-
-```powershell
-python scripts/train_lfads_gru.py --config configs/mc_maze_small_lfads_gru_cosmoothing.yaml
-```
-
-In this run the model input dimension is the held-in neuron count, while the readout predicts rates for all neurons. Held-in reconstruction loss is computed on held-in targets, and held-out prediction loss is computed only from train-trial held-out targets during optimization. Validation and test held-out spikes remain evaluation-only. The run writes local metrics, reports, and checkpoints under ignored `results/mc_maze_small/lfads_gru_cosmoothing/` paths.
-
-Evaluate the checkpoint with direct model held-out rates and the factor-decoder diagnostic with:
-
-```powershell
-python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_cosmoothing_eval.yaml
-```
-
-The evaluation script creates no new neural-network checkpoint. It reports direct model held-out prediction when available, optionally also reports a train-only factor decoder, and compares local validation bits/spike to the previous LFADS-style factor evaluation, factor-latent, and mean-rate references. These outputs are local artifacts under ignored `results/mc_maze_small/lfads_gru_cosmoothing_eval/` paths, not official benchmark performance, and not a full LFADS claim.
-The real MC_Maze co-smoothing training and evaluation configs request CUDA explicitly and do not silently fall back to CPU.
-
-## LFADS-style held-out evaluation
-
-After the short LFADS-style GRU training command has created a local checkpoint, evaluate held-out neural prediction from its factors with:
-
-```powershell
-python scripts/evaluate_lfads_gru.py --config configs/mc_maze_small_lfads_gru_eval.yaml
-```
-
-The evaluation script loads the existing checkpoint and does not train a new neural network. It feeds held-in spikes through the LFADS-style model, extracts factor trajectories, and fits a train-only ridge decoder from those factors to held-out neuron rates. Validation and test samples are evaluation-only, and the train-only held-out mean rate remains the reference for bits/spike. Behavior velocity decoding from factors is reported as a secondary local diagnostic when behavior is available.
-
-Evaluation JSON, CSV, and Markdown outputs are local artifacts under ignored `results/mc_maze_small/lfads_gru_eval/` paths. This is a local held-out evaluation, not an official NLB leaderboard result, and it is not a full LFADS claim.
-
-## Window-matched local comparison
-
-Full-window baseline metrics and short-window LFADS-style metrics should not be read as direct comparisons. The LFADS-style MC_Maze runs use a 256-bin crop for fast local iteration, while earlier mean-rate and factor-latent numbers were produced on the full processed trial window. Recompute local methods on the same dataset hash, train/validation/test split, held-in/held-out mask, time crop, Poisson likelihood convention, bits/spike convention, and behavior target convention with:
-
-```powershell
-python scripts/run_window_matched_comparison.py --config configs/mc_maze_small_window_matched_comparison.yaml
-```
-
-The comparison script evaluates windowed mean-rate, ridge co-smoothing, factor-latent, and existing LFADS-style checkpoints without training a new neural network. It writes `comparison_summary.json`, `comparison_metrics.csv`, `validation_leaderboard.csv`, `behavior_comparison.csv`, and `comparison_report.md` under ignored `results/mc_maze_small/window_matched_comparison/` paths. These are local comparison artifacts only, not official benchmark outputs, and neural methods remain LFADS-style only rather than full LFADS.
-
-## LFADS-style CUDA tuning
-
-Run the controlled CUDA tuning workflow for the LFADS-style masked co-smoothing model with:
-
-```powershell
-python scripts/tune_lfads_gru.py --config configs/mc_maze_small_lfads_gru_tuning.yaml
-```
-
-The workflow runs a small deterministic grid capped by `search.max_runs`, keeps the MC_Maze Small dataset hash, split, held-in/held-out mask, and 256-bin crop fixed, and selects by local validation bits/spike. It compares runs only against the 256-bin window-matched scoreboard references, including the window-matched mean-rate and factor-latent baselines. Tuning outputs, reports, and checkpoints are written under ignored `results/mc_maze_small/lfads_gru_tuning/` paths and must stay local. No official NLB benchmark or leaderboard result is reported, and the model remains LFADS-style only, not full LFADS.
-
-## LFADS-style diagnostic audit
-
-After tuning, diagnose why the LFADS-style masked co-smoothing model trails simple window-matched references with:
-
-```powershell
-python scripts/audit_lfads_gru.py --config configs/mc_maze_small_lfads_audit.yaml
-```
-
-The audit reloads the same MC_Maze Small processed dataset hash, deterministic split, held-in/held-out mask, and 256-bin crop, then audits the tuned local checkpoint for loss scale, bits/spike reference agreement, rate calibration, factor usage, direct-model behavior, held-out sparsity, and tiny-subset overfit behavior. It writes local CSV/JSON/Markdown outputs and matplotlib figures under ignored `results/mc_maze_small/lfads_audit/` paths. This is only a local diagnostic audit for deciding what to fix before adding larger architecture changes; it is not an official benchmark result and the checkpoint remains LFADS-style only, not full LFADS.
-
-## Temporal rebinning diagnostic
-
-The audit found that 5 ms held-out MC_Maze targets are extremely sparse. Test whether coarser temporal bins reduce target sparsity before changing architectures with:
-
-```powershell
-python scripts/run_temporal_rebinning_diagnostic.py --config configs/mc_maze_small_temporal_rebinning.yaml
-```
-
-The diagnostic rebins the 5 ms spike counts to 10 ms and 20 ms by summing grouped spike bins, averages behavior over the same groups, keeps the comparison window fixed at 1.28 seconds, recomputes same-bin mean-rate and factor-latent references, and runs small CUDA LFADS-style masked co-smoothing jobs at 10 ms and 20 ms. Outputs, checkpoints, plots, and reports are local artifacts under ignored `results/mc_maze_small/temporal_rebinning/` paths. Bits/spike values across bin sizes are diagnostic and should not be treated as direct benchmark comparisons; no official NLB result is reported.
-
-## LFADS-style rate calibration diagnostic
-
-The temporal rebinning diagnostic identified 20 ms as the best local LFADS-style bin size so far, but the 20 ms model still trails same-bin references. Test whether the direct-rate output is poorly anchored with:
-
-```powershell
-python scripts/run_lfads_rate_calibration.py --config configs/mc_maze_small_lfads_rate_calibration.yaml
-```
-
-The diagnostic reloads the existing 20 ms LFADS-style checkpoint, fits train-only post-hoc rate calibration on direct held-out predictions, evaluates per-neuron multiplicative scaling, log-rate bias, and mean-rate blending, then trains a small CUDA LFADS-style masked co-smoothing model whose output readout bias is initialized from train-only firing rates. It compares all LFADS-family results only against same-bin 20 ms mean-rate and factor-latent references.
-
-Generated metrics, figures, reports, checkpoints, and config snapshots are local artifacts under ignored `results/mc_maze_small/lfads_rate_calibration/` paths. This is local diagnostic work for output scale and mean-rate anchoring, not an official NLB leaderboard result, and the model remains LFADS-style only, not full LFADS.
-
-## LFADS-style coordinated dropout diagnostic
-
-After rate calibration and readout bias initialization failed to close the held-out prediction gap, test whether the 20 ms LFADS-style masked co-smoothing model benefits from input robustness and shared-population prediction:
-
-```powershell
-python scripts/run_lfads_coordinated_dropout.py --config configs/mc_maze_small_lfads_coordinated_dropout.yaml
-```
-
-The workflow keeps the same 1.28-second 20 ms window, deterministic trial split, and held-in/held-out neuron mask. During training only, it randomly masks a configured fraction of held-in input neurons before the LFADS-style forward pass. Held-in and held-out targets remain unmasked for loss computation, so the model is forced to infer neural activity from partial population observations without corrupting the supervised targets. Validation and test evaluation use the original unmasked held-in inputs by default.
-
-Generated metrics, dropout diagnostics, figures, reports, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_coordinated_dropout/` paths. The report compares dropout runs against same-bin mean-rate, same-bin factor-latent, previous raw 20 ms LFADS, and rate-calibration references. No official benchmark result is reported, and the model remains LFADS-style only, not full LFADS.
-
-## Metric/reference audit
-
-Before adding new model families, audit whether local MC_Maze Small scores share the same Poisson likelihood and bits/spike reference convention:
-
-```powershell
-python scripts/run_metric_audit.py --config configs/mc_maze_small_metric_audit.yaml
-```
-
-The audit uses 20 ms bins and the same 1.28-second window as the recent LFADS-style diagnostics. It scores the train-only held-out mean-rate predictor against that same train-only held-out mean-rate reference, so its validation bits/spike should be near zero. Global-mean, split-mean, oracle-smoothed, random, and trial-shuffled controls are written alongside any existing reported metrics that can be loaded safely.
-
-Unified bits/spike references are necessary because a model log-likelihood only becomes comparable after subtracting the same reference log-likelihood and dividing by the same held-out spike count. A mean-rate model scored against itself should not look like a strong positive baseline; if it does, the reference convention is different. Oracle controls use held-out targets directly and are not valid models. Outputs are local audit artifacts under ignored `results/mc_maze_small/metric_audit/` paths and are not official NLB leaderboard results.
-
-## Unified local scoreboard
-
-After the metric audit, use the canonical train-reference scoreboard for future local MC_Maze Small comparisons:
-
-```powershell
-python scripts/run_unified_scoreboard.py --config configs/mc_maze_small_unified_scoreboard.yaml
-```
-
-The scoreboard uses 20 ms bins, the fixed 1.28-second window, deterministic train/validation/test split, and the train-only held-out mean-rate reference. Bits/spike is always `(model_log_likelihood - reference_log_likelihood) / (log(2) * spike_count)`, so the train-heldout mean-rate predictor scores `0.0` against itself. Future tuning should optimize against the unified scoreboard: the `0.0` train-mean reference, the current factor-latent unified local reference, and the oracle diagnostic upper bound.
-
-Older positive mean-rate values from incompatible reference conventions are historical-only and must not be used as direct model targets. Oracle controls are invalid models because they use held-out targets directly. The scoreboard reads local LFADS/dynamics-family summaries when present, including `inputs.lfads_unified_tuning_summary_path`, `inputs.lfads_controller_tuning_summary_path`, `inputs.neural_sde_tuning_summary_path`, `inputs.neural_ode_tuning_summary_path`, the coordinated-dropout summary, and the raw LFADS rate-calibration summary. If those ignored local summaries are absent on a fresh clone, it falls back to configured known LFADS-family values. Generated CSVs, figures, and the report live under ignored `results/mc_maze_small/unified_scoreboard/` paths and are local artifacts, not official NLB leaderboard results.
-
-## Canonical LFADS-style unified tuning
-
-Tune LFADS-family runs under the canonical train-reference scorer with:
-
-```powershell
-python scripts/tune_lfads_unified.py --config configs/mc_maze_small_lfads_unified_tuning.yaml
-```
-
-This workflow uses the 20 ms MC_Maze Small tensor, the fixed 1.28-second window, and train-heldout mean rate as the bits/spike reference. It selects runs by validation unified bits/spike, not validation loss. The current valid local target to beat is the factor-latent unified score; the previous coordinated-dropout LFADS-family score is the LFADS-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
-
-Outputs, run reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_unified_tuning/` paths. This is local model selection only, not an official NLB leaderboard result, and the model remains LFADS-style only, not full LFADS.
-
-## Controller-style LFADS-family tuning
-
-Run the inferred-input controller workflow with:
-
-```powershell
-python scripts/tune_lfads_controller.py --config configs/mc_maze_small_lfads_controller_tuning.yaml
-```
-
-This model adds a controller GRU that reads held-in activity and generator state to infer time-varying latent inputs. Runs still use 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the selection metric. The current local target to beat is the factor-latent unified score; the previous best LFADS-family score is a secondary LFADS-family reference. Old incompatible mean-rate values are historical-only and are not tuning targets.
-
-Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/lfads_controller_tuning/` paths. This is local controller-style LFADS-family tuning, not an official NLB leaderboard result, and the model is LFADS-style with inferred inputs, not full LFADS.
-
-## Neural-SDE-style latent generator tuning
-
-Run the compact Euler/Euler-Maruyama latent generator workflow with:
-
-```powershell
-python scripts/tune_neural_sde.py --config configs/mc_maze_small_neural_sde_tuning.yaml
-```
-
-The model replaces the discrete GRU generator with continuous-time latent dynamics integrated directly in PyTorch. A bidirectional GRU encoder infers the initial latent state, drift and diffusion networks evolve the latent trajectory, and a factor readout maps latents to all-neuron Poisson rates. `diffusion_scale: 0.0` is the deterministic neural ODE-style limit; nonzero diffusion tests stochastic latent paths through Euler-Maruyama noise. No `torchsde` dependency is used.
-
-This workflow uses 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the model-selection metric. The current valid local target to beat is the factor-latent unified score; the previous controller-style LFADS-family score is the dynamics-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
-
-Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/neural_sde_tuning/` paths. This is local neural-SDE-style tuning, not an official NLB leaderboard result, and it is a compact Euler/Euler-Maruyama latent generator rather than a full benchmarked neural SDE system.
-
-## Deterministic neural-ODE-style latent dynamics tuning
-
-Focus the best neural-SDE-style setting, where diffusion scale zero won, with:
-
-```powershell
-python scripts/tune_neural_ode.py --config configs/mc_maze_small_neural_ode_tuning.yaml
-```
-
-This reuses the compact Euler latent generator with `diffusion_scale: 0.0` forced for every run. It uses 20 ms MC_Maze Small bins, the fixed 1.28-second window, train-heldout mean-rate as the canonical reference, and validation unified bits/spike as the selection metric. The current valid local target to beat is the factor-latent unified score; the previous neural-SDE-style score is the dynamics-family reference. Old incompatible mean-rate values remain historical-only and are not tuning targets.
-
-The workflow saves `best_validation.pt`, `latest.pt`, and `best_unified.pt`, then records checkpoint re-ranking in `checkpoint_selection.csv`. Outputs, reports, figures, config snapshots, and checkpoints are local artifacts under ignored `results/mc_maze_small/neural_ode_tuning/` paths and are not committed. This is local deterministic neural-ODE-style tuning, not an official NLB leaderboard result, and not a full benchmarked neural ODE/SDE system.
-
-## Data policy
-
-Raw neural datasets are not committed to this repository. Data files, derived datasets, model checkpoints, generated results, local logs, and experiment artifacts are ignored by Git. Future data ingestion must follow dataset licenses, access terms, and ethical requirements.
-
-## Reproducibility principles
-
-LatentBrain uses validated configuration, explicit random seeds, isolated environments, and automated quality checks. Future experiments should record the Git commit, configuration, environment summary, data provenance, split seed, and artifact metadata needed to audit results.
-
-## Safety warning
-
-Do not commit `.env`, raw data, checkpoints, generated results, W&B keys, cloud credentials, API tokens, private absolute paths, or local experiment artifacts.
-
-## MC_Maze Large LFADS feasibility pilot
-
-Run the one-repeat controlled pilot with:
-
-```powershell
-python scripts/run_lfads_pilot.py --config configs/mc_maze_large_lfads_pilot.yaml
-python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
-```
-
-The pilot reuses outer repeat 0, folds 0-4, and its fixed 122/40 held-in/held-out neuron mask from the
-frozen Large movement-window protocol. It trains the existing LFADS-style GRU at initialization seeds
-`2027`, `2028`, `2029`, `2030`, and `2031`, once per fold: 25 fixed runs, no hyperparameter sweep and
-no `seed + run_index` derivation. The baseline to beat is `factor_latent_train_selected`.
-
-Checkpoint selection and early stopping use only a stratified inner split of each outer-training set.
-Outer-evaluation trials are never used for checkpoint selection, normalization, calibration, or
-Full five-repeat LFADS evaluation is permitted only if every predeclared
-gate passes. This pilot is feasibility and seed-stability evidence from one held-out-neuron mask; it
-cannot support a final model-performance claim or replace the frozen baseline.
-
-The gate failed. Audit the accepted checkpoints without retraining or checkpoint reselection:
-
-```powershell
-python scripts/run_lfads_diagnostics.py --config configs/mc_maze_large_lfads_diagnostics.yaml
-python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
-```
-
-The audit can recommend only `targeted_lfads_repair_pilot`,
-`retire_lfads_and_start_neural_ode_pilot`, or `block_due_to_integrity_issue`. It does not start any of
-those actions, and full multi-repeat LFADS evaluation remains disabled.
-
-## MC_Maze Large deterministic neural-ODE feasibility pilot
-
-The retirement decision selected the deterministic neural-ODE successor. Run the one-repeat pilot with:
-
-```powershell
-python scripts/run_neural_ode_pilot.py --config configs/mc_maze_large_neural_ode_pilot.yaml
-python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
-```
-
-The pilot reuses exactly the LFADS pilot's controls: outer repeat 0, folds 0-4, the fixed 122/40
-held-in/held-out neuron mask, evaluation window, and initialization seeds `2027`, `2028`, `2029`,
-`2030`, `2031` — 25 fixed runs (5 folds x 5 seeds), no sweep and no `seed + run_index` derivation. Each
-declared seed is applied before model construction. The model is the existing NeuralSDE Euler latent
-generator with **diffusion disabled** (`diffusion_scale = 0.0`); its dimensions and objective are frozen
-from the accepted MC_Maze Small neural-ODE refinement best run, with only input/output dimensions
-adapted to Large. The baseline to beat is `factor_latent_train_selected`.
-
-Checkpoints are selected only on a stratified inner split of each outer-training set, maximizing
-inner-validation unified bits/spike; outer-evaluation trials never touch selection, normalization, or
-configuration. The pilot records solver stability (state/drift norms, non-finite counts), latent
-utilization (effective rank), and before/near/after-peak scores. Full five-repeat evaluation is
-permitted only if every predeclared gate passes; `next_action_recommendation.json` selects exactly one
-of `run_full_neural_ode_evaluation`, `run_targeted_neural_ode_diagnostic`,
-`retire_neural_ode_and_close_neural_model_search`, or `block_due_to_integrity_issue`. This is a one
-held-out-neuron-mask feasibility pilot: it cannot support a final model-performance claim or replace the
-frozen baseline. Generated results, checkpoints, reports, and figures are local ignored artifacts under
-`results/mc_maze_large/neural_ode_pilot/`, not official NLB leaderboard results.
-
-The pilot's gate failed on the baseline margin only (paired difference `-0.032633` vs a `-0.02`
-requirement). Audit the 25 accepted checkpoints without retraining or reselecting anything:
-
-```powershell
-python scripts/run_neural_ode_diagnostics.py --config configs/mc_maze_large_neural_ode_diagnostics.yaml
-python scripts/run_unified_scoreboard.py --config configs/mc_maze_large_unified_scoreboard.yaml
-```
-
-The diagnostic reproduces every accepted outer score, decomposes the baseline gap into candidate
-causes (decoder conditioning, learned dynamics, rate calibration, temporal smoothing, negative-neuron
-concentration, and more), and fits train-only frozen counterfactuals (a linear readout on frozen
-factors, a static encoder-only path with no evolved dynamics, and a scalar rate calibration) purely
-for diagnosis — none of them retrain or replace the accepted model. It can recommend only
-`run_targeted_neural_ode_repair_pilot`, `run_full_neural_ode_evaluation`,
-`retire_neural_ode_and_close_neural_model_search`, or `block_due_to_integrity_issue`; broad
-hyperparameter tuning is never permitted and full evaluation stays blocked unless the declared gate
-passes. Generated outputs stay under ignored `results/mc_maze_large/neural_ode_diagnostics/`.
-
-## MC_Maze Large latent interpretability
-
-```powershell
-python scripts/run_latent_interpretability.py --config configs/mc_maze_large_latent_interpretability.yaml
-```
-
-The frozen best valid model remains `factor_latent_train_selected`. All 25 evaluation latent sets are
-out of fold; factor-latent and behavior-decoder fitting use outer-training data only. The completed
-analysis decodes hand/cursor position, velocity, and speed, evaluates eight-way reach direction,
-trajectory geometry, representation stability, population-rate confounds, and 100-repeat shuffle
-controls. Mean continuous-target R² is `0.4631`; direction balanced accuracy is `0.6266` versus
-`0.125` chance. Findings are associative and predictive, not causal. Neural-model search remains
-closed; LFADS and deterministic neural-ODE remain retired. Outputs stay ignored under
-`results/mc_maze_large/latent_interpretability/` and are not official NLB leaderboard results.
+Expected mypy version: `2.2.0`.
