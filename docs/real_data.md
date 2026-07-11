@@ -1303,3 +1303,24 @@ pilot was stable, but no narrow, frozen correction is justified; broad architect
 would be required, which this diagnostic explicitly prohibits. Full evaluation and broad sweeps remain
 disallowed; LFADS remains retired. Generated outputs stay ignored under
 `results/mc_maze_large/neural_ode_diagnostics/`.
+
+## MC_Maze Large latent interpretability and neuroscience validity
+
+The completed analysis reconstructed all 25 accepted outer folds and reproduced every frozen
+factor-latent score; maximum absolute error was `8.33e-17`. Each evaluation latent tensor has shape
+`[100, 64, 16]` and was generated out of fold. Mean R² values were: hand x/y position
+`0.6523/0.4819`, hand x/y velocity `0.5892/0.4169`, hand speed `0.1985`, cursor x/y position
+`0.6449/0.4706`, cursor x/y velocity `0.5714/0.3957`, and cursor speed `0.2093`.
+
+Eight-way direction decoding reached accuracy `0.7840`, balanced accuracy `0.6266`, and macro F1
+`0.5901` against `0.125` chance. Direction separability averaged `0.6075`; effective latent
+dimension was `13.216` of 16. Aligned centroid correlations were `0.7429` across folds, `0.8280`
+across neuron masks, and `0.8985` across FactorAnalysis states. Distance modulation remained
+descriptive only. Rate-confound diagnostics favored full factor latents over scalar population rate
+by mean R² difference `0.4634`.
+
+Across-trial and circular-shift continuous controls, and both direction-label controls, used 100
+deterministic permutations. Empirical p-values were `0.00990` for all four comparisons. Nine claims
+were supported, distance modulation was descriptive only, and causal generation was unsupported.
+`ready_for_final_report` is true with no blockers. These are associative local findings, not causal
+claims or official NLB leaderboard results; MC_Maze Small and Large scores remain non-comparable.

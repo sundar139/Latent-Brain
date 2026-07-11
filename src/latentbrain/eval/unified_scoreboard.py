@@ -1084,3 +1084,59 @@ def load_neural_ode_diagnostics_scoreboard(config: dict[str, Any]) -> dict[str, 
         "neural_ode_diagnostics_full_evaluation_allowed": False,
         "neural_ode_diagnostics_summary_path": str(path),
     }
+
+
+LATENT_INTERPRETABILITY_KEYS = (
+    "latent_interpretability_complete",
+    "out_of_fold_latents_used",
+    "behavior_decoding_complete",
+    "direction_decoding_complete",
+    "shuffle_controls_complete",
+    "representation_stability_complete",
+    "supported_claim_count",
+    "descriptive_claim_count",
+    "unsupported_claim_count",
+    "primary_neuroscience_finding",
+    "ready_for_final_report",
+    "official_leaderboard_claim",
+    "causal_claim_allowed",
+)
+
+
+def load_latent_interpretability_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
+    """Optional claim-safe interpretability fields; never changes model ranking."""
+    path = _summary_path(config.get("inputs", {}).get("latent_interpretability_summary_path"))
+    fallback = {
+        "latent_interpretability_available": False,
+        "latent_interpretability_complete": False,
+        "out_of_fold_latents_used": False,
+        "behavior_decoding_complete": False,
+        "direction_decoding_complete": False,
+        "shuffle_controls_complete": False,
+        "representation_stability_complete": False,
+        "supported_claim_count": 0,
+        "descriptive_claim_count": 0,
+        "unsupported_claim_count": 0,
+        "primary_neuroscience_finding": None,
+        "ready_for_final_report": False,
+        "official_leaderboard_claim": False,
+        "causal_claim_allowed": False,
+    }
+    if path is None or not path.exists():
+        return fallback
+    label = "latent interpretability"
+    summary = _load_summary(path, label)
+    for key in LATENT_INTERPRETABILITY_KEYS:
+        if key not in summary:
+            msg = f"malformed latent interpretability summary: missing {key} at {path}"
+            raise ValueError(msg)
+    if bool(summary["official_leaderboard_claim"]) or bool(summary["causal_claim_allowed"]):
+        msg = f"claim-unsafe latent interpretability summary at {path}"
+        raise ValueError(msg)
+    return {
+        "latent_interpretability_available": True,
+        **{key: summary[key] for key in LATENT_INTERPRETABILITY_KEYS},
+        "official_leaderboard_claim": False,
+        "causal_claim_allowed": False,
+        "latent_interpretability_summary_path": str(path),
+    }

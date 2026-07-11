@@ -14,6 +14,7 @@ from latentbrain.eval.unified_scoreboard import (
     build_historical_metric_notes,
     build_unified_score_row,
     load_cv_rate_audit_warning,
+    load_latent_interpretability_scoreboard,
     load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
@@ -27,6 +28,50 @@ from latentbrain.eval.unified_scoreboard import (
     rank_unified_validation_scores,
     summarize_unified_scoreboard,
 )
+
+
+def test_latent_interpretability_scoreboard_loads_safe_summary(tmp_path: Path) -> None:
+    path = tmp_path / "interpretability.json"
+    path.write_text(
+        json.dumps(
+            {
+                "latent_interpretability_complete": True,
+                "out_of_fold_latents_used": True,
+                "behavior_decoding_complete": True,
+                "direction_decoding_complete": True,
+                "shuffle_controls_complete": True,
+                "representation_stability_complete": True,
+                "supported_claim_count": 4,
+                "descriptive_claim_count": 3,
+                "unsupported_claim_count": 4,
+                "primary_neuroscience_finding": "predictive structure",
+                "ready_for_final_report": True,
+                "official_leaderboard_claim": False,
+                "causal_claim_allowed": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    loaded = load_latent_interpretability_scoreboard(
+        {"inputs": {"latent_interpretability_summary_path": str(path)}}
+    )
+    assert loaded["latent_interpretability_available"] is True
+    assert loaded["ready_for_final_report"] is True
+    assert loaded["official_leaderboard_claim"] is False
+    assert loaded["causal_claim_allowed"] is False
+
+
+def test_latent_interpretability_scoreboard_missing_and_unsafe(tmp_path: Path) -> None:
+    missing = load_latent_interpretability_scoreboard(
+        {"inputs": {"latent_interpretability_summary_path": str(tmp_path / "missing.json")}}
+    )
+    assert missing["latent_interpretability_available"] is False
+    path = tmp_path / "unsafe.json"
+    path.write_text(json.dumps({"official_leaderboard_claim": True}), encoding="utf-8")
+    with pytest.raises(ValueError, match="claim-unsafe|malformed"):
+        load_latent_interpretability_scoreboard(
+            {"inputs": {"latent_interpretability_summary_path": str(path)}}
+        )
 
 
 def _lfads_candidate_config(tmp_path: Path) -> dict[str, object]:

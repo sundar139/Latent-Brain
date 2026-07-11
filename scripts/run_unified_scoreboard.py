@@ -36,6 +36,7 @@ from latentbrain.eval.unified_scoreboard import (
     load_baseline_suite_scoreboard,
     load_cv_rate_audit_warning,
     load_dataset_cv_scoreboard,
+    load_latent_interpretability_scoreboard,
     load_lfads_diagnostics_scoreboard,
     load_lfads_family_candidates,
     load_lfads_pilot_scoreboard,
@@ -259,6 +260,7 @@ def run_dataset_scoreboard(config: dict[str, Any]) -> dict[str, Any]:
         summary.update(load_lfads_diagnostics_scoreboard(config))
         summary.update(load_neural_ode_pilot_scoreboard(config))
         summary.update(load_neural_ode_diagnostics_scoreboard(config))
+        summary.update(load_latent_interpretability_scoreboard(config))
     output_dir = resolve_configured_path(str(config["reporting"]["output_dir"]), get_repo_root())
     write_dataset_scoreboard_outputs(output_dir, summary)
     return {"summary": summary, "output_dir": output_dir}

@@ -681,3 +681,18 @@ for diagnosis — none of them retrain or replace the accepted model. It can rec
 `retire_neural_ode_and_close_neural_model_search`, or `block_due_to_integrity_issue`; broad
 hyperparameter tuning is never permitted and full evaluation stays blocked unless the declared gate
 passes. Generated outputs stay under ignored `results/mc_maze_large/neural_ode_diagnostics/`.
+
+## MC_Maze Large latent interpretability
+
+```powershell
+python scripts/run_latent_interpretability.py --config configs/mc_maze_large_latent_interpretability.yaml
+```
+
+The frozen best valid model remains `factor_latent_train_selected`. All 25 evaluation latent sets are
+out of fold; factor-latent and behavior-decoder fitting use outer-training data only. The completed
+analysis decodes hand/cursor position, velocity, and speed, evaluates eight-way reach direction,
+trajectory geometry, representation stability, population-rate confounds, and 100-repeat shuffle
+controls. Mean continuous-target R² is `0.4631`; direction balanced accuracy is `0.6266` versus
+`0.125` chance. Findings are associative and predictive, not causal. Neural-model search remains
+closed; LFADS and deterministic neural-ODE remain retired. Outputs stay ignored under
+`results/mc_maze_large/latent_interpretability/` and are not official NLB leaderboard results.

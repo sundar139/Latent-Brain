@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
@@ -344,7 +346,7 @@ FACTOR_LATENT_DEFAULTS: dict[str, float] = {
 }
 
 
-def factor_latent_heldout_rates(
+def factor_latent_fit_transform(
     dataset: NeuralDataset,
     split: TrialSplit,
     heldin_indices: np.ndarray,
@@ -352,8 +354,13 @@ def factor_latent_heldout_rates(
     scoring: ScoringConfig,
     settings: dict[str, float],
     random_state: int = 0,
-) -> dict[str, np.ndarray]:
-    """Train-only factor-analysis latents decoded to held-out rates, per split."""
+) -> dict[str, Any]:
+    """Train-only factor-analysis fit; expose per-split latents alongside held-out rate predictions.
+
+    The rate predictions are identical to ``factor_latent_heldout_rates``; the extra ``latents``
+    (shape [trials, time, latent]), fitted ``model``, ``feature_stats`` and ``decoder`` are exposed
+    for interpretability without altering any accepted score.
+    """
     bin_size_ms = scoring.bin_size_ms
     spikes = dataset.spikes
     smoothed = smooth_spike_counts(
@@ -392,15 +399,42 @@ def factor_latent_heldout_rates(
         fit_intercept=True,
     )
     predictions: dict[str, np.ndarray] = {}
+    latents_by_split: dict[str, np.ndarray] = {}
     for name, mask in split_masks.items():
-        features = (_flat(input_rates[mask]) - feature_stats["mean"]) / feature_stats["std"]
+        windowed = input_rates[mask]
+        features = (_flat(windowed) - feature_stats["mean"]) / feature_stats["std"]
         latents = model.transform(features)
+        latents_by_split[name] = np.asarray(
+            latents.reshape(windowed.shape[0], windowed.shape[1], latents.shape[1])
+        )
         flat_rates = safe_clip_rates(
             predict_ridge_decoder(latents, decoder), scoring.min_rate_hz, scoring.max_rate_hz
         )
         counts = spikes[mask][:, :, heldout_indices]
         predictions[name] = flat_rates.reshape(counts.shape)
-    return predictions
+    return {
+        "rates": predictions,
+        "latents": latents_by_split,
+        "model": model,
+        "feature_stats": feature_stats,
+        "decoder": decoder,
+    }
+
+
+def factor_latent_heldout_rates(
+    dataset: NeuralDataset,
+    split: TrialSplit,
+    heldin_indices: np.ndarray,
+    heldout_indices: np.ndarray,
+    scoring: ScoringConfig,
+    settings: dict[str, float],
+    random_state: int = 0,
+) -> dict[str, np.ndarray]:
+    """Train-only factor-analysis latents decoded to held-out rates, per split."""
+    result = factor_latent_fit_transform(
+        dataset, split, heldin_indices, heldout_indices, scoring, settings, random_state
+    )
+    return dict(result["rates"])
 
 
 def run_repeated_split_baselines(

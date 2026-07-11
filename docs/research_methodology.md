@@ -770,3 +770,22 @@ correction plausibly clears the required recovery, `retire_neural_ode_and_close_
 the only allowed outcome; broad architecture or objective tuning is explicitly prohibited by this
 diagnostic. `full_evaluation_allowed` and `broad_sweep_allowed` are always reported `false` regardless of
 outcome, and the gate is never loosened merely because a result is numerically close.
+
+## Out-of-fold latent interpretation
+
+Interpretability reuses the 25 frozen nested outer folds, neuron masks, and per-fold selected
+factor-latent configurations. Smoothing, standardization, FactorAnalysis, latent-to-rate mapping,
+ridge behavior decoders, and logistic direction-decoder regularization are fit or selected using
+outer-training data only. Outer-evaluation latents are transformed once by frozen mappings.
+
+Latent axes are rotationally non-identifiable. Fold, repeat, neuron-mask, and FactorAnalysis-state
+comparisons therefore fit orthogonal Procrustes mappings on outer-training condition centroids only,
+then apply those mappings to evaluation centroids. Raw latent axes are never interpreted as matched
+coordinates across fits.
+
+Continuous ridge regularization and direction-classifier regularization use inner folds cut only from
+outer training. Evaluation behavior cannot influence selection. Across-trial behavior permutation,
+nonzero within-trial circular shifts, and direction-label permutation retain the outer protocol;
+empirical p-values use `(1 + controls >= observed) / (1 + permutation_repeats)`. Claims require
+completed controls and out-of-fold evidence. Causal, mechanistic, direct Small-versus-Large
+performance, and official leaderboard wording remain prohibited.
